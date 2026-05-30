@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+app/dist/
+**/target/
+app/src-tauri/target/
+
+# Tauri generated
+app/src-tauri/gen/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets — never commit credentials
+.env
+.env.*
+*.local
+secrets.json
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Large local source assets (optional — remove if you want them tracked)
+logo-source-OLD.png

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Mail Client — "Calm Command" concept</title>
+<style>
+  :root {
+    --accent: #6E8BFF;
+    --accent-soft: rgba(110,139,255,0.14);
+    --radius: 14px;
+    --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    --ease: cubic-bezier(.2,.8,.2,1);
+  }
+  [data-theme="dark"] {
+    --bg: #0b0c10;
+    --bg-2: #111319;
+    --surface: #16181f;
+    --surface-2: #1d2029;
+    --border: rgba(255,255,255,0.07);
+    --border-2: rgba(255,255,255,0.12);
+    --text: #eef0f5;
+    --text-2: #a6abbd;
+    --text-3: #6c7187;
+    --shadow: 0 20px 60px rgba(0,0,0,0.55);
+    --glass: rgba(22,24,31,0.72);
+  }
+  [data-theme="light"] {
+    --bg: #f6f5f2;
+    --bg-2: #fbfaf8;
+    --surface: #ffffff;
+    --surface-2: #f3f2ef;
+    --border: rgba(20,20,30,0.08);
+    --border-2: rgba(20,20,30,0.14);
+    --text: #1a1c22;
+    --text-2: #565b6b;
+    --text-3: #8b90a0;
+    --shadow: 0 20px 60px rgba(40,40,60,0.18);
+    --glass: rgba(255,255,255,0.78);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    letter-spacing: -0.01em;
+  }
+  .app { display: grid; grid-template-columns: 232px 360px 1fr; height: 100vh; transition: grid-template-columns .4s var(--ease); }
+  .app.focus { grid-template-columns: 232px 0px 1fr; }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar { background: var(--bg-2); border-right: 1px solid var(--border); padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .brand { display:flex; align-items:center; gap:10px; padding: 8px 10px 16px; }
+  .logo { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), #9a7bff); box-shadow: 0 6px 16px var(--accent-soft); }
+  .brand b { font-size: 14px; font-weight: 650; letter-spacing: -0.02em; }
+  .acct { font-size: 11px; color: var(--text-3); }
+  .nav-item { display:flex; align-items:center; gap:11px; padding: 8px 11px; border-radius: 10px; color: var(--text-2); font-size: 13.5px; cursor: pointer; transition: .15s var(--ease); }
+  .nav-item:hover { background: var(--surface); color: var(--text); }
+  .nav-item.active { background: var(--accent-soft); color: var(--text); font-weight: 550; }
+  .nav-item .ic { width: 16px; text-align:center; opacity:.85; }
+  .nav-item .count { margin-left:auto; font-size: 11px; color: var(--text-3); }
+  .nav-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--text-3); padding: 16px 11px 6px; font-weight: 600; }
+  .sidebar .spacer { flex:1; }
+  .model-chip { margin-top:8px; padding: 10px 11px; border:1px solid var(--border); border-radius: 12px; background: var(--surface); cursor:pointer; transition:.15s var(--ease); }
+  .model-chip:hover { border-color: var(--border-2); }
+  .model-chip .row { display:flex; align-items:center; gap:8px; }
+  .dot { width:7px; height:7px; border-radius:50%; background:#46d18b; box-shadow:0 0 8px #46d18b; }
+  .model-chip small { color: var(--text-3); font-size: 10.5px; }
+  .model-chip b { font-size: 12px; font-weight: 600; }
+
+  /* ---------- Stream ---------- */
+  .stream { background: var(--bg); border-right: 1px solid var(--border); overflow:hidden; display:flex; flex-direction:column; }
+  .stream-head { padding: 18px 18px 10px; display:flex; align-items:center; justify-content:space-between; }
+  .stream-head h2 { font-size: 16px; font-weight: 650; }
+  .filter { font-size: 11px; color: var(--text-2); background: var(--surface); border:1px solid var(--border); padding: 4px 9px; border-radius: 20px; }
+  .list { overflow-y:auto; padding: 4px 10px 10px; }
+  .mail { padding: 12px 13px; border-radius: 12px; cursor:pointer; transition:.14s var(--ease); border:1px solid transparent; }
+  .mail:hover { background: var(--surface); }
+  .mail.sel { background: var(--surface); border-color: var(--border-2); }
+  .mail .top { display:flex; align-items:center; gap:8px; margin-bottom:3px; }
+  .mail .from { font-size: 13px; font-weight: 600; }
+  .mail.unread .from::before { content:""; display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent); margin-right:7px; vertical-align:middle; }
+  .mail .time { margin-left:auto; font-size: 11px; color: var(--text-3); }
+  .mail .subj { font-size: 12.5px; color: var(--text); margin-bottom: 2px; }
+  .mail .prev { font-size: 12px; color: var(--text-3); line-height:1.35; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
+  .tag { font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; padding:2px 6px; border-radius:5px; }
+  .tag.ai { background: var(--accent-soft); color: var(--accent); }
+  .tag.urgent { background: rgba(255,99,99,.16); color:#ff7a7a; }
+  .tag.cal { background: rgba(70,209,139,.16); color:#46d18b; }
+
+  /* ---------- Stage ---------- */
+  .stage { overflow-y:auto; background: var(--bg); }
+  .stage-inner { max-width: 720px; margin: 0 auto; padding: 26px 34px 120px; }
+  .stage-bar { position:sticky; top:0; background: linear-gradient(var(--bg), var(--bg) 70%, transparent); padding: 14px 0 10px; display:flex; align-items:center; gap:8px; z-index:5; }
+  .iconbtn { width:32px; height:32px; border-radius:9px; border:1px solid var(--border); background:var(--surface); color:var(--text-2); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:.15s var(--ease); font-size:14px; }
+  .iconbtn:hover { color:var(--text); border-color:var(--border-2); }
+  .stage-bar .spacer{flex:1;}
+  h1.subject { font-size: 23px; font-weight: 680; letter-spacing:-0.025em; line-height:1.2; margin: 6px 0 14px; }
+
+  /* inline AI summary */
+  .ai-summary { border:1px solid var(--border); background: linear-gradient(180deg, var(--accent-soft), transparent); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 22px; }
+  .ai-summary .lbl { display:flex; align-items:center; gap:7px; font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); font-weight:650; margin-bottom:7px; }
+  .ai-summary p { font-size: 13.5px; color: var(--text); line-height:1.5; }
+  .spark { width:14px;height:14px;}
+  .chips { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  .chip { font-size:12px; padding:6px 11px; border-radius:20px; border:1px solid var(--border-2); background:var(--surface); cursor:pointer; display:flex; align-items:center; gap:6px; transition:.15s var(--ease); }
+  .chip:hover { border-color:var(--accent); color:var(--accent); }
+  .chip.solid { background: var(--accent); color:#fff; border-color:transparent; }
+
+  .msg { display:flex; gap:13px; margin-bottom:22px; }
+  .avatar { width:38px; height:38px; border-radius:50%; flex-shrink:0; background:linear-gradient(135deg,#7a8cff,#b58bff); display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#fff;}
+  .msg .body { flex:1; }
+  .msg .meta { display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
+  .msg .name { font-size:13.5px; font-weight:600; }
+  .msg .addr { font-size:11.5px; color:var(--text-3); }
+  .msg .when { margin-left:auto; font-size:11px; color:var(--text-3); }
+  .msg .text { font-size:14px; line-height:1.65; color: var(--text); }
+  .msg .text p { margin-bottom: 12px; }
+
+  /* composer with ghost text */
+  .composer { border:1px solid var(--border-2); border-radius: var(--radius); background: var(--surface); padding: 14px 16px; box-shadow: var(--shadow); }
+  .composer .chead { display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--text-3); margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+  .ghost { font-size:14px; line-height:1.6; }
+  .ghost .typed { color: var(--text); }
+  .ghost .gtext { color: var(--text-3); }
+  .composer .cfoot { display:flex; align-items:center; gap:8px; margin-top:14px; }
+  .send { background: var(--accent); color:#fff; border:none; padding:8px 16px; border-radius:9px; font-size:13px; font-weight:600; cursor:pointer; }
+  .ghost-pill { margin-left:auto; font-size:11px; color:var(--accent); display:flex; align-items:center; gap:6px; }
+  .kbd { font-size:10.5px; border:1px solid var(--border-2); border-radius:5px; padding:1px 5px; color:var(--text-2); background:var(--bg-2); }
+
+  /* ---------- Command palette ---------- */
+  .cmd-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.4); backdrop-filter: blur(6px); display:none; align-items:flex-start; justify-content:center; padding-top:14vh; z-index:50; }
+  .cmd-overlay.open { display:flex; animation: fade .18s var(--ease); }
+  @keyframes fade { from{opacity:0} to{opacity:1} }
+  .cmd { width: 580px; max-width:90vw; background: var(--glass); backdrop-filter: blur(28px) saturate(1.6); border:1px solid var(--border-2); border-radius: 16px; box-shadow: var(--shadow); overflow:hidden; animation: pop .22s var(--ease); }
+  @keyframes pop { from{transform:translateY(-12px) scale(.98); opacity:0} to{transform:none; opacity:1} }
+  .cmd input { width:100%; border:none; background:transparent; color:var(--text); font-size:16.5px; padding:18px 20px; outline:none; font-family:var(--font); }
+  .cmd input::placeholder{ color:var(--text-3); }
+  .cmd .sec { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-3); padding:10px 18px 4px; font-weight:600; border-top:1px solid var(--border); }
+  .cmd .opt { display:flex; align-items:center; gap:12px; padding:10px 18px; font-size:13.5px; cursor:pointer; }
+  .cmd .opt:hover, .cmd .opt.hi { background: var(--accent-soft); }
+  .cmd .opt .ic { width:18px; text-align:center; opacity:.8; }
+  .cmd .opt .hint { margin-left:auto; font-size:11px; color:var(--text-3); }
+
+  /* ---------- Top utility bar (theme/density) ---------- */
+  .util { position:fixed; bottom:18px; right:20px; display:flex; gap:8px; z-index:30; }
+  .util button { background: var(--glass); backdrop-filter: blur(20px); border:1px solid var(--border-2); color:var(--text-2); border-radius:10px; padding:8px 12px; font-size:12px; cursor:pointer; font-family:var(--font); transition:.15s var(--ease); }
+  .util button:hover{ color:var(--text); }
+  .hint-bar { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); font-size:11.5px; color:var(--text-3); background:var(--glass); backdrop-filter:blur(20px); border:1px solid var(--border); padding:7px 14px; border-radius:20px; z-index:20; }
+  .hint-bar .kbd{ margin:0 2px; }
+
+  /* model picker popover */
+  .pop { position:fixed; bottom:70px; left:14px; width:280px; background:var(--glass); backdrop-filter:blur(28px); border:1px solid var(--border-2); border-radius:14px; box-shadow:var(--shadow); padding:8px; display:none; z-index:40; }
+  .pop.open{ display:block; animation:pop .2s var(--ease);}
+  .pop h4{ font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-3); padding:8px 10px 4px;}
+  .pop .m { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:9px; font-size:13px; cursor:pointer;}
+  .pop .m:hover{ background:var(--accent-soft);}
+  .pop .m .badge{ margin-left:auto; font-size:9.5px; padding:2px 6px; border-radius:5px; background:var(--surface-2); color:var(--text-2);}
+  .pop .m.on .badge{ background:var(--accent); color:#fff;}
+  .pop .pf{ font-size:10.5px; color:var(--text-3); padding:8px 10px 4px; border-top:1px solid var(--border); margin-top:4px;}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo"></div>
+      <div><b>Aether Mail</b><div class="acct">itmanagement@pjtelesoft.de</div></div>
+    </div>
+    <div class="nav-item active"><span class="ic">⌂</span> Priority <span class="count">4</span></div>
+    <div class="nav-item"><span class="ic">✉</span> All Inbox <span class="count">28</span></div>
+    <div class="nav-item"><span class="ic">⏱</span> Snoozed <span class="count">3</span></div>
+    <div class="nav-item"><span class="ic">↩</span> Awaiting reply <span class="count">7</span></div>
+    <div class="nav-label">Bundles</div>
+    <div class="nav-item"><span class="ic">📰</span> Newsletters <span class="count">12</span></div>
+    <div class="nav-item"><span class="ic">🧾</span> Receipts</div>
+    <div class="nav-label">Workspace</div>
+    <div class="nav-item"><span class="ic">📅</span> Calendar</div>
+    <div class="nav-item"><span class="ic">✓</span> Tasks <span class="count">5</span></div>
+    <div class="spacer"></div>
+    <div class="model-chip" onclick="togglePop(event)">
+      <div class="row"><span class="dot"></span><b>Hybrid engine</b></div>
+      <small>Draft: Claude · Triage: Llama 3 (local)</small>
+    </div>
+  </aside>
+
+  <!-- STREAM -->
+  <section class="stream">
+    <div class="stream-head"><h2>Priority</h2><span class="filter">Auto-sorted by AI</span></div>
+    <div class="list">
+      <div class="mail unread sel" onclick="selectMail(this)">
+        <div class="top"><span class="from">Lena Hoffmann</span><span class="time">9:24</span></div>
+        <div class="top" style="margin:0 0 4px"><span class="tag urgent">Urgent</span><span class="tag ai">AI draft ready</span></div>
+        <div class="subj">Contract renewal — need decision by Friday</div>
+        <div class="prev">Hi Arjun, following up on the renewal terms we discussed. Legal needs the signed…</div>
+      </div>
+      <div class="mail unread" onclick="selectMail(this)">
+        <div class="top"><span class="from">Marco · DevOps</span><span class="time">8:51</span></div>
+        <div class="top" style="margin:0 0 4px"><span class="tag cal">Meeting</span></div>
+        <div class="subj">Can we sync on the deployment pipeline?</div>
+        <div class="prev">Are you free Thursday afternoon? Want to walk through the new release flow…</div>
+      </div>
+      <div class="mail" onclick="selectMail(this)">
+        <div class="top"><span class="from">Stripe</span><span class="time">7:30</span></div>
+        <div class="subj">Your payout of €4,210.00 is on the way</div>
+        <div class="prev">We initiated a transfer to your account ending 4421…</div>
+      </div>
+      <div class="mail" onclick="selectMail(this)">
+        <div class="top"><span class="from">Priya Nair</span><span class="time">Yest</span></div>
+        <div class="subj">Design review notes + Figma link</div>
+        <div class="prev">Thanks for the call! Here are the notes and the updated prototype…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STAGE -->
+  <section class="stage">
+    <div class="stage-inner">
+      <div class="stage-bar">
+        <div class="iconbtn" title="Focus mode (collapse Stream)" onclick="toggleFocus()">⤢</div>
+        <div class="iconbtn">↩</div>
+        <div class="iconbtn">⏱</div>
+        <div class="iconbtn">✓</div>
+        <div class="spacer"></div>
+        <div class="iconbtn">⋯</div>
+      </div>
+
+      <h1 class="subject">Contract renewal — need decision by Friday</h1>
+
+      <div class="ai-summary">
+        <div class="lbl">
+          <svg class="spark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.2 6.6L21 11l-6.8 2.4L12 20l-2.2-6.6L3 11l6.8-2.4z"/></svg>
+          AI Summary · inline, by your model
+        </div>
+        <p>Lena needs a signed renewal by <b>Friday</b>. Terms match last year except a <b>7% price increase</b>. She's asking whether to proceed or renegotiate. Legal has already approved the standard clause.</p>
+        <div class="chips">
+          <div class="chip solid">↩ Use AI draft reply</div>
+          <div class="chip">📅 Schedule call before Friday</div>
+          <div class="chip">✓ Create task: review terms</div>
+        </div>
+      </div>
+
+      <div class="msg">
+        <div class="avatar">LH</div>
+        <div class="body">
+          <div class="meta"><span class="name">Lena Hoffmann</span><span class="addr">lena@northwind.co</span><span class="when">Today, 9:24</span></div>
+          <div class="text">
+            <p>Hi Arjun,</p>
+            <p>Following up on the renewal terms we discussed last week. Legal needs the signed agreement back by <b>Friday</b> to keep the same start date. Terms are identical to last year, with a 7% adjustment on the platform tier.</p>
+            <p>Happy to hop on a quick call if it's easier. Let me know how you'd like to proceed.</p>
+            <p>Best,<br>Lena</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- COMPOSER with ghost text -->
+      <div class="composer">
+        <div class="chead">↩ Reply to Lena · <span style="color:var(--accent)">tone matched to your past replies</span></div>
+        <div class="ghost">
+          <span class="typed">Hi Lena, thanks for the heads-up. The terms look good on our end — </span><span class="gtext" id="ghost">I'm happy to proceed with the 7% adjustment. I'll get the signed agreement back to you before Friday. If anything comes up, let's grab 15 minutes tomorrow.</span>
+        </div>
+        <div class="cfoot">
+          <button class="send">Send</button>
+          <div class="iconbtn">⏱</div>
+          <div class="iconbtn">📎</div>
+          <div class="ghost-pill">Press <span class="kbd">Tab</span> to accept AI continuation</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- COMMAND PALETTE -->
+<div class="cmd-overlay" id="cmdOverlay" onclick="if(event.target===this)closeCmd()">
+  <div class="cmd">
+    <input id="cmdInput" placeholder="Type a command, search, or ask your inbox anything…" autocomplete="off">
+    <div class="sec">Ask AI</div>
+    <div class="opt hi"><span class="ic">✦</span> Ask: “What did Lena decide about the renewal?”<span class="hint">↵</span></div>
+    <div class="sec">Actions</div>
+    <div class="opt"><span class="ic">↩</span> Reply with AI draft<span class="hint">R</span></div>
+    <div class="opt"><span class="ic">📅</span> Schedule a meeting from this thread<span class="hint">M</span></div>
+    <div class="opt"><span class="ic">✓</span> Turn email into task<span class="hint">T</span></div>
+    <div class="opt"><span class="ic">⚙</span> Switch AI model / engine<span class="hint">⌘\</span></div>
+  </div>
+</div>
+
+<!-- MODEL PICKER POPOVER (plug-and-play AI) -->
+<div class="pop" id="pop">
+  <h4>Bring-your-own AI · per role</h4>
+  <div class="m on"><span>✦</span> Claude (Anthropic) <span class="badge">Drafts</span></div>
+  <div class="m"><span>◍</span> GPT-4o (OpenAI) <span class="badge">add key</span></div>
+  <div class="m on"><span>🖥</span> Llama 3 8B · local <span class="badge">Triage</span></div>
+  <div class="m"><span>🔌</span> Custom endpoint… <span class="badge">+ URL</span></div>
+  <div class="pf">Profile: <b>Hybrid (private)</b> · keys stored in OS keychain</div>
+</div>
+
+<div class="hint-bar">Press <span class="kbd">⌘</span><span class="kbd">K</span> for command bar · <span class="kbd">F</span> focus mode · this is a static concept</div>
+
+<div class="util">
+  <button onclick="toggleTheme()" id="themeBtn">☀ Light</button>
+  <button onclick="openCmd()">⌘K Command</button>
+</div>
+
+<script>
+  function toggleTheme(){
+    const h=document.documentElement, t=h.getAttribute('data-theme')==='dark'?'light':'dark';
+    h.setAttribute('data-theme',t);
+    document.getElementById('themeBtn').textContent = t==='dark'?'☀ Light':'🌙 Dark';
+  }
+  function openCmd(){ document.getElementById('cmdOverlay').classList.add('open'); setTimeout(()=>document.getElementById('cmdInput').focus(),50);}
+  function closeCmd(){ document.getElementById('cmdOverlay').classList.remove('open'); }
+  function toggleFocus(){ document.getElementById('app').classList.toggle('focus'); }
+  function selectMail(el){ document.querySelectorAll('.mail').forEach(m=>m.classList.remove('sel')); el.classList.add('sel'); }
+  function togglePop(e){ e.stopPropagation(); document.getElementById('pop').classList.toggle('open'); }
+  document.addEventListener('click',()=>document.getElementById('pop').classList.remove('open'));
+  document.getElementById('pop').addEventListener('click',e=>e.stopPropagation());
+  document.addEventListener('keydown', e=>{
+    if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){ e.preventDefault(); openCmd(); }
+    if(e.key==='Escape') closeCmd();
+    if(e.key.toLowerCase()==='f' && !document.getElementById('cmdOverlay').classList.contains('open') && document.activeElement.tagName!=='INPUT'){ toggleFocus(); }
+  });
+</script>
+</body>
+</html>
