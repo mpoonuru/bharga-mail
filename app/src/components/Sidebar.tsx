@@ -10,7 +10,7 @@ import logo from "@/assets/logo.png";
 const NAV: { id: View; icon: IconName; label: string }[] = [
   { id: "priority", icon: "priority", label: "Priority" },
   { id: "inbox", icon: "inbox", label: "All Inbox" },
-  { id: "flagged", icon: "priority", label: "Flagged" },
+  { id: "flagged", icon: "flag", label: "Flagged" },
   { id: "snoozed", icon: "snoozed", label: "Snoozed" },
   { id: "awaiting", icon: "awaiting", label: "Awaiting reply" },
 ];
@@ -28,7 +28,7 @@ const FOLDER_ICON: Record<string, IconName> = {
 };
 
 export function Sidebar({ rail = false }: { rail?: boolean }) {
-  const { view, setView, setCompose, setModelPicker, threads, tasks, ai, accounts, selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, sidebarCollapsed, toggleSidebar } = useApp();
+  const { view, setView, setCompose, setModelPicker, threads, tasks, ai, accounts, selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, toggleSidebar } = useApp();
   const [foldersBusy, setFoldersBusy] = useState(false);
   const focused = selectedAccountId ? accounts.find((a) => a.id === selectedAccountId) : null;
   const headerAcct = focused?.email ?? (accounts.length > 1 ? "All accounts" : accounts[0]?.email ?? "No account connected");
@@ -44,7 +44,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
         {!rail && badge ? <span className="count">{badge}</span> : null}
       </button>
     );
-    return rail ? <Tooltip label={n.label}>{btn}</Tooltip> : btn;
+    return rail ? <Tooltip label={n.label} block>{btn}</Tooltip> : btn;
   };
 
   return (
@@ -57,13 +57,20 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
             <div className="acct">{headerAcct}</div>
           </div>
         )}
-        <button className="rail-toggle" onClick={toggleSidebar} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
-          <Icon name={rail ? "caretRight" : "caretLeft"} size={14} weight="bold" />
-        </button>
+        {!rail && (
+          <button className="rail-toggle" onClick={toggleSidebar} title="Collapse sidebar" aria-label="Collapse sidebar">
+            <Icon name="caretLeft" size={14} weight="bold" />
+          </button>
+        )}
       </div>
+      {rail && (
+        <button className="rail-toggle rail-expand" onClick={toggleSidebar} title="Expand sidebar" aria-label="Expand sidebar">
+          <Icon name="caretRight" size={15} weight="bold" />
+        </button>
+      )}
 
       {rail ? (
-        <Tooltip label="Compose">
+        <Tooltip label="Compose" block>
           <motion.button className="compose-btn" onClick={() => setCompose(true)} whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}>
             <Icon name="compose" size={16} weight="bold" />
           </motion.button>
@@ -148,7 +155,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
             <span className="ic"><Icon name="settings" size={17} weight="duotone" /></span> {!rail && "Settings"}
           </button>
         );
-        return rail ? <Tooltip label="Settings">{settingsBtn}</Tooltip> : settingsBtn;
+        return rail ? <Tooltip label="Settings" block>{settingsBtn}</Tooltip> : settingsBtn;
       })()}
 
       <motion.button className="model-chip" onClick={() => setModelPicker(true)} whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} title="AI engine">

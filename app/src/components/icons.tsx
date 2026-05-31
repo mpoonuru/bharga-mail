@@ -42,6 +42,7 @@ import {
   SidebarSimpleIcon,
   CaretLeftIcon,
   CaretRightIcon,
+  CaretDownIcon,
   type Icon as PhosphorIcon,
   type IconWeight,
 } from "@phosphor-icons/react";
@@ -86,6 +87,7 @@ export const Icons = {
   sidebar: SidebarSimpleIcon,
   caretLeft: CaretLeftIcon,
   caretRight: CaretRightIcon,
+  caretDown: CaretDownIcon,
 } satisfies Record<string, PhosphorIcon>;
 
 export type IconName = keyof typeof Icons;

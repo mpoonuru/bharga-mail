@@ -24,6 +24,19 @@ type SortMode = "newest" | "sender" | "unread";
 const SORT_LABEL: Record<SortMode, string> = { newest: "Newest", sender: "Sender", unread: "Unread" };
 const NEXT: Record<SortMode, SortMode> = { newest: "sender", sender: "unread", unread: "newest" };
 
+// Date bucket for the grouped (accordion) view — Outlook-style sections.
+function dateBucket(t: Thread, now: dayjs.Dayjs): string {
+  const d = dayjs(t.lastTime);
+  if (!d.isValid()) return "Earlier";
+  if (d.isSame(now, "day")) return "Today";
+  if (d.isSame(now.subtract(1, "day"), "day")) return "Yesterday";
+  if (d.isAfter(now.startOf("week"))) return "This week";
+  if (d.isAfter(now.subtract(1, "week").startOf("week"))) return "Last week";
+  if (d.isSame(now, "month")) return "This month";
+  if (d.isSame(now, "year")) return d.format("MMMM");
+  return d.format("MMMM YYYY");
+}
+
 function labelTag(t: Thread) {
   if (t.labels.includes("urgent")) return <Tag variant="urgent">Urgent</Tag>;
   if (t.labels.includes("meeting")) return <Tag variant="cal">Meeting</Tag>;
@@ -61,6 +74,8 @@ export function Stream() {
   // never land mid-scroll on a half-clipped row.
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => { listRef.current?.scrollTo({ top: 0 }); }, [view, selectedFolder, selectedAccountId]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = (label: string) => setCollapsedGroups((s) => { const n = new Set(s); if (n.has(label)) n.delete(label); else n.add(label); return n; });
 
   const doSync = async () => {
     if (syncing) return;
@@ -100,6 +115,19 @@ export function Stream() {
     ? scoped.filter((t) => [t.subject, t.preview, t.participants.join(" ")].join(" ").toLowerCase().includes(query))
     : inView;
   const list = sortThreads(filtered, sortMode);
+  // Date-grouped accordion sections, but only when sorting by date (Newest) and
+  // not searching — grouping by date is meaningless under sender/unread sort.
+  const grouped = sortMode === "newest" && !query;
+  const now = dayjs();
+  const groups: { label: string; items: Thread[] }[] = [];
+  if (grouped) {
+    for (const t of list) {
+      const label = dateBucket(t, now);
+      const tail = groups[groups.length - 1];
+      if (tail && tail.label === label) tail.items.push(t);
+      else groups.push({ label, items: [t] });
+    }
+  }
 
   const sort = async () => {
     if (sorting) return;
@@ -158,20 +186,37 @@ export function Stream() {
             <div className="empty">Nothing here. Inbox zero. ✦</div>
           )
         )}
-        {list.map((t, i) => (
-          <MailRow
-            key={t.id}
-            t={t}
-            index={i}
-            selected={selectedThreadId === t.id}
-            onOpen={() => selectThread(t.id)}
-            onArchive={() => archiveThread(t.id)}
-            onSnooze={() => snoozeThread(t.id)}
-            mailbox={!selectedAccountId ? acctEmail[t.accountId] : undefined}
-            flagged={flaggedIds.includes(t.id)}
-            onContext={(x, y) => setCtx({ x: Math.max(8, Math.min(x, window.innerWidth - 224)), y: Math.max(8, Math.min(y, window.innerHeight - 580)), t })}
-          />
-        ))}
+        {(() => {
+          const renderRow = (t: Thread, i: number) => (
+            <MailRow
+              key={t.id}
+              t={t}
+              index={i}
+              selected={selectedThreadId === t.id}
+              onOpen={() => selectThread(t.id)}
+              onArchive={() => archiveThread(t.id)}
+              onSnooze={() => snoozeThread(t.id)}
+              mailbox={!selectedAccountId ? acctEmail[t.accountId] : undefined}
+              flagged={flaggedIds.includes(t.id)}
+              quiet={!!query}
+              onContext={(x, y) => setCtx({ x: Math.max(8, Math.min(x, window.innerWidth - 224)), y: Math.max(8, Math.min(y, window.innerHeight - 580)), t })}
+            />
+          );
+          if (!grouped) return list.map((t, i) => renderRow(t, i));
+          return groups.map((g) => {
+            const open = !collapsedGroups.has(g.label);
+            return (
+              <div key={g.label} className="date-group">
+                <button className="date-head" onClick={() => toggleGroup(g.label)}>
+                  <Icon name={open ? "caretDown" : "caretRight"} size={12} weight="bold" />
+                  <span>{g.label}</span>
+                  <span className="date-count">{g.items.length}</span>
+                </button>
+                {open && g.items.map((t, i) => renderRow(t, i))}
+              </div>
+            );
+          });
+        })()}
       </div>
 
       {ctx && (() => {
@@ -232,9 +277,9 @@ export function Stream() {
 }
 
 function MailRow({
-  t, index, selected, onOpen, onArchive, onSnooze, onContext, mailbox, flagged,
+  t, index, selected, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, quiet,
 }: {
-  t: Thread; index: number; selected: boolean; onOpen: () => void; onArchive: () => void; onSnooze: () => void; onContext: (x: number, y: number) => void; mailbox?: string; flagged?: boolean;
+  t: Thread; index: number; selected: boolean; onOpen: () => void; onArchive: () => void; onSnooze: () => void; onContext: (x: number, y: number) => void; mailbox?: string; flagged?: boolean; quiet?: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
   const last = t.messages[t.messages.length - 1];
@@ -264,9 +309,9 @@ function MailRow({
           if (info.offset.x <= -90) onArchive();
           else if (info.offset.x >= 90) onSnooze();
         }}
-        initial={{ opacity: 0, y: 8 }}
+        initial={quiet ? { opacity: 0 } : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: Math.min(index * 0.035, 0.3), ease: [0.2, 0.8, 0.2, 1] }}
+        transition={quiet ? { duration: 0.13, ease: "easeOut" } : { delay: Math.min(index * 0.035, 0.3), ease: [0.2, 0.8, 0.2, 1] }}
       >
         <div className="mail-av" style={{ background: avPaint.bg, color: avPaint.fg, boxShadow: `0 0 0 1.5px ${avPaint.ring}` }} aria-hidden>{initials(senderName)}</div>
         <div className="mail-main">

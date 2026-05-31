@@ -27,6 +27,8 @@ function EmailBody({ html }: { html: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [showImages, setShowImages] = useState(false);
   const highlights = useApp((s) => s.highlights);
+  const theme = useApp((s) => s.theme);
+  const dark = theme === "dark";
 
   const processed = useMemo(
     () => processEmail(html, { showImages, highlight: highlights }),
@@ -37,18 +39,24 @@ function EmailBody({ html }: { html: string }) {
   // internal CSP additionally forbids scripts/objects/frames inside the email and
   // only permits images, inline styles, and fonts.
   const csp = "default-src 'none'; img-src http: https: data: cid:; style-src 'unsafe-inline'; font-src data: https:; media-src https: data:;";
+  // Theme-aware base. In dark mode we render the page on a dark surface with light
+  // default text (plain-text + simple emails adapt cleanly); emails that ship their
+  // own background/colors keep them, exactly like Gmail/Apple Mail do.
+  const surface = dark ? "#15161b" : "#ffffff";
+  const ink = dark ? "#e7e8ec" : "#1b1c20";
+  const link = dark ? "#8ab0ff" : "#2563eb";
   const doc = `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <base target="_blank">
 <style>
-  html,body{margin:0;background:#fff;color:#1b1c20;
+  html,body{margin:0;background:${surface};color:${ink};color-scheme:${dark ? "dark" : "light"};
     font:14.5px/1.7 -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
     word-break:break-word;overflow-wrap:anywhere;}
   body{padding:20px 24px;}
   img{max-width:100%;height:auto;}
   table{max-width:100%;}
-  a{color:#2563eb;}
+  a{color:${link};}
   *{max-width:100%;box-sizing:border-box;}
   /* AI-inbox smart highlights */
   mark{border-radius:4px;padding:0 3px;color:inherit;background:none;animation:hlin .45s ease both;}
@@ -102,7 +110,7 @@ function EmailBody({ html }: { html: string }) {
       )}
       <iframe
         ref={ref}
-        key={`${showImages ? "i" : "n"}${highlights ? "h" : ""}`}
+        key={`${showImages ? "i" : "n"}${highlights ? "h" : ""}${dark ? "d" : "l"}`}
         className="email-frame"
         aria-label="Message body"
         sandbox="allow-same-origin allow-popups"
@@ -196,7 +204,7 @@ export function Stage() {
           )}
 
           {thread.messages.map((m, i) => (
-            <motion.div className={`msg${i > 0 ? " reply" : ""}`} key={m.id} style={i > 0 ? { marginLeft: 26 } : undefined} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + i * 0.06, ease: [0.2, 0.8, 0.2, 1] }}>
+            <motion.div className={`msg${i > 0 ? " reply" : ""}`} key={m.id} style={i > 0 ? { marginLeft: Math.min(i, 5) * 30 } : undefined} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + i * 0.06, ease: [0.2, 0.8, 0.2, 1] }}>
               {i > 0 && <span className="reply-arrow" title="Reply"><Icon name="reply" size={13} weight="duotone" /></span>}
               {(() => { const c = avatarColor(m.from.address || m.from.name); return (
               <div className="avatar" style={{ background: c.bg, color: c.fg, boxShadow: `0 0 0 1.5px ${c.ring}` }}>{initials(m.from.name || m.from.address)}</div>
