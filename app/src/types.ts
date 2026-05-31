@@ -3,6 +3,7 @@
 export type View =
   | "priority"
   | "inbox"
+  | "flagged"
   | "snoozed"
   | "awaiting"
   | "newsletters"
@@ -17,6 +18,13 @@ export interface Account {
   provider: "gmail" | "microsoft" | "jmap" | "imap";
   displayName: string;
   unread?: number;
+}
+
+export interface FolderInfo {
+  name: string;
+  role?: string; // inbox|sent|drafts|trash|junk|archive
+  unread: number;
+  total: number;
 }
 
 export interface MessageParty {
@@ -60,6 +68,7 @@ export interface Thread {
   unread: boolean;
   labels: Label[];
   view: View[]; // which folders/views this thread appears in
+  folder?: string; // the mailbox (IMAP folder) it belongs to
   aiSummary?: string;
   aiDraft?: string;
   messages: Message[];

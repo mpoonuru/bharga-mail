@@ -73,11 +73,18 @@ pub struct Thread {
     pub unread: bool,
     pub labels: Vec<String>,
     pub view: Vec<String>,
+    /// The mailbox/folder this thread lives in (IMAP folder name; "INBOX" default).
+    #[serde(default = "inbox_folder")]
+    pub folder: String,
     #[serde(rename = "aiSummary", skip_serializing_if = "Option::is_none")]
     pub ai_summary: Option<String>,
     #[serde(rename = "aiDraft", skip_serializing_if = "Option::is_none")]
     pub ai_draft: Option<String>,
     pub messages: Vec<Message>,
+}
+
+fn inbox_folder() -> String {
+    "INBOX".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +176,17 @@ pub struct AccountInfo {
     pub unread: u32,
 }
 
+/// A mailbox/folder for the sidebar folder list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderInfo {
+    pub name: String,
+    /// Special-use role if known: inbox|sent|drafts|trash|archive|junk.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    pub unread: u32,
+    pub total: u32,
+}
+
 /// A file attachment, base64-encoded for transport.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Attachment {
@@ -188,6 +206,10 @@ pub struct OutboxItem {
     #[serde(rename = "threadId", skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
     pub to: String,
+    #[serde(default)]
+    pub cc: String,
+    #[serde(default)]
+    pub bcc: String,
     pub subject: String,
     pub body: String,
     #[serde(default)]
@@ -244,6 +266,11 @@ impl Store {
             (3, migrate_v3_user_state),
             (4, migrate_v4_message_meta),
             (5, migrate_v5_secrets),
+            (6, migrate_v6_thread_folder),
+            (7, migrate_v7_settings),
+            (8, migrate_v8_reset_cache),
+            (9, migrate_v9_outbox_cc_bcc),
+            (10, migrate_v10_rebuild_previews),
         ];
         let mut version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         for (v, step) in steps {
@@ -294,24 +321,24 @@ impl Store {
         // One transaction: thread + messages + FTS row commit together or not at all.
         let tx = conn.transaction()?;
         tx.execute(
-            "INSERT INTO threads (id, account_id, subject, preview, participants, last_time, unread, labels, views, ai_summary, ai_draft, sort_ts, created_at, updated_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13)
+            "INSERT INTO threads (id, account_id, subject, preview, participants, last_time, unread, labels, views, ai_summary, ai_draft, sort_ts, created_at, updated_at, folder)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13,?14)
              ON CONFLICT(id) DO UPDATE SET
                 subject=excluded.subject, preview=excluded.preview, participants=excluded.participants,
                 last_time=excluded.last_time, labels=excluded.labels,
-                sort_ts=excluded.sort_ts, updated_at=excluded.updated_at",
+                sort_ts=excluded.sort_ts, updated_at=excluded.updated_at, folder=excluded.folder",
             params![
                 t.id, t.account_id, t.subject, t.preview,
                 json(&t.participants), t.last_time, t.unread as i64,
                 json(&t.labels), json(&t.view), t.ai_summary, t.ai_draft,
-                sort_ts, now,
+                sort_ts, now, t.folder,
             ],
         )?;
         for m in &t.messages {
             tx.execute(
                 "INSERT INTO messages (id, thread_id, from_name, from_addr, to_json, ts, body_html, attachments, meta, created_at)
                  VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
-                 ON CONFLICT(id) DO UPDATE SET body_html=excluded.body_html, attachments=excluded.attachments, meta=excluded.meta",
+                 ON CONFLICT(id) DO UPDATE SET thread_id=excluded.thread_id, body_html=excluded.body_html, attachments=excluded.attachments, meta=excluded.meta",
                 params![m.id, t.id, m.from.name, m.from.address, json(&m.to), m.when, m.body_html, json(&m.attachments), json(&m.meta), now],
             )?;
         }
@@ -324,6 +351,17 @@ impl Store {
         )?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// Remove thread rows that have no messages — artifacts left behind when the
+    /// id scheme changed and a message was moved to a new thread. Keeps the list
+    /// free of empty/duplicate rows.
+    pub fn prune_empty_threads(&self) {
+        let conn = self.conn.lock().unwrap();
+        let _ = conn.execute(
+            "DELETE FROM threads WHERE NOT EXISTS (SELECT 1 FROM messages m WHERE m.thread_id = threads.id)",
+            [],
+        );
     }
 
     /// User "delete": soft-delete tombstone so the thread vanishes from views and
@@ -427,6 +465,45 @@ impl Store {
         Ok(())
     }
 
+    /// Move a thread into a different mailbox locally (the source of truth for
+    /// the Stream's folder filter). The server move is best-effort on top of this.
+    pub fn set_thread_folder(&self, thread_id: &str, folder: &str) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().timestamp();
+        conn.execute(
+            "UPDATE threads SET folder=?1, updated_at=?2 WHERE id=?3",
+            params![folder, now, thread_id],
+        )?;
+        Ok(())
+    }
+
+    /// (source_folder, [RFC Message-ID headers]) needed to relocate a thread's
+    /// messages on an IMAP server. Source folder is taken from the thread row.
+    pub fn thread_move_refs(&self, thread_id: &str) -> Option<(String, Vec<String>)> {
+        let conn = self.conn.lock().unwrap();
+        let folder: String = conn
+            .query_row("SELECT folder FROM threads WHERE id=?1", params![thread_id], |r| r.get(0))
+            .ok()?;
+        let mut stmt = conn.prepare("SELECT meta FROM messages WHERE thread_id=?1").ok()?;
+        let ids = stmt
+            .query_map(params![thread_id], |r| r.get::<_, Option<String>>(0))
+            .ok()?
+            .filter_map(Result::ok)
+            .flatten()
+            .filter_map(|j| serde_json::from_str::<MessageMeta>(&j).ok())
+            .filter_map(|m| m.message_id)
+            .collect();
+        Some((folder, ids))
+    }
+
+    /// Total unread (non-deleted) threads across all accounts — a cheap signal the
+    /// background poller compares before/after a sync to detect newly-arrived mail.
+    pub fn unread_count(&self) -> i64 {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row("SELECT COUNT(*) FROM threads WHERE unread=1 AND deleted=0", [], |r| r.get(0))
+            .unwrap_or(0)
+    }
+
     /// Threads that still need an AI summary (for incremental triage).
     pub fn unsummarized_threads(&self) -> Vec<Thread> {
         self.threads().into_iter().filter(|t| t.ai_summary.is_none()).collect()
@@ -458,6 +535,29 @@ impl Store {
         Ok(())
     }
 
+    // ---- durable user settings (key/value) ----
+
+    pub fn set_setting(&self, key: &str, value: &str) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn settings(&self) -> std::collections::HashMap<String, String> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = match conn.prepare("SELECT key, value FROM settings") {
+            Ok(s) => s,
+            Err(_) => return std::collections::HashMap::new(),
+        };
+        stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map(|it| it.filter_map(Result::ok).collect())
+            .unwrap_or_default()
+    }
+
     // ---- secret fallback (DB-backed; survives unsigned-app rebuilds) ----
 
     pub fn set_secret(&self, key: &str, value: &str) -> rusqlite::Result<()> {
@@ -478,6 +578,75 @@ impl Store {
     pub fn delete_secret(&self, key: &str) {
         let conn = self.conn.lock().unwrap();
         let _ = conn.execute("DELETE FROM secrets WHERE key=?1", [key]);
+    }
+
+    // ---- folders (mailboxes) ----
+
+    pub fn upsert_folder(&self, account_id: &str, name: &str, role: Option<&str>) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO folders (id, account_id, name, role) VALUES (?1,?2,?3,?4)
+             ON CONFLICT(id) DO UPDATE SET role=excluded.role",
+            params![format!("{account_id}:{name}"), account_id, name, role],
+        )?;
+        Ok(())
+    }
+
+    /// IMAP per-folder incremental cursor: the (UIDVALIDITY, UIDNEXT) observed at
+    /// the last sync. `None` until the folder has been synced once, or if the
+    /// server didn't report them. Used to fetch only UIDs that arrived since.
+    pub fn imap_folder_cursor(&self, account_id: &str, folder: &str) -> Option<(u32, u32)> {
+        let conn = self.conn.lock().unwrap();
+        let row: Option<(Option<i64>, Option<i64>)> = conn
+            .query_row(
+                "SELECT uid_validity, uid_next FROM folders WHERE id=?1",
+                params![format!("{account_id}:{folder}")],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok();
+        match row {
+            Some((Some(v), Some(n))) => Some((v as u32, n as u32)),
+            _ => None,
+        }
+    }
+
+    /// Advance the IMAP incremental cursor for a folder (upserts the row so it
+    /// works even before the folder list has been enumerated).
+    pub fn set_imap_folder_cursor(&self, account_id: &str, folder: &str, uid_validity: u32, uid_next: u32) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO folders (id, account_id, name, uid_validity, uid_next) VALUES (?1,?2,?3,?4,?5)
+             ON CONFLICT(id) DO UPDATE SET uid_validity=excluded.uid_validity, uid_next=excluded.uid_next",
+            params![format!("{account_id}:{folder}"), account_id, folder, uid_validity as i64, uid_next as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Folders for an account with per-folder unread/total counts. Special-use
+    /// roles sort first (Inbox, Sent, …), then the rest alphabetically.
+    pub fn folders(&self, account_id: &str) -> Vec<FolderInfo> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = match conn.prepare(
+            "SELECT f.name, COALESCE(f.role,''),
+                    (SELECT COUNT(*) FROM threads t WHERE t.account_id=f.account_id AND t.folder=f.name AND t.unread=1 AND t.deleted=0),
+                    (SELECT COUNT(*) FROM threads t WHERE t.account_id=f.account_id AND t.folder=f.name AND t.deleted=0)
+             FROM folders f WHERE f.account_id=?1
+             ORDER BY (f.role IS NULL OR f.role=''), f.name",
+        ) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        stmt.query_map([account_id], |r| {
+            let role: String = r.get(1)?;
+            Ok(FolderInfo {
+                name: r.get(0)?,
+                role: if role.is_empty() { None } else { Some(role) },
+                unread: r.get::<_, i64>(2)? as u32,
+                total: r.get::<_, i64>(3)? as u32,
+            })
+        })
+        .map(|it| it.filter_map(Result::ok).collect())
+        .unwrap_or_default()
     }
 
     /// All connected accounts (for the sidebar account switcher), with an unread
@@ -510,7 +679,7 @@ impl Store {
     pub fn threads(&self) -> Vec<Thread> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = match conn.prepare(
-            "SELECT id, account_id, subject, preview, participants, last_time, unread, labels, views, ai_summary, ai_draft
+            "SELECT id, account_id, subject, preview, participants, last_time, unread, labels, views, ai_summary, ai_draft, folder
              FROM threads WHERE deleted=0 ORDER BY sort_ts DESC, rowid DESC",
         ) {
             Ok(s) => s,
@@ -531,6 +700,7 @@ impl Store {
                     view: unjson(r.get::<_, String>(8).unwrap_or_default()),
                     ai_summary: r.get(9)?,
                     ai_draft: r.get(10)?,
+                    folder: r.get::<_, String>(11).unwrap_or_else(|_| "INBOX".into()),
                     messages: Vec::new(),
                 })
             })
@@ -617,9 +787,9 @@ impl Store {
     pub fn enqueue_outbox(&self, item: &OutboxItem) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO outbox (id, account_id, thread_id, recipient, subject, body, attachments, scheduled_ts, status)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-            params![item.id, item.account_id, item.thread_id, item.to, item.subject, item.body, json(&item.attachments), item.scheduled_ts, item.status],
+            "INSERT INTO outbox (id, account_id, thread_id, recipient, subject, body, attachments, scheduled_ts, status, cc, bcc)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            params![item.id, item.account_id, item.thread_id, item.to, item.subject, item.body, json(&item.attachments), item.scheduled_ts, item.status, item.cc, item.bcc],
         )?;
         Ok(())
     }
@@ -635,7 +805,7 @@ impl Store {
     pub fn due_outbox(&self, now_ts: i64) -> Vec<OutboxItem> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = match conn.prepare(
-            "SELECT id, account_id, thread_id, recipient, subject, body, attachments, scheduled_ts, status
+            "SELECT id, account_id, thread_id, recipient, subject, body, attachments, scheduled_ts, status, cc, bcc
              FROM outbox WHERE status='queued' AND scheduled_ts <= ?1 AND next_retry_ts <= ?1",
         ) {
             Ok(s) => s,
@@ -649,7 +819,7 @@ impl Store {
     pub fn list_outbox(&self) -> Vec<OutboxItem> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = match conn.prepare(
-            "SELECT id, account_id, thread_id, recipient, subject, body, attachments, scheduled_ts, status FROM outbox ORDER BY scheduled_ts",
+            "SELECT id, account_id, thread_id, recipient, subject, body, attachments, scheduled_ts, status, cc, bcc FROM outbox ORDER BY scheduled_ts",
         ) {
             Ok(s) => s,
             Err(_) => return Vec::new(),
@@ -860,7 +1030,8 @@ fn migrate_v1_baseline(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
             sort_ts INTEGER NOT NULL DEFAULT 0,   -- canonical epoch secs for ordering
             created_at INTEGER NOT NULL DEFAULT 0,
             updated_at INTEGER NOT NULL DEFAULT 0,
-            deleted INTEGER NOT NULL DEFAULT 0    -- soft-delete tombstone (user trash)
+            deleted INTEGER NOT NULL DEFAULT 0,   -- soft-delete tombstone (user trash)
+            folder TEXT NOT NULL DEFAULT 'INBOX'  -- mailbox this thread belongs to
         );
         CREATE INDEX IF NOT EXISTS idx_threads_account ON threads(account_id);
         CREATE INDEX IF NOT EXISTS idx_threads_sort ON threads(sort_ts DESC);
@@ -902,6 +1073,8 @@ fn migrate_v1_baseline(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
             account_id TEXT NOT NULL,
             thread_id TEXT,
             recipient TEXT NOT NULL,
+            cc TEXT NOT NULL DEFAULT '',
+            bcc TEXT NOT NULL DEFAULT '',
             subject TEXT,
             body TEXT,
             attachments TEXT NOT NULL DEFAULT '[]',
@@ -966,6 +1139,8 @@ fn migrate_v1_baseline(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
         );
         -- Credential/token fallback (keychain is primary; see migrate_v5_secrets).
         CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        -- Durable UI/user settings (theme, density, font, locale, …).
+        CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         "#,
     )?;
     // Bridge ALTERs for DBs created between the first release and versioning
@@ -1029,6 +1204,69 @@ fn migrate_v5_secrets(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// v6 — per-thread folder (mailbox) so the UI can browse Sent/Drafts/Trash/etc.
+fn migrate_v6_thread_folder(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    let _ = tx.execute("ALTER TABLE threads ADD COLUMN folder TEXT NOT NULL DEFAULT 'INBOX'", []);
+    let _ = tx.execute("CREATE INDEX IF NOT EXISTS idx_threads_folder ON threads(account_id, folder)", []);
+    Ok(())
+}
+
+/// v7 — durable user settings (theme, density, font, locale, …) so UI prefs live
+/// in the app's data model rather than only the webview's localStorage.
+fn migrate_v7_settings(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    let _ = tx.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)", []);
+    Ok(())
+}
+
+/// v8 — one-time reset of the mail cache. Earlier builds keyed threads/messages by
+/// schemes that changed over time (message-id → conversation-root → account+folder),
+/// which left duplicate/empty rows and leftover demo data. Accounts, credentials,
+/// settings and folders are preserved; the next sync rebuilds the cache cleanly.
+fn migrate_v8_reset_cache(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    for stmt in [
+        "DELETE FROM messages",
+        "DELETE FROM threads",
+        "DELETE FROM embeddings",
+        "DELETE FROM search",
+    ] {
+        let _ = tx.execute(stmt, []);
+    }
+    Ok(())
+}
+
+/// v9: carry Cc/Bcc on outgoing mail so the composer can address multiple
+/// recipient classes (existing rows default to empty).
+fn migrate_v9_outbox_cc_bcc(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    // ALTER may fail if a fresh DB already created the columns; ignore that.
+    let _ = tx.execute("ALTER TABLE outbox ADD COLUMN cc TEXT NOT NULL DEFAULT ''", []);
+    let _ = tx.execute("ALTER TABLE outbox ADD COLUMN bcc TEXT NOT NULL DEFAULT ''", []);
+    Ok(())
+}
+
+/// v10: rebuild previews for already-synced threads with the new HTML5-parser
+/// extraction, so old rows that captured Outlook VML / raw entities are cleaned
+/// up in place (the incremental sync won't re-fetch them). Derived from each
+/// thread's most recent stored message body.
+fn migrate_v10_rebuild_previews(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    let rows: Vec<(String, String)> = {
+        let mut stmt = tx.prepare(
+            "SELECT t.id, COALESCE(
+                 (SELECT m.body_html FROM messages m WHERE m.thread_id = t.id ORDER BY m.rowid DESC LIMIT 1), '')
+             FROM threads t",
+        )?;
+        let mapped = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        mapped.filter_map(Result::ok).collect()
+    };
+    for (id, body) in rows {
+        if body.trim().is_empty() {
+            continue;
+        }
+        let preview: String = strip_html(&body).chars().take(140).collect();
+        tx.execute("UPDATE threads SET preview = ?1 WHERE id = ?2", params![preview, id])?;
+    }
+    Ok(())
+}
+
 /// Parse a provider date header (RFC 2822 from IMAP/Gmail, RFC 3339 from Graph)
 /// into epoch seconds for canonical ordering. Returns None if unparseable.
 fn parse_epoch(s: &str) -> Option<i64> {
@@ -1064,6 +1302,9 @@ fn row_to_outbox(r: &rusqlite::Row) -> rusqlite::Result<OutboxItem> {
         attachments: serde_json::from_str(&r.get::<_, String>(6).unwrap_or_else(|_| "[]".into())).unwrap_or_default(),
         scheduled_ts: r.get(7)?,
         status: r.get(8)?,
+        // cc/bcc are appended columns; SELECTs that omit them (e.g. dead_letters) default to empty.
+        cc: r.get(9).unwrap_or_default(),
+        bcc: r.get(10).unwrap_or_default(),
     })
 }
 
@@ -1077,18 +1318,18 @@ fn unjson(s: String) -> Vec<String> {
 fn unjson_parties(s: String) -> Vec<Party> {
     serde_json::from_str(&s).unwrap_or_default()
 }
+/// Convert an HTML body into a clean one-line text snippet for previews, search,
+/// and AI input. Delegates to a real HTML5 parser (html2text/html5ever) so
+/// malformed Outlook/Word markup, `<style>`/`<script>` blocks, MSO conditional
+/// comments and HTML entities are all handled correctly — then collapses
+/// whitespace. (For IMAP we prefer the message's text/plain part upstream; this
+/// is the fallback for HTML-only mail, and the path used for search/AI text.)
 pub fn strip_html(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut in_tag = false;
-    for c in s.chars() {
-        match c {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => out.push(c),
-            _ => {}
-        }
-    }
-    out.split_whitespace().collect::<Vec<_>>().join(" ")
+    use html2text::render::text_renderer::TrivialDecorator;
+    let text = html2text::config::with_decorator(TrivialDecorator::new())
+        .string_from_read(s.as_bytes(), 10_000)
+        .unwrap_or_default();
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
@@ -1098,6 +1339,20 @@ mod tests {
     #[test]
     fn strip_html_works() {
         assert_eq!(strip_html("<p>Hello <b>world</b></p>"), "Hello world");
+    }
+
+    #[test]
+    fn strip_html_drops_style_blocks_and_decodes_entities() {
+        // Outlook/Word VML inside <style> and MSO conditional comments must not
+        // leak into the preview, and entities must be decoded.
+        let html = "<html><head><style>v\\:* {behavior:url(#default#VML);} o\\:* {}</style></head>\
+                    <body><!--[if gte mso 9]><xml><o:shapedefaults/></xml><![endif]-->\
+                    <p>Dear Arjun, Hope you&#39;re well &amp; ready.</p></body></html>";
+        let out = strip_html(html);
+        assert!(!out.contains("VML"), "style block leaked: {out}");
+        assert!(!out.contains("behavior"), "css leaked: {out}");
+        assert!(out.contains("Dear Arjun"));
+        assert!(out.contains("you're well & ready"));
     }
 
     #[test]
@@ -1114,7 +1369,7 @@ mod tests {
         s.upsert_thread(&Thread {
             id: "t1".into(), account_id: "a1".into(), subject: "s".into(), preview: "p".into(),
             participants: vec![], last_time: "".into(), unread: false, labels: vec![],
-            view: vec![], ai_summary: None, ai_draft: None, messages: vec![],
+            view: vec![], folder: "INBOX".into(), ai_summary: None, ai_draft: None, messages: vec![],
         }).unwrap();
         s.upsert_embedding("t1", &[1.0, 2.0, 3.0]).unwrap();
         assert_eq!(s.embedding_count(), 1);
@@ -1129,7 +1384,7 @@ mod tests {
         s.upsert_thread(&Thread {
             id: "t1".into(), account_id: "a1".into(), subject: "Hi".into(), preview: "p".into(),
             participants: vec!["A".into()], last_time: "now".into(), unread: true,
-            labels: vec![], view: vec!["inbox".into()], ai_summary: None, ai_draft: None,
+            labels: vec![], view: vec!["inbox".into()], folder: "INBOX".into(), ai_summary: None, ai_draft: None,
             messages: vec![Message { id: "m1".into(), from: Party { name: "A".into(), address: "a@b.c".into() }, to: vec![], when: "t".into(), body_html: "<p>hey</p>".into(), attachments: vec![], meta: None }],
         }).unwrap();
         let got = s.threads();
@@ -1186,7 +1441,7 @@ mod tests {
         Thread {
             id: id.into(), account_id: "a1".into(), subject: format!("subj {id}"), preview: "p".into(),
             participants: vec!["A".into()], last_time: date.into(), unread: true, labels: vec![],
-            view: vec!["inbox".into()], ai_summary: None, ai_draft: None,
+            view: vec!["inbox".into()], folder: "INBOX".into(), ai_summary: None, ai_draft: None,
             messages: vec![Message {
                 id: format!("m-{id}"), from: Party { name: "A".into(), address: "a@b.c".into() },
                 to: vec![], when: date.into(), body_html: format!("<p>{body}</p>"), attachments: vec![], meta: None,
@@ -1235,7 +1490,8 @@ mod tests {
         let s = Store::in_memory().unwrap();
         let item = OutboxItem {
             id: "o1".into(), account_id: "a1".into(), thread_id: None,
-            to: "x@y.z".into(), subject: "hi".into(), body: "b".into(),
+            to: "x@y.z".into(), cc: String::new(), bcc: String::new(),
+            subject: "hi".into(), body: "b".into(),
             attachments: vec![], scheduled_ts: 0, status: "queued".into(),
         };
         s.enqueue_outbox(&item).unwrap();

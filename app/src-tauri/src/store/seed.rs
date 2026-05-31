@@ -26,6 +26,7 @@ pub fn seed(store: &Store) {
             unread: true,
             labels: vec!["urgent".into(), "ai-draft".into()],
             view: vec!["priority".into(), "inbox".into(), "awaiting".into()],
+            folder: "INBOX".into(),
             ai_summary: Some("Lena needs a signed renewal by Friday. Terms match last year except a 7% price increase.".into()),
             ai_draft: Some("I'm happy to proceed with the 7% adjustment. I'll get the signed agreement back before Friday.".into()),
             messages: vec![Message {
@@ -48,6 +49,7 @@ pub fn seed(store: &Store) {
             unread: true,
             labels: vec!["meeting".into()],
             view: vec!["priority".into(), "inbox".into()],
+            folder: "INBOX".into(),
             ai_summary: Some("Marco wants to meet Thursday afternoon to walk through the release pipeline. You're free 14:00–16:00.".into()),
             ai_draft: Some("Thursday at 14:00 works for me — I'll send an invite with a Meet link.".into()),
             messages: vec![Message {
@@ -70,6 +72,7 @@ pub fn seed(store: &Store) {
             unread: false,
             labels: vec!["receipt".into()],
             view: vec!["inbox".into(), "receipts".into()],
+            folder: "INBOX".into(),
             ai_summary: None,
             ai_draft: None,
             messages: vec![Message {

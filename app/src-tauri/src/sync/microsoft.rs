@@ -126,7 +126,7 @@ pub async fn incremental(store: &Store, account_id: &str) -> Result<(), SyncErro
 }
 
 /// Send via Graph `sendMail` (with optional file attachments).
-pub async fn send(account_id: &str, to: &str, subject: &str, body_html: &str, attachments: &[crate::store::Attachment]) -> Result<(), SyncError> {
+pub async fn send(account_id: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[crate::store::Attachment]) -> Result<(), SyncError> {
     let access = valid_token(account_id).await?;
     let atts: Vec<Value> = attachments
         .iter()
@@ -137,11 +137,21 @@ pub async fn send(account_id: &str, to: &str, subject: &str, body_html: &str, at
             "contentBytes": a.data_b64,
         }))
         .collect();
+    // Graph wants one recipient object per address; split comma-separated lists.
+    let recipients = |list: &str| -> Vec<Value> {
+        list.split(',')
+            .map(str::trim)
+            .filter(|a| !a.is_empty())
+            .map(|a| serde_json::json!({ "emailAddress": { "address": a } }))
+            .collect()
+    };
     let payload = serde_json::json!({
         "message": {
             "subject": subject,
             "body": { "contentType": "HTML", "content": body_html },
-            "toRecipients": [ { "emailAddress": { "address": to } } ],
+            "toRecipients": recipients(to),
+            "ccRecipients": recipients(cc),
+            "bccRecipients": recipients(bcc),
             "attachments": atts
         },
         "saveToSentItems": true
@@ -247,6 +257,7 @@ fn parse_message(account_id: &str, msg: &Value) -> Option<Thread> {
         unread,
         labels: vec![],
         view: vec!["inbox".into()],
+        folder: "INBOX".into(),
         ai_summary: None,
         ai_draft: None,
         messages: vec![Message {

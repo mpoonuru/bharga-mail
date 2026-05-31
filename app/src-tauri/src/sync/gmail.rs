@@ -95,10 +95,10 @@ pub async fn initial_sync(store: &Store, account_id: &str, access: &str) -> Resu
 }
 
 /// Send a message via the Gmail API (`messages.send` with a base64url raw MIME).
-pub async fn send(account_id: &str, to: &str, subject: &str, body_html: &str, attachments: &[crate::store::Attachment]) -> Result<(), SyncError> {
+pub async fn send(account_id: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[crate::store::Attachment]) -> Result<(), SyncError> {
     let access = valid_token(account_id).await?;
     let from = account_id.strip_prefix("gmail:").unwrap_or("me");
-    let raw = super::mime::build_raw(from, to, subject, body_html, attachments);
+    let raw = super::mime::build_raw(from, to, cc, bcc, subject, body_html, attachments);
     let resp = reqwest::Client::new()
         .post(format!("{GMAIL_API}/messages/send"))
         .bearer_auth(&access)
@@ -128,6 +128,12 @@ pub async fn set_read(account_id: &str, thread_id: &str, unread: bool) -> Result
 pub async fn archive(account_id: &str, thread_id: &str) -> Result<(), SyncError> {
     let access = valid_token(account_id).await?;
     modify_thread(&access, thread_id, serde_json::json!({ "removeLabelIds": ["INBOX"] })).await
+}
+
+/// Report a thread as spam (Gmail: add SPAM, remove INBOX).
+pub async fn spam(account_id: &str, thread_id: &str) -> Result<(), SyncError> {
+    let access = valid_token(account_id).await?;
+    modify_thread(&access, thread_id, serde_json::json!({ "addLabelIds": ["SPAM"], "removeLabelIds": ["INBOX"] })).await
 }
 
 /// Move a thread to Trash.
@@ -268,6 +274,7 @@ fn parse_message(account_id: &str, msg: &Value) -> Option<Thread> {
         unread,
         labels: vec![],
         view: vec!["inbox".into()],
+        folder: "INBOX".into(),
         ai_summary: None,
         ai_draft: None,
         messages: vec![Message {

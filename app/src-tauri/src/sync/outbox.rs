@@ -18,12 +18,12 @@ pub async fn flush(store: &Store) -> usize {
             continue;
         }
         let result = if item.account_id.starts_with("gmail:") {
-            gmail::send(&item.account_id, &item.to, &item.subject, &item.body, &item.attachments).await
+            gmail::send(&item.account_id, &item.to, &item.cc, &item.bcc, &item.subject, &item.body, &item.attachments).await
         } else if item.account_id.starts_with("ms:") {
-            microsoft::send(&item.account_id, &item.to, &item.subject, &item.body, &item.attachments).await
+            microsoft::send(&item.account_id, &item.to, &item.cc, &item.bcc, &item.subject, &item.body, &item.attachments).await
         } else {
             // Plain IMAP/SMTP accounts.
-            smtp::send_for(store, &item.account_id, &item.to, &item.subject, &item.body, &item.attachments).await
+            smtp::send_for(store, &item.account_id, &item.to, &item.cc, &item.bcc, &item.subject, &item.body, &item.attachments).await
         };
         match result {
             Ok(()) => {

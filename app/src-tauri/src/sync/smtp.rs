@@ -11,13 +11,20 @@ use super::{tokens, SyncError};
 use crate::store::{Attachment, ImapAccount, Security, Store};
 
 /// Send one message through the account's SMTP relay, honoring its security mode.
-pub fn send(account: &ImapAccount, to: &str, subject: &str, body_html: &str, attachments: &[Attachment]) -> Result<(), SyncError> {
+pub fn send(account: &ImapAccount, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[Attachment]) -> Result<(), SyncError> {
     let password = tokens::secret(&account.account_id, "smtp-pass").ok_or(SyncError::AuthRequired)?;
 
-    let builder = Message::builder()
+    let mut builder = Message::builder()
         .from(account.email.parse().map_err(|_| SyncError::Transient("bad from address".into()))?)
         .to(to.parse().map_err(|_| SyncError::Transient("bad to address".into()))?)
         .subject(subject);
+    // Cc/Bcc may each be a comma-separated list; add every valid mailbox.
+    for addr in cc.split(',').map(str::trim).filter(|a| !a.is_empty()) {
+        builder = builder.cc(addr.parse().map_err(|_| SyncError::Transient(format!("bad cc address: {addr}")))?);
+    }
+    for addr in bcc.split(',').map(str::trim).filter(|a| !a.is_empty()) {
+        builder = builder.bcc(addr.parse().map_err(|_| SyncError::Transient(format!("bad bcc address: {addr}")))?);
+    }
 
     let email = if attachments.is_empty() {
         builder
@@ -72,14 +79,14 @@ pub fn test_conn(host: &str, port: u16, security: Security) -> Result<(), SyncEr
 }
 
 /// Async wrapper: lettre's `SmtpTransport` is blocking, so run it off the async runtime.
-pub async fn send_async(account: ImapAccount, to: String, subject: String, body_html: String, attachments: Vec<Attachment>) -> Result<(), SyncError> {
-    tokio::task::spawn_blocking(move || send(&account, &to, &subject, &body_html, &attachments))
+pub async fn send_async(account: ImapAccount, to: String, cc: String, bcc: String, subject: String, body_html: String, attachments: Vec<Attachment>) -> Result<(), SyncError> {
+    tokio::task::spawn_blocking(move || send(&account, &to, &cc, &bcc, &subject, &body_html, &attachments))
         .await
         .map_err(|e| SyncError::Transient(e.to_string()))?
 }
 
 /// Resolve the account config from the store and send.
-pub async fn send_for(store: &Store, account_id: &str, to: &str, subject: &str, body_html: &str, attachments: &[Attachment]) -> Result<(), SyncError> {
+pub async fn send_for(store: &Store, account_id: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[Attachment]) -> Result<(), SyncError> {
     let account = store.imap_account(account_id).ok_or(SyncError::AuthRequired)?;
-    send_async(account, to.to_string(), subject.to_string(), body_html.to_string(), attachments.to_vec()).await
+    send_async(account, to.to_string(), cc.to_string(), bcc.to_string(), subject.to_string(), body_html.to_string(), attachments.to_vec()).await
 }

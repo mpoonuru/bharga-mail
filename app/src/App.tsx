@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useApp } from "@/store";
 import { Sidebar } from "@/components/Sidebar";
@@ -15,6 +15,7 @@ import { Icon } from "@/components/icons";
 import { useHotkeys } from "@/lib/useHotkeys";
 import { useViewport } from "@/lib/useViewport";
 import { applyFont, applyLocale } from "@/lib/prefs";
+import { toggleMaximizeWindow } from "@/lib/bridge";
 
 export function App() {
   const { view, load, focusMode, composeOpen, theme, density } = useApp();
@@ -27,7 +28,32 @@ export function App() {
     applyFont(useApp.getState().font);
     applyLocale(useApp.getState().locale);
     void load();
+    // Subscribe to background live-sync (auto-refresh inbox + notify on new mail).
+    void useApp.getState().startLiveSync();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Native desktop window behaviours:
+  //  • double-click the title-bar (drag region) → zoom/maximize (macOS standard)
+  //  • suppress the webview's default right-click menu (Reload/Inspect) everywhere
+  //    except editable fields, where the native copy/paste menu is wanted.
+  useEffect(() => {
+    const onDblClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || t.closest("button, input, textarea, a, [role='button'], .ProseMirror")) return;
+      if (t.closest("[data-tauri-drag-region]")) void toggleMaximizeWindow();
+    };
+    const onContextMenu = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest("input, textarea, [contenteditable='true'], .ProseMirror")) return;
+      e.preventDefault();
+    };
+    document.addEventListener("dblclick", onDblClick);
+    document.addEventListener("contextmenu", onContextMenu);
+    return () => {
+      document.removeEventListener("dblclick", onDblClick);
+      document.removeEventListener("contextmenu", onContextMenu);
+    };
   }, []);
 
   return (
@@ -45,15 +71,45 @@ function isFull(view: string) {
   return view === "calendar" || view === "tasks" || view === "settings";
 }
 
+// A thin draggable column divider. Reports the new width (clamped) as you drag.
+function Splitter({ left, value, min, max, onChange, onCommit }: {
+  left: number; value: number; min: number; max: number;
+  onChange: (v: number) => void; onCommit: (v: number) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const onPointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startVal = value;
+    const clamp = (v: number) => Math.max(min, Math.min(max, v));
+    setDragging(true);
+    const move = (ev: PointerEvent) => onChange(clamp(startVal + (ev.clientX - startX)));
+    const up = (ev: PointerEvent) => {
+      onCommit(clamp(startVal + (ev.clientX - startX)));
+      setDragging(false);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  return <div className={`splitter${dragging ? " dragging" : ""}`} style={{ left }} onPointerDown={onPointerDown} role="separator" aria-orientation="vertical" />;
+}
+
 // ---- Wide (desktop) & Medium (rail) : grid layout ----
 function WideLayout({ rail, focusMode, composeOpen, view }: { rail: boolean; focusMode: boolean; composeOpen: boolean; view: string }) {
-  const sidebarW = rail ? 64 : 234;
-  const streamW = focusMode ? 0 : rail ? 320 : 360;
+  const { panelSidebarW, panelStreamW, setPanelWidths, sidebarCollapsed } = useApp();
+  const [resizing, setResizing] = useState(false);
+  // Effective rail = viewport-driven medium rail OR the user's manual collapse.
+  const railEffective = rail || sidebarCollapsed;
+  const sidebarW = railEffective ? 64 : panelSidebarW;
+  const streamW = focusMode ? 0 : rail ? 320 : panelStreamW;
   const cols = isFull(view) ? `${sidebarW}px 1fr` : `${sidebarW}px ${streamW}px 1fr`;
+  const showStreamSplitter = !rail && !focusMode && !isFull(view);
 
   return (
-    <div className="app" style={{ gridTemplateColumns: cols }}>
-      <Sidebar rail={rail} />
+    <div className="app" style={{ gridTemplateColumns: cols, position: "relative", transition: resizing ? "none" : undefined }}>
+      <Sidebar rail={railEffective} />
       {isFull(view) ? (
         <FullPage />
       ) : (
@@ -61,6 +117,16 @@ function WideLayout({ rail, focusMode, composeOpen, view }: { rail: boolean; foc
           <Stream />
           {composeOpen ? <Compose /> : <Stage />}
         </>
+      )}
+      {!railEffective && (
+        <Splitter left={sidebarW} value={sidebarW} min={180} max={380}
+          onChange={(v) => { setResizing(true); setPanelWidths(v, panelStreamW); }}
+          onCommit={(v) => { setPanelWidths(v, panelStreamW, true); setResizing(false); }} />
+      )}
+      {showStreamSplitter && (
+        <Splitter left={sidebarW + streamW} value={streamW} min={280} max={640}
+          onChange={(v) => { setResizing(true); setPanelWidths(panelSidebarW, v); }}
+          onCommit={(v) => { setPanelWidths(panelSidebarW, v, true); setResizing(false); }} />
       )}
     </div>
   );

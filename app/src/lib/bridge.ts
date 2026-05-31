@@ -2,7 +2,7 @@
 // When running in the browser (vite dev without Tauri), we fall back to mock data
 // so the whole UI is explorable. In the Tauri shell, these call real `#[tauri::command]`s.
 
-import type { Thread, Task, CalEvent, AiProfile, Account } from "@/types";
+import type { Thread, Task, CalEvent, AiProfile, Account, FolderInfo } from "@/types";
 import * as mock from "@/data/mock";
 
 export interface ImapAccountInput {
@@ -22,10 +22,35 @@ export interface ImapAccountInput {
 
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
+/** Toggle the OS window between maximized/restored (macOS title-bar zoom). */
+export async function toggleMaximizeWindow(): Promise<void> {
+  if (!inTauri) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().toggleMaximize();
+  } catch {
+    /* ignore */
+  }
+}
+
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!inTauri) throw new Error("not-in-tauri");
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<T>(cmd, args);
+}
+
+/** Subscribe to background live-sync events from the core. Returns an unsubscribe
+ *  function. No-ops outside the desktop app (browser preview). */
+export async function listenMail(handlers: { onSync?: () => void; onNew?: (count: number) => void }): Promise<() => void> {
+  if (!inTauri) return () => {};
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    const offSync = await listen("mail:sync", () => handlers.onSync?.());
+    const offNew = await listen<{ count: number }>("mail:new", (e) => handlers.onNew?.(e.payload?.count ?? 1));
+    return () => { offSync(); offNew(); };
+  } catch {
+    return () => {};
+  }
 }
 
 export const api = {
@@ -34,6 +59,24 @@ export const api = {
       return await invoke<Thread[]>("list_threads");
     } catch {
       return mock.threads;
+    }
+  },
+
+  /** Durable user settings (theme, density, font, locale, …) from the core. */
+  async getSettings(): Promise<Record<string, string>> {
+    try {
+      return await invoke<Record<string, string>>("get_settings");
+    } catch {
+      return {};
+    }
+  },
+
+  /** Persist one user setting to the core. */
+  async setSetting(key: string, value: string): Promise<void> {
+    try {
+      await invoke<void>("set_setting", { key, value });
+    } catch {
+      /* browser preview: localStorage-only */
     }
   },
 
@@ -123,10 +166,14 @@ export const api = {
     accountId: string;
     threadId?: string;
     to: string;
+    cc?: string;
+    bcc?: string;
     subject: string;
     body: string;
     attachments?: { name: string; mime: string; dataB64: string }[];
     delaySeconds: number;
+    /** Absolute epoch-seconds to send at (scheduled send). Omit for immediate. */
+    sendAt?: number;
   }): Promise<string> {
     try {
       return await invoke<string>("queue_send", { ...args });
@@ -218,6 +265,30 @@ export const api = {
     }
   },
 
+  /** Cached folders (with counts) for an account's sidebar list. */
+  async folders(accountId: string): Promise<FolderInfo[]> {
+    try {
+      return await invoke<FolderInfo[]>("folders", { accountId });
+    } catch {
+      return [];
+    }
+  },
+
+  /** Enumerate folders from the server (IMAP LIST), persist + return their names. */
+  async listFolders(accountId: string): Promise<string[]> {
+    try {
+      return await invoke<string[]>("list_folders", { accountId });
+    } catch {
+      return ["INBOX"];
+    }
+  },
+
+  /** Sync one folder; returns messages stored. Throws on real failure. */
+  async syncFolder(accountId: string, folder: string, group = true): Promise<number> {
+    if (!inTauri) return 0;
+    return invoke<number>("sync_folder", { accountId, folder, group });
+  },
+
   /** Pull an account's inbox now (Gmail/Graph/IMAP per account id prefix).
    *  `group` controls IMAP conversation grouping (defaults on). Returns the
    *  number of messages stored. Throws (with the reason) on a real failure so
@@ -259,6 +330,25 @@ export const api = {
   async deleteThread(threadId: string, accountId: string): Promise<void> {
     try {
       await invoke<void>("delete_thread", { threadId, accountId });
+    } catch {
+      /* preview: state-only */
+    }
+  },
+
+  /** Move a thread to another mailbox (local-first; IMAP server move best-effort). */
+  async moveThread(threadId: string, accountId: string, toFolder: string): Promise<void> {
+    try {
+      await invoke<void>("move_thread", { threadId, accountId, toFolder });
+    } catch (e) {
+      // The local move already applied in the core; just log the server-side reason.
+      console.warn("move_thread:", e);
+    }
+  },
+
+  /** Report a thread as spam/junk (local tombstone + best-effort provider move). */
+  async markSpam(threadId: string, accountId: string): Promise<void> {
+    try {
+      await invoke<void>("mark_spam", { threadId, accountId });
     } catch {
       /* preview: state-only */
     }

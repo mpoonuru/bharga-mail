@@ -10,15 +10,116 @@ import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
 import { RichText, type RichTextHandle } from "@/components/ui/RichText";
 import { Attachments, type Attach } from "@/components/ui/Attachments";
+import { SendLater } from "@/components/ui/SendLater";
+import { RecipientChips } from "@/components/ui/RecipientChips";
 import { Modal } from "@/components/ui/Modal";
 import { fullTime } from "@/lib/date";
-import { accountGradient } from "@/lib/colors";
+import { avatarColor } from "@/lib/colors";
+import { initials, senderLabel, showAddressLine, folderLabel } from "@/lib/avatar";
+import { processEmail } from "@/lib/emailHtml";
+
+/**
+ * Render an email body with the standard mail-client pipeline:
+ * sanitize (DOMPurify) → block remote images by default → render in a sandboxed
+ * iframe (no scripts) with an internal CSP. Auto-sizes to its content.
+ */
+function EmailBody({ html }: { html: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [showImages, setShowImages] = useState(false);
+  const highlights = useApp((s) => s.highlights);
+
+  const processed = useMemo(
+    () => processEmail(html, { showImages, highlight: highlights }),
+    [html, showImages, highlights],
+  );
+  const body = processed.html;
+  // Defense in depth: the sandbox already blocks scripts (no allow-scripts); this
+  // internal CSP additionally forbids scripts/objects/frames inside the email and
+  // only permits images, inline styles, and fonts.
+  const csp = "default-src 'none'; img-src http: https: data: cid:; style-src 'unsafe-inline'; font-src data: https:; media-src https: data:;";
+  const doc = `<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${csp}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<base target="_blank">
+<style>
+  html,body{margin:0;background:#fff;color:#1b1c20;
+    font:14.5px/1.7 -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
+    word-break:break-word;overflow-wrap:anywhere;}
+  body{padding:20px 24px;}
+  img{max-width:100%;height:auto;}
+  table{max-width:100%;}
+  a{color:#2563eb;}
+  *{max-width:100%;box-sizing:border-box;}
+  /* AI-inbox smart highlights */
+  mark{border-radius:4px;padding:0 3px;color:inherit;background:none;animation:hlin .45s ease both;}
+  mark[data-kind=date]{background:linear-gradient(120deg,rgba(37,99,235,.16),rgba(37,99,235,.06));box-shadow:inset 0 -2px rgba(37,99,235,.22);}
+  mark[data-kind=percent]{background:linear-gradient(120deg,rgba(139,92,246,.18),rgba(139,92,246,.06));box-shadow:inset 0 -2px rgba(139,92,246,.22);}
+  mark[data-kind=money]{background:linear-gradient(120deg,rgba(16,185,129,.18),rgba(16,185,129,.06));box-shadow:inset 0 -2px rgba(16,185,129,.22);}
+  mark[data-kind=urgent]{background:linear-gradient(120deg,rgba(245,158,11,.22),rgba(245,158,11,.08));box-shadow:inset 0 -2px rgba(245,158,11,.3);}
+  mark[data-kind=negative]{background:linear-gradient(120deg,rgba(239,68,68,.18),rgba(239,68,68,.06));box-shadow:inset 0 -2px rgba(239,68,68,.25);}
+  mark[data-kind=positive]{background:linear-gradient(120deg,rgba(16,185,129,.18),rgba(16,185,129,.06));box-shadow:inset 0 -2px rgba(16,185,129,.25);}
+  @keyframes hlin{from{opacity:.35;}to{opacity:1;}}
+</style></head><body>${body}</body></html>`;
+
+  const resize = () => {
+    const f = ref.current;
+    if (!f) return;
+    try {
+      const d = f.contentDocument;
+      if (!d) return;
+      const h = Math.max(
+        d.body?.scrollHeight ?? 0,
+        d.body?.offsetHeight ?? 0,
+        d.documentElement?.scrollHeight ?? 0,
+        d.documentElement?.offsetHeight ?? 0,
+      );
+      if (h > 0) f.style.height = `${Math.min(h + 16, 8000)}px`;
+    } catch {
+      /* cross-origin (shouldn't happen for srcDoc) */
+    }
+  };
+
+  const onLoad = () => {
+    resize();
+    // Re-measure as fonts/images/late layout settle so the last lines aren't clipped.
+    [60, 200, 500, 1200].forEach((ms) => setTimeout(resize, ms));
+    try {
+      ref.current?.contentDocument?.querySelectorAll("img").forEach((img) => {
+        if (!(img as HTMLImageElement).complete) img.addEventListener("load", resize, { once: true });
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <div className="email-body">
+      {processed.blocked > 0 && !showImages && (
+        <button className="img-banner" onClick={() => setShowImages(true)}>
+          <Icon name="attach" size={13} weight="duotone" />
+          {processed.blocked} remote image{processed.blocked > 1 ? "s" : ""} blocked for your privacy — Load images
+        </button>
+      )}
+      <iframe
+        ref={ref}
+        key={`${showImages ? "i" : "n"}${highlights ? "h" : ""}`}
+        className="email-frame"
+        aria-label="Message body"
+        sandbox="allow-same-origin allow-popups"
+        srcDoc={doc}
+        onLoad={onLoad}
+      />
+    </div>
+  );
+}
 
 type Mode = "reply" | "replyAll" | "forward";
 
 export function Stage() {
-  const { threads, selectedThreadId, toggleFocus, createTask, snoozeThread, archiveThread, toggleRead, deleteThread, setView } = useApp();
+  const { threads, accounts, selectedThreadId, toggleFocus, createTask, snoozeThread, archiveThread, toggleRead, deleteThread, setView } = useApp();
   const thread = useMemo(() => threads.find((t) => t.id === selectedThreadId) ?? null, [threads, selectedThreadId]);
+  // The mailbox this conversation lives in (account email), for the header chip.
+  const mailboxLabel = accounts.find((a) => a.id === thread?.accountId)?.email ?? "";
   const [moreOpen, setMoreOpen] = useState(false);
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
   const [dl, setDl] = useState<{ name: string; state: "busy" | "error" } | null>(null);
@@ -95,17 +196,23 @@ export function Stage() {
           )}
 
           {thread.messages.map((m, i) => (
-            <motion.div className={`msg${i > 0 ? " reply" : ""}`} key={m.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + i * 0.06, ease: [0.2, 0.8, 0.2, 1] }}>
+            <motion.div className={`msg${i > 0 ? " reply" : ""}`} key={m.id} style={i > 0 ? { marginLeft: 26 } : undefined} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + i * 0.06, ease: [0.2, 0.8, 0.2, 1] }}>
               {i > 0 && <span className="reply-arrow" title="Reply"><Icon name="reply" size={13} weight="duotone" /></span>}
-              <div className="avatar" style={{ background: accountGradient(thread.accountId) }}>{initials(m.from.name)}</div>
+              {(() => { const c = avatarColor(m.from.address || m.from.name); return (
+              <div className="avatar" style={{ background: c.bg, color: c.fg, boxShadow: `0 0 0 1.5px ${c.ring}` }}>{initials(m.from.name || m.from.address)}</div>
+              ); })()}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="meta">
-                  <span className="name">{m.from.name}</span>
-                  <span className="addr">{m.from.address}</span>
+                  <span className="name">{senderLabel(m.from.name, m.from.address)}</span>
+                  {showAddressLine(m.from.name, m.from.address) && <span className="addr">{m.from.address}</span>}
                   <span className="when">{fullTime(m.when)}</span>
                   <button className="details-toggle" title="Show details" onClick={() => setDetailsFor(detailsFor === m.id ? null : m.id)}>
                     <Icon name={detailsFor === m.id ? "close" : "more"} size={12} />
                   </button>
+                </div>
+                <div className="meta-sub">
+                  {m.to.length > 0 && <span className="to-line">To: {m.to.map((p) => p.name || p.address).join(", ")}</span>}
+                  {i === 0 && <span className="mail-chip"><Icon name="folder" size={11} weight="duotone" /> {folderLabel(thread.folder)}{accounts.length > 1 && mailboxLabel ? ` · ${mailboxLabel}` : ""}</span>}
                 </div>
                 {detailsFor === m.id && (
                   <div className="msg-details">
@@ -119,7 +226,7 @@ export function Stage() {
                     {!m.meta && <div className="msg-details-note">Full headers are captured for IMAP accounts on the next sync.</div>}
                   </div>
                 )}
-                <div className="text" dangerouslySetInnerHTML={{ __html: m.bodyHtml }} />
+                <EmailBody html={m.bodyHtml} />
                 {m.attachments && m.attachments.length > 0 && (
                   <div className="attach-row" style={{ marginTop: 10 }}>
                     {m.attachments.map((a) => {
@@ -177,9 +284,12 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
   const [mode, setMode] = useState<Mode | null>(null);
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
+  const [showCc, setShowCc] = useState(false);
   const [files, setFiles] = useState<Attach[]>([]);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
+  const [sentLabel, setSentLabel] = useState("Sent");
 
   const last = thread.messages[thread.messages.length - 1];
   const self = account.email.toLowerCase();
@@ -189,12 +299,18 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
     setSent(false);
     const from = last?.from.address ?? "";
     const recips = (last?.to ?? []).map((p) => p.address);
-    if (m === "reply") { setTo(from); setCc(""); }
+    const origCc = (last?.meta?.cc ?? []).map((p) => p.address);
+    setBcc("");
+    if (m === "reply") { setTo(from); setCc(""); setShowCc(false); }
     else if (m === "replyAll") {
-      const all = [from, ...recips].filter((a) => a && a.toLowerCase() !== self);
-      setTo(Array.from(new Set(all)).join(", "));
-      setCc("");
-    } else { setTo(""); setCc(""); }
+      // Reply-all: original sender + other To recipients on the To line,
+      // original Cc carried into Cc — all minus yourself, de-duped.
+      const toLine = [from, ...recips].filter((a) => a && a.toLowerCase() !== self);
+      const ccLine = origCc.filter((a) => a && a.toLowerCase() !== self && !toLine.some((t) => t.toLowerCase() === a.toLowerCase()));
+      setTo(Array.from(new Set(toLine)).join(", "));
+      setCc(Array.from(new Set(ccLine)).join(", "));
+      setShowCc(ccLine.length > 0);
+    } else { setTo(""); setCc(""); setShowCc(false); }
     setTimeout(() => {
       if (m === "forward") {
         editorRef.current?.setHtml(`<p></p><p>---------- Forwarded message ----------</p><blockquote>${last?.bodyHtml ?? ""}</blockquote>`);
@@ -221,6 +337,17 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiReplyFor, thread.id]);
 
+  // Open the composer in a specific mode when requested from the context menu.
+  const composeIntent = useApp((s) => s.composeIntent);
+  const clearComposeIntent = useApp((s) => s.clearComposeIntent);
+  useEffect(() => {
+    if (composeIntent && composeIntent.id === thread.id) {
+      open(composeIntent.mode);
+      clearComposeIntent();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeIntent, thread.id]);
+
   const subject = mode === "forward"
     ? (thread.subject.startsWith("Fwd:") ? thread.subject : `Fwd: ${thread.subject}`)
     : (thread.subject.startsWith("Re:") ? thread.subject : `Re: ${thread.subject}`);
@@ -232,16 +359,17 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
     setBusy(false);
   }
 
-  async function send() {
+  async function send(atTs?: number) {
     const html = editorRef.current?.getHtml() ?? "";
-    await queueSend({ to: cc ? `${to}, ${cc}` : to, subject, body: html, threadId: thread.id, attachments: files.map(({ name, mime, dataB64 }) => ({ name, mime, dataB64 })) });
+    await queueSend({ to, cc, bcc, subject, body: html, threadId: thread.id, sendAt: atTs, attachments: files.map(({ name, mime, dataB64 }) => ({ name, mime, dataB64 })) });
+    setSentLabel(atTs ? "Scheduled" : "Sent");
     setSent(true);
     setMode(null);
     setTimeout(() => setSent(false), 2200);
   }
 
   if (sent) {
-    return <motion.div className="card sent-card" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}><Icon name="send" size={14} weight="fill" /> Sent</motion.div>;
+    return <motion.div className="card sent-card" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}><Icon name={sentLabel === "Scheduled" ? "schedule" : "send"} size={14} weight="fill" /> {sentLabel}</motion.div>;
   }
 
   if (!mode) {
@@ -263,12 +391,20 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
         <span style={{ marginLeft: "auto" }} />
         <IconButton icon="close" title="Discard" onClick={() => setMode(null)} />
       </div>
-      <input className="recip" placeholder="To" value={to} onChange={(e) => setTo(e.target.value)} />
-      <input className="recip" placeholder="Cc (optional)" value={cc} onChange={(e) => setCc(e.target.value)} />
+      <div className="recip-row">
+        <span className="recip-lbl">To</span>
+        <RecipientChips value={to} onChange={setTo} placeholder="Add people…" />
+        {!showCc && (
+          <button type="button" className="recip-toggle" onClick={() => setShowCc(true)} title="Add Cc / Bcc">Cc / Bcc</button>
+        )}
+      </div>
+      {showCc && <div className="recip-row"><span className="recip-lbl">Cc</span><RecipientChips value={cc} onChange={setCc} placeholder="Add Cc…" /></div>}
+      {showCc && <div className="recip-row"><span className="recip-lbl">Bcc</span><RecipientChips value={bcc} onChange={setBcc} placeholder="Add Bcc…" /></div>}
       <div className="recip-subject">{subject}</div>
       <RichText ref={editorRef} placeholder="Write your message…" minHeight={120} />
       <div className="cfoot">
-        <Button onClick={send} icon="send">Send</Button>
+        <Button onClick={() => send()} icon="send">Send</Button>
+        <SendLater onSchedule={(ts) => send(ts)} />
         <Attachments files={files} onAdd={(f) => setFiles((p) => [...p, ...f])} onRemove={(n) => setFiles((p) => p.filter((x) => x.name !== n))} />
         <IconButton icon="ai" weight="duotone" title="Draft / rewrite with AI" onClick={regen} />
         {busy && <span className="ghost-pill">Drafting…</span>}
@@ -277,9 +413,6 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
   );
 });
 
-function initials(name: string) {
-  return name.split(/\s+/).slice(0, 2).map((s) => s[0]).join("").toUpperCase();
-}
 function humanSize(bytes: number) {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} B`;

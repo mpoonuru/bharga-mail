@@ -29,6 +29,11 @@ fn get_ai_profile(state: State<'_, AppState>) -> AiProfile {
 
 #[tauri::command]
 fn set_ai_profile(profile: AiProfile, state: State<'_, AppState>) -> Result<(), String> {
+    // Persist to the durable settings store so the AI engine config survives
+    // restarts (UI prefs and AI config both live in the DB, not just in memory).
+    if let Ok(json) = serde_json::to_string(&profile) {
+        let _ = state.store.set_setting("ai_profile", &json);
+    }
     *state.ai.lock().unwrap() = profile;
     Ok(())
 }
@@ -158,6 +163,17 @@ fn list_accounts(state: State<'_, AppState>) -> Vec<store::AccountInfo> {
     state.store.accounts()
 }
 
+/// Durable user settings (theme, density, font, locale, …).
+#[tauri::command]
+fn get_settings(state: State<'_, AppState>) -> std::collections::HashMap<String, String> {
+    state.store.settings()
+}
+
+#[tauri::command]
+fn set_setting(key: String, value: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.store.set_setting(&key, &value).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn list_tasks(state: State<'_, AppState>) -> Vec<Task> {
     state.store.tasks()
@@ -191,22 +207,34 @@ fn queue_send(
     account_id: String,
     thread_id: Option<String>,
     to: String,
+    cc: Option<String>,
+    bcc: Option<String>,
     subject: String,
     body: String,
     attachments: Option<Vec<Attachment>>,
     delay_seconds: i64,
+    // Absolute epoch-seconds to send at (scheduled "send later"). When set and in
+    // the future it wins over `delay_seconds`; otherwise the undo-window delay is used.
+    send_at: Option<i64>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let id = format!("ob-{}", chrono::Utc::now().timestamp_millis());
+    let now = chrono::Utc::now().timestamp();
+    let scheduled_ts = match send_at {
+        Some(at) if at > now => at,
+        _ => now + delay_seconds.max(0),
+    };
     let item = OutboxItem {
         id: id.clone(),
         account_id,
         thread_id,
         to,
+        cc: cc.unwrap_or_default(),
+        bcc: bcc.unwrap_or_default(),
         subject,
         body,
         attachments: attachments.unwrap_or_default(),
-        scheduled_ts: chrono::Utc::now().timestamp() + delay_seconds.max(0),
+        scheduled_ts,
         status: "queued".into(),
     };
     state.store.enqueue_outbox(&item).map_err(|e| e.to_string())?;
@@ -339,12 +367,40 @@ async fn sync_now(account_id: String, group: Option<bool>, state: State<'_, AppS
     if account_id.starts_with("ms:") {
         sync::microsoft::incremental(&state.store, &account_id).await.map(|_| 0).map_err(|e| e.to_string())
     } else if account_id.starts_with("imap:") {
-        sync::imap::fetch_inbox_async(state.store.clone(), account_id, 40, group.unwrap_or(true))
+        sync::imap::fetch_folder_async(state.store.clone(), account_id, "INBOX".into(), 40, group.unwrap_or(true))
             .await
             .map_err(|e| e.to_string())
     } else {
         sync::gmail::incremental(&state.store, &account_id).await.map(|_| 0).map_err(|e| e.to_string())
     }
+}
+
+/// Enumerate an IMAP account's folders (mailboxes) and return them.
+#[tauri::command]
+async fn list_folders(account_id: String, state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    if account_id.starts_with("imap:") {
+        sync::imap::list_folders_async(state.store.clone(), account_id).await.map_err(|e| e.to_string())
+    } else {
+        Ok(vec!["INBOX".into()]) // Gmail/Graph folder browsing is a later milestone.
+    }
+}
+
+/// Sync a specific folder for an IMAP account. Returns messages stored.
+#[tauri::command]
+async fn sync_folder(account_id: String, folder: String, group: Option<bool>, state: State<'_, AppState>) -> Result<usize, String> {
+    if account_id.starts_with("imap:") {
+        sync::imap::fetch_folder_async(state.store.clone(), account_id, folder, 40, group.unwrap_or(true))
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        Err("Folder sync is currently available for IMAP accounts.".into())
+    }
+}
+
+/// Folders with per-folder unread/total counts for the sidebar.
+#[tauri::command]
+fn folders(account_id: String, state: State<'_, AppState>) -> Vec<store::FolderInfo> {
+    state.store.folders(&account_id)
 }
 
 /// Mark a thread read/unread. Persists locally, then best-effort pushes to the
@@ -389,6 +445,51 @@ async fn delete_thread(thread_id: String, account_id: String, state: State<'_, A
         let _ = sync::gmail::trash(&account_id, &thread_id).await;
     } else if account_id.starts_with("ms:") {
         let _ = sync::microsoft::move_conversation(&account_id, &thread_id, "deleteditems").await;
+    }
+    Ok(())
+}
+
+/// Move a thread to another mailbox. Local-first: the folder is updated locally
+/// immediately (so it leaves the current view), then the IMAP server move runs
+/// best-effort. Currently real folders exist only for IMAP accounts.
+#[tauri::command]
+async fn move_thread(thread_id: String, account_id: String, to_folder: String, state: State<'_, AppState>) -> Result<(), String> {
+    // Run the server move FIRST (it needs the thread's source folder + Message-IDs,
+    // which it reads from the still-present row), then tombstone locally so the
+    // thread leaves the current view without leaving a stale duplicate behind —
+    // the destination folder shows it again on its next sync.
+    let mut server_err: Option<String> = None;
+    if account_id.starts_with("imap:") {
+        if let Err(e) = sync::imap::move_thread_async(state.store.clone(), account_id, thread_id.clone(), to_folder).await {
+            server_err = Some(e.to_string());
+        }
+    }
+    state.store.tombstone_thread(&thread_id).map_err(|e| e.to_string())?;
+    match server_err {
+        Some(e) => Err(format!("Removed from this folder, but the server move failed: {e}")),
+        None => Ok(()),
+    }
+}
+
+/// Report a thread as spam/junk: tombstone locally, then best-effort move to the
+/// provider's junk mailbox (Gmail SPAM label / Graph junkemail / IMAP Junk folder).
+#[tauri::command]
+async fn mark_spam(thread_id: String, account_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.store.tombstone_thread(&thread_id).map_err(|e| e.to_string())?;
+    if account_id.starts_with("gmail:") {
+        let _ = sync::gmail::spam(&account_id, &thread_id).await;
+    } else if account_id.starts_with("ms:") {
+        let _ = sync::microsoft::move_conversation(&account_id, &thread_id, "junkemail").await;
+    } else if account_id.starts_with("imap:") {
+        // Find the account's Junk mailbox (by role), default to "Junk".
+        let junk = state
+            .store
+            .folders(&account_id)
+            .into_iter()
+            .find(|f| f.role.as_deref() == Some("junk"))
+            .map(|f| f.name)
+            .unwrap_or_else(|| "Junk".into());
+        let _ = sync::imap::move_thread_async(state.store.clone(), account_id, thread_id, junk).await;
     }
     Ok(())
 }
@@ -483,7 +584,14 @@ pub fn run() {
             let store = Arc::new(open_store_resilient(&dir));
             // DB-backed secret fallback so credentials survive unsigned-app rebuilds.
             sync::tokens::init_db(store.clone());
-            app.manage(AppState { ai: Mutex::new(default_profile()), store: store.clone() });
+            // Restore the saved AI profile (models/roles/endpoints) from the DB;
+            // fall back to defaults on first run.
+            let ai_profile = store
+                .settings()
+                .get("ai_profile")
+                .and_then(|s| serde_json::from_str::<AiProfile>(s).ok())
+                .unwrap_or_else(default_profile);
+            app.manage(AppState { ai: Mutex::new(ai_profile), store: store.clone() });
 
             // Background outbox flusher: owns an Arc<Store> clone (Send), so the
             // future is Send and nothing borrows Tauri State across .await.
@@ -493,6 +601,14 @@ pub fn run() {
                     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                     let _ = sync::outbox::flush(&flush_store).await;
                 }
+            });
+
+            // Background live-sync: polls every account's inbox and emits
+            // `mail:sync` / `mail:new` events so the UI refreshes and can notify.
+            let live_store = store.clone();
+            let live_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                sync::live::run(live_app, live_store).await;
             });
             Ok(())
         })
@@ -506,6 +622,8 @@ pub fn run() {
             reindex_embeddings,
             list_threads,
             list_accounts,
+            get_settings,
+            set_setting,
             list_tasks,
             list_events,
             set_task_done,
@@ -521,10 +639,15 @@ pub fn run() {
             get_imap_account,
             remove_account,
             sync_now,
+            list_folders,
+            sync_folder,
+            folders,
             set_thread_read,
             archive_thread,
             snooze_thread,
             delete_thread,
+            move_thread,
+            mark_spam,
             download_attachment,
             preview_attachment,
         ])

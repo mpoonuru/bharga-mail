@@ -1,12 +1,30 @@
 import { create } from "zustand";
-import type { View, Thread, Task, AiProfile, AiRole, AiModel, Account } from "@/types";
-import { api } from "@/lib/bridge";
+import dayjs from "dayjs";
+import type { View, Thread, Task, AiProfile, AiRole, AiModel, Account, FolderInfo } from "@/types";
+import { api, listenMail } from "@/lib/bridge";
 import { account } from "@/data/mock";
 import { SEND } from "@/config";
 import { loadFont, applyFont, loadLocale, applyLocale } from "@/lib/prefs";
 
 /** The account messages are sent from. Derived, never hardcoded at call sites. */
 const activeAccountId = `${account.provider === "imap" ? "gmail" : account.provider}:${account.email}`;
+
+/** Fire a desktop notification for newly-arrived mail, but only when the window
+ *  is in the background (no point notifying about mail you're looking at). Uses
+ *  the Web Notification API the webview already exposes — no extra OS plugin. */
+function notifyNewMail(count: number): void {
+  try {
+    if (typeof Notification === "undefined" || !document.hidden) return;
+    const title = count === 1 ? "New message" : `${count} new messages`;
+    const show = () => new Notification(title, { body: "Aether Mail", tag: "aether-new-mail" });
+    if (Notification.permission === "granted") show();
+    else if (Notification.permission !== "denied") {
+      void Notification.requestPermission().then((p) => { if (p === "granted" && document.hidden) show(); });
+    }
+  } catch {
+    /* notifications unsupported — the auto-refresh still surfaces the mail */
+  }
+}
 
 type Theme = "dark" | "light";
 type Density = "compact" | "cozy" | "comfy";
@@ -39,6 +57,10 @@ interface AppState {
   aiReplyFor: string | null;
   requestAiReply: (id: string) => void;
   clearAiReply: () => void;
+  /** Open the composer for a thread in a given mode (from the context menu). */
+  composeIntent: { id: string; mode: "reply" | "replyAll" | "forward" } | null;
+  requestCompose: (id: string, mode: "reply" | "replyAll" | "forward") => void;
+  clearComposeIntent: () => void;
   setDrawer: (o: boolean) => void;
   backToStream: () => void;
 
@@ -51,6 +73,15 @@ interface AppState {
   accounts: Account[];
   selectedAccountId: string | null;
   setAccount: (id: string | null) => void;
+  // Folders for the focused account, and which folder is open (null = its inbox view).
+  folders: FolderInfo[];
+  selectedFolder: string | null;
+  loadFolders: (accountId: string) => Promise<void>;
+  refreshFolders: (accountId: string) => Promise<void>;
+  setFolder: (name: string | null) => Promise<void>;
+  /** Subscribe to the core's background live-sync (auto-refresh + notify). */
+  liveSyncStarted: boolean;
+  startLiveSync: () => Promise<void>;
   syncing: boolean;
   syncAll: () => Promise<{ total: number; errors: string[] }>;
   removeAccount: (id: string) => Promise<void>;
@@ -69,10 +100,14 @@ interface AppState {
   undo: { id: string; label: string } | null;
   queueSend: (args: {
     to: string;
+    cc?: string;
+    bcc?: string;
     subject: string;
     body: string;
     threadId?: string;
     attachments?: { name: string; mime: string; dataB64: string }[];
+    /** Absolute epoch-seconds to send at (scheduled send). Omit for immediate. */
+    sendAt?: number;
   }) => Promise<void>;
   cancelUndo: () => void;
 
@@ -92,12 +127,32 @@ interface AppState {
   // Group replies into conversations (IMAP). Applies on next sync.
   groupConversations: boolean;
   setGroupConversations: (v: boolean) => void;
+  // AI-inbox smart highlights (dates, %, money, urgency/sentiment) in email bodies.
+  highlights: boolean;
+  setHighlights: (v: boolean) => void;
+  // Auto-organize new mail with AI on arrival (summarize + triage). No-op without a model.
+  autoOrganize: boolean;
+  setAutoOrganize: (v: boolean) => void;
+  // Resizable panel widths (px), persisted. Sidebar and the message-list column.
+  panelSidebarW: number;
+  panelStreamW: number;
+  setPanelWidths: (sidebar: number, stream: number, persist?: boolean) => void;
+  // User-collapsed sidebar (icons-only rail), persisted.
+  sidebarCollapsed: boolean;
+  toggleSidebar: () => void;
+  /** True while a triage pass is running (guards against overlapping runs). */
+  triaging: boolean;
 
   // Thread actions
   snoozeThread: (id: string) => void;
   archiveThread: (id: string) => void;
   toggleRead: (id: string) => void;
   deleteThread: (id: string) => void;
+  moveThread: (id: string, toFolder: string) => void;
+  markSpam: (id: string) => void;
+  /** Flagged (starred) thread ids — persisted locally, drives the Flagged view. */
+  flaggedIds: string[];
+  toggleFlag: (id: string) => void;
   triageInbox: () => Promise<number>;
 }
 
@@ -134,6 +189,9 @@ function persistSignatures(signatures: Signature[], defaultId: string | null) {
     if (defaultId) localStorage.setItem(SIG_DEFAULT_KEY, defaultId);
     else localStorage.removeItem(SIG_DEFAULT_KEY);
   } catch { /* ignore */ }
+  // Durable copy in the core settings store (DB), like other user prefs.
+  void api.setSetting("signatures", JSON.stringify(signatures));
+  void api.setSetting("signature_default", defaultId ?? "");
 }
 
 function applyDoc(theme: Theme, density: Density) {
@@ -142,14 +200,35 @@ function applyDoc(theme: Theme, density: Density) {
   el.setAttribute("data-density", density);
 }
 
+// Persisted appearance prefs (theme + density) — survive refresh/restart.
+function loadTheme(): Theme {
+  try { return localStorage.getItem("aether.theme") === "light" ? "light" : "dark"; } catch { return "dark"; }
+}
+function loadDensity(): Density {
+  try {
+    const v = localStorage.getItem("aether.density");
+    return v === "compact" || v === "comfy" ? v : "cozy";
+  } catch { return "cozy"; }
+}
+// Persist a UI pref to both the instant localStorage cache and the durable core
+// settings store (so it lives in the app's data model, not just the webview).
+function persistPref(name: string, value: string) {
+  try { localStorage.setItem(`aether.${name}`, value); } catch { /* ignore */ }
+  void api.setSetting(name, value);
+}
+
+// Apply the saved theme/density to <html> immediately on load so a refresh
+// doesn't flash the default dark theme.
+applyDoc(loadTheme(), loadDensity());
+
 export const useApp = create<AppState>((set, get) => ({
   view: "priority",
   selectedThreadId: "t1",
   setView: (v) => set({ view: v, composeOpen: false, drawerOpen: false, mobileStage: false }),
   selectThread: (id) => set({ selectedThreadId: id, mobileStage: true }),
 
-  theme: "dark",
-  density: "cozy",
+  theme: loadTheme(),
+  density: loadDensity(),
   focusMode: false,
   cmdOpen: false,
   modelPickerOpen: false,
@@ -159,10 +238,12 @@ export const useApp = create<AppState>((set, get) => ({
   toggleTheme: () => {
     const theme = get().theme === "dark" ? "light" : "dark";
     applyDoc(theme, get().density);
+    persistPref("theme", theme);
     set({ theme });
   },
   setDensity: (density) => {
     applyDoc(get().theme, density);
+    persistPref("density", density);
     set({ density });
   },
   toggleFocus: () => set({ focusMode: !get().focusMode }),
@@ -172,6 +253,9 @@ export const useApp = create<AppState>((set, get) => ({
   aiReplyFor: null,
   requestAiReply: (id) => set({ aiReplyFor: id, selectedThreadId: id, mobileStage: true }),
   clearAiReply: () => set({ aiReplyFor: null }),
+  composeIntent: null,
+  requestCompose: (id, mode) => set({ composeIntent: { id, mode }, selectedThreadId: id, mobileStage: true }),
+  clearComposeIntent: () => set({ composeIntent: null }),
   setDrawer: (drawerOpen) => set({ drawerOpen }),
   backToStream: () => set({ mobileStage: false, composeOpen: false }),
 
@@ -181,7 +265,55 @@ export const useApp = create<AppState>((set, get) => ({
   loaded: false,
   accounts: [],
   selectedAccountId: null,
-  setAccount: (selectedAccountId) => set({ selectedAccountId, view: "inbox", mobileStage: false }),
+  folders: [],
+  selectedFolder: null,
+  setAccount: (selectedAccountId) => {
+    set({ selectedAccountId, selectedFolder: null, folders: [], view: "inbox", mobileStage: false });
+    if (selectedAccountId) {
+      void get().loadFolders(selectedAccountId);
+      void get().refreshFolders(selectedAccountId);
+    }
+  },
+  loadFolders: async (accountId) => {
+    const folders = await api.folders(accountId);
+    if (get().selectedAccountId === accountId) set({ folders });
+  },
+  liveSyncStarted: false,
+  startLiveSync: async () => {
+    if (get().liveSyncStarted) return;
+    set({ liveSyncStarted: true });
+    await listenMail({
+      onSync: async () => {
+        // New mail (or any server change) landed in the local store — refresh the
+        // visible list and the folder counts without the user pressing Sync.
+        set({ threads: await api.listThreads() });
+        const acct = get().selectedAccountId;
+        if (acct) void get().loadFolders(acct);
+        // Auto-organize newly-arrived mail (summarize + triage). Incremental and
+        // a no-op without a model, so it's cheap when nothing's new.
+        if (get().autoOrganize) void get().triageInbox();
+      },
+      onNew: (count) => notifyNewMail(count),
+    });
+  },
+  // Enumerate folders from the server (IMAP LIST), then refresh counts.
+  refreshFolders: async (accountId) => {
+    await api.listFolders(accountId);
+    await get().loadFolders(accountId);
+  },
+  setFolder: async (name) => {
+    const acct = get().selectedAccountId;
+    set({ selectedFolder: name, view: "inbox", mobileStage: false });
+    if (acct && name) {
+      try {
+        await api.syncFolder(acct, name, get().groupConversations);
+      } catch {
+        /* surfaced via folder counts / empty list */
+      }
+      set({ threads: await api.listThreads() });
+      await get().loadFolders(acct);
+    }
+  },
   syncing: false,
   syncAll: async () => {
     const accts = get().accounts;
@@ -198,6 +330,9 @@ export const useApp = create<AppState>((set, get) => ({
     }
     const [threads, accounts] = await Promise.all([api.listThreads(), api.listAccounts()]);
     set({ threads, accounts, syncing: false });
+    // Keep the focused account's folder list fresh on a global sync too.
+    const focused = get().selectedAccountId;
+    if (focused) void get().refreshFolders(focused);
     return { total, errors };
   },
   removeAccount: async (id) => {
@@ -210,6 +345,58 @@ export const useApp = create<AppState>((set, get) => ({
     });
   },
   load: async () => {
+    // Hydrate durable UI settings from the core (source of truth), falling back
+    // to the localStorage cache, then apply + mirror back so both stay in sync.
+    try {
+      const remote = await api.getSettings();
+      const pick = (k: string) => remote[k] ?? (() => { try { return localStorage.getItem(`aether.${k}`) ?? undefined; } catch { return undefined; } })();
+      const theme: Theme = pick("theme") === "light" ? "light" : "dark";
+      const dRaw = pick("density");
+      const density: Density = dRaw === "compact" || dRaw === "comfy" ? dRaw : "cozy";
+      const font = pick("font") ?? "inter";
+      const locale = pick("locale") ?? "en";
+      const groupConversations = (pick("group") ?? "1") !== "0";
+      const highlights = (pick("highlights") ?? "1") !== "0";
+      const autoOrganize = (pick("autoOrganize") ?? "1") !== "0";
+      applyDoc(theme, density);
+      applyFont(font);
+      applyLocale(locale);
+      persistPref("theme", theme);
+      persistPref("density", density);
+      persistPref("font", font);
+      persistPref("locale", locale);
+      persistPref("group", groupConversations ? "1" : "0");
+      persistPref("highlights", highlights ? "1" : "0");
+      persistPref("autoOrganize", autoOrganize ? "1" : "0");
+      let flaggedIds: string[] = get().flaggedIds;
+      try { flaggedIds = JSON.parse(pick("flaggedIds") || "[]"); } catch { /* keep */ }
+      persistPref("flaggedIds", JSON.stringify(flaggedIds));
+      const psw = parseInt(pick("panelSidebarW") || "", 10);
+      const ptw = parseInt(pick("panelStreamW") || "", 10);
+      const panelSidebarW = Number.isFinite(psw) ? Math.max(180, Math.min(380, psw)) : get().panelSidebarW;
+      const panelStreamW = Number.isFinite(ptw) ? Math.max(280, Math.min(640, ptw)) : get().panelStreamW;
+      persistPref("panelSidebarW", String(panelSidebarW));
+      persistPref("panelStreamW", String(panelStreamW));
+      const sidebarCollapsed = (pick("sidebarCollapsed") ?? "0") === "1";
+      persistPref("sidebarCollapsed", sidebarCollapsed ? "1" : "0");
+      set({ theme, density, font, locale, groupConversations, highlights, autoOrganize, flaggedIds, panelSidebarW, panelStreamW, sidebarCollapsed });
+
+      // Signatures: DB is the source of truth; fall back to the local cache.
+      if (remote["signatures"]) {
+        try {
+          const sigs: Signature[] = JSON.parse(remote["signatures"]);
+          const def = remote["signature_default"] || null;
+          persistSignatures(sigs, def);
+          set({ signatures: sigs, defaultSignatureId: def && sigs.some((s) => s.id === def) ? def : sigs[0]?.id ?? null });
+        } catch { /* ignore malformed */ }
+      } else if (get().signatures.length > 0) {
+        // migrate existing local signatures into the DB
+        persistSignatures(get().signatures, get().defaultSignatureId);
+      }
+    } catch {
+      /* keep module-load defaults */
+    }
+
     const [threads, tasks, ai, accounts] = await Promise.all([
       api.listThreads(),
       api.listTasks(),
@@ -217,6 +404,8 @@ export const useApp = create<AppState>((set, get) => ({
       api.listAccounts(),
     ]);
     set({ threads, tasks, ai, accounts, loaded: true });
+    // Organize anything that arrived while away (no-op without a model configured).
+    if (get().autoOrganize) void get().triageInbox();
   },
   toggleTask: (id) => {
     const next = get().tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t));
@@ -315,10 +504,32 @@ export const useApp = create<AppState>((set, get) => ({
   },
   font: loadFont(),
   locale: loadLocale(),
-  setFont: (font) => { applyFont(font); set({ font }); },
-  setLocale: (locale) => { applyLocale(locale); set({ locale }); },
+  setFont: (font) => { applyFont(font); persistPref("font", font); set({ font }); },
+  setLocale: (locale) => { applyLocale(locale); persistPref("locale", locale); set({ locale }); },
   groupConversations: (() => { try { return localStorage.getItem("aether.group") !== "0"; } catch { return true; } })(),
-  setGroupConversations: (v) => { try { localStorage.setItem("aether.group", v ? "1" : "0"); } catch { /* ignore */ } set({ groupConversations: v }); },
+  setGroupConversations: (v) => { persistPref("group", v ? "1" : "0"); set({ groupConversations: v }); },
+  highlights: (() => { try { return localStorage.getItem("aether.highlights") !== "0"; } catch { return true; } })(),
+  setHighlights: (v) => { persistPref("highlights", v ? "1" : "0"); set({ highlights: v }); },
+  autoOrganize: (() => { try { return localStorage.getItem("aether.autoOrganize") !== "0"; } catch { return true; } })(),
+  setAutoOrganize: (v) => { persistPref("autoOrganize", v ? "1" : "0"); set({ autoOrganize: v }); },
+  panelSidebarW: (() => { try { const v = parseInt(localStorage.getItem("aether.panelSidebarW") || "", 10); return Number.isFinite(v) ? v : 234; } catch { return 234; } })(),
+  panelStreamW: (() => { try { const v = parseInt(localStorage.getItem("aether.panelStreamW") || "", 10); return Number.isFinite(v) ? v : 360; } catch { return 360; } })(),
+  setPanelWidths: (sidebar, stream, persist = false) => {
+    const s = Math.max(180, Math.min(380, Math.round(sidebar)));
+    const st = Math.max(280, Math.min(640, Math.round(stream)));
+    set({ panelSidebarW: s, panelStreamW: st });
+    if (persist) { persistPref("panelSidebarW", String(s)); persistPref("panelStreamW", String(st)); }
+  },
+  sidebarCollapsed: (() => { try { return localStorage.getItem("aether.sidebarCollapsed") === "1"; } catch { return false; } })(),
+  toggleSidebar: () => { const v = !get().sidebarCollapsed; persistPref("sidebarCollapsed", v ? "1" : "0"); set({ sidebarCollapsed: v }); },
+  triaging: false,
+  flaggedIds: (() => { try { return JSON.parse(localStorage.getItem("aether.flaggedIds") || "[]") as string[]; } catch { return []; } })(),
+  toggleFlag: (id) => {
+    const cur = get().flaggedIds;
+    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    persistPref("flaggedIds", JSON.stringify(next));
+    set({ flaggedIds: next });
+  },
   snoozeThread: (id) => {
     set({
       threads: get().threads.map((t) =>
@@ -348,12 +559,39 @@ export const useApp = create<AppState>((set, get) => ({
     });
     if (t) void api.deleteThread(id, t.accountId);
   },
-  triageInbox: async () => {
-    const n = await api.triageInbox();
-    if (n > 0) set({ threads: await api.listThreads() });
-    return n;
+  moveThread: (id, toFolder) => {
+    const t = get().threads.find((x) => x.id === id);
+    // Move = leave the current view now (like archive); the destination folder
+    // shows it again on its next sync. Removing (not relabelling) avoids a stale
+    // duplicate once the moved copy syncs back under a new folder-scoped id.
+    set({
+      threads: get().threads.filter((x) => x.id !== id),
+      selectedThreadId: get().selectedThreadId === id ? null : get().selectedThreadId,
+      mobileStage: false,
+    });
+    if (t) void api.moveThread(id, t.accountId, toFolder);
   },
-  queueSend: async ({ to, subject, body, threadId, attachments }) => {
+  markSpam: (id) => {
+    const t = get().threads.find((x) => x.id === id);
+    set({
+      threads: get().threads.filter((x) => x.id !== id),
+      selectedThreadId: get().selectedThreadId === id ? null : get().selectedThreadId,
+      mobileStage: false,
+    });
+    if (t) void api.markSpam(id, t.accountId);
+  },
+  triageInbox: async () => {
+    if (get().triaging) return 0; // never run two passes at once
+    set({ triaging: true });
+    try {
+      const n = await api.triageInbox();
+      if (n > 0) set({ threads: await api.listThreads() });
+      return n;
+    } finally {
+      set({ triaging: false });
+    }
+  },
+  queueSend: async ({ to, cc, bcc, subject, body, threadId, attachments, sendAt }) => {
     const def = get().signatures.find((s) => s.id === get().defaultSignatureId);
     const fullBody = def?.html ? `${body}<br><br>--<br>${def.html}` : body;
     // Route from the right account: a reply uses the thread's account; a new
@@ -361,20 +599,29 @@ export const useApp = create<AppState>((set, get) => ({
     const thread = threadId ? get().threads.find((t) => t.id === threadId) : null;
     const accountId =
       thread?.accountId ?? get().selectedAccountId ?? get().accounts[0]?.id ?? activeAccountId;
+    const scheduled = typeof sendAt === "number" && sendAt * 1000 > Date.now();
     const id = await api.queueSend({
       accountId,
       threadId,
       to,
+      cc,
+      bcc,
       subject,
       body: fullBody,
       attachments,
       delaySeconds: SEND.undoWindowSeconds,
+      sendAt: scheduled ? sendAt : undefined,
     });
-    set({ undo: { id, label: `Sending to ${to || "recipient"}…` } });
-    // auto-dismiss the toast after the window; the core flushes it.
+    const label = scheduled
+      ? `Scheduled for ${dayjs((sendAt as number) * 1000).format("ddd, MMM D · HH:mm")}`
+      : `Sending to ${to || "recipient"}…`;
+    set({ undo: { id, label } });
+    // Keep the cancel toast visible long enough to undo. Scheduled sends get a
+    // longer window since there's no rush; immediate sends use the undo window.
+    const visibleMs = (scheduled ? 8 : SEND.undoWindowSeconds) * 1000;
     setTimeout(() => {
       if (get().undo?.id === id) set({ undo: null });
-    }, SEND.undoWindowSeconds * 1000);
+    }, visibleMs);
   },
   cancelUndo: () => {
     const u = get().undo;

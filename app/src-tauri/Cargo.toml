@@ -42,6 +42,10 @@ lettre = { version = "0.11", default-features = false, features = ["builder", "s
 # IMAP inbox fetch (rustls TLS) + RFC822 parsing
 imap = { version = "3.0.0-alpha.15", default-features = false, features = ["rustls-tls"] }
 mailparse = "0.16"
+# Robust HTML→text (html5ever parser) for the HTML fallback when an email has no
+# text/plain part — handles malformed Outlook/Word markup, <style>/<script>,
+# MSO conditional comments, and entity decoding correctly.
+html2text = "0.12"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

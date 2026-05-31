@@ -20,3 +20,29 @@ export function accountGradient(id: string): string {
   const hue = ACCOUNT_HUES[h % ACCOUNT_HUES.length];
   return `linear-gradient(135deg, oklch(0.72 0.15 ${hue}), oklch(0.66 0.16 ${(hue + 40) % 360}))`;
 }
+
+// A wider hue wheel for per-sender avatars (each correspondent gets a stable
+// color). Topup-arena style: a LIGHT gradient tile (≈ Tailwind 50→100) with
+// saturated mid-tone text (≈ 600) and a slightly deeper hairline ring (≈ 200).
+const AVATAR_HUES = [268, 312, 348, 18, 45, 72, 110, 152, 192, 232];
+
+export interface AvatarPaint {
+  /** light two-stop gradient for the tile background */
+  bg: string;
+  /** saturated mid-tone text/initials color */
+  fg: string;
+  /** subtle deeper-tint ring so the light tile reads on any background */
+  ring: string;
+}
+
+/** A stable light-gradient avatar paint for a sender, hashed from a seed. */
+export function avatarColor(seed: string): AvatarPaint {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  const hue = AVATAR_HUES[h % AVATAR_HUES.length];
+  return {
+    bg: `linear-gradient(135deg, oklch(0.96 0.035 ${hue}), oklch(0.9 0.072 ${hue}))`,
+    fg: `oklch(0.5 0.14 ${hue})`,
+    ring: `oklch(0.86 0.07 ${hue})`,
+  };
+}

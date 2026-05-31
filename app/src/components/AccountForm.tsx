@@ -91,6 +91,7 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
     try {
       const id = await api.saveImapAccount(payload());
       const n = await api.syncNow(id, useApp.getState().groupConversations);
+      await api.listFolders(id); // enumerate mailboxes so the sidebar folder list populates
       await load();
       onStatus(`Connected ${f.email} — ${n} message${n === 1 ? "" : "s"} synced.`);
       onClose();

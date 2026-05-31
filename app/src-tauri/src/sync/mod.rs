@@ -9,6 +9,7 @@ use async_trait::async_trait;
 
 pub mod gmail;
 pub mod imap;
+pub mod live;
 pub mod microsoft;
 pub mod mime;
 pub mod oauth;

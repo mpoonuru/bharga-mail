@@ -48,10 +48,10 @@
   --shadow: 0 20px 60px rgba(0,0,0,0.55); --glass: rgba(22,24,31,0.72);
 }
 [data-theme="light"] {
-  --bg: #f6f5f2; --bg-2: #fbfaf8; --surface: #ffffff; --surface-2: #f3f2ef;
-  --border: rgba(20,20,30,0.08); --border-2: rgba(20,20,30,0.14);
-  --text: #1a1c22; --text-2: #565b6b; --text-3: #8b90a0;
-  --shadow: 0 20px 60px rgba(40,40,60,0.18); --glass: rgba(255,255,255,0.80);
+  --bg: #eef1f6; --bg-2: #f7f9fc; --surface: #ffffff; --surface-2: #eef1f6;
+  --border: rgba(18,22,40,0.09); --border-2: rgba(18,22,40,0.16);
+  --text: #161922; --text-2: #4c5263; --text-3: #828896;
+  --shadow: 0 20px 60px rgba(30,40,70,0.16); --glass: rgba(255,255,255,0.85);
 }
 [data-density="compact"] { --row-pad: 8px 12px; --gap: 2px; }
 [data-density="cozy"]    { --row-pad: 12px 13px; --gap: 4px; }
@@ -75,11 +75,25 @@
   .app { @apply grid h-screen; grid-template-columns: 234px 366px 1fr; transition: grid-template-columns .4s var(--ease); }
   .app.focus { grid-template-columns: 234px 0 1fr; }
   .app.compose-only .stage { @apply hidden; }
+  /* Draggable column dividers between sidebar | list | reading pane. */
+  .splitter { @apply absolute top-0 bottom-0 z-20 w-[9px] -translate-x-1/2; cursor: col-resize; }
+  .splitter::after { content: ""; @apply absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2; background: transparent; transition: background .12s var(--ease); }
+  .splitter:hover::after, .splitter.dragging::after { background: var(--accent); width: 2px; }
+  /* Custom tooltip (collapsed sidebar icons) — glass bubble, pure CSS hover. */
+  .tip-wrap { @apply relative block; }
+  .tip { @apply absolute z-[80] px-2.5 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap pointer-events-none opacity-0; background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--border-2); box-shadow: var(--shadow); color: var(--text); transition: opacity .12s var(--ease); }
+  .tip-wrap:hover .tip, .tip-wrap:focus-within .tip { @apply opacity-100; }
+  .tip-right { @apply left-full top-1/2 -translate-y-1/2 ml-2; }
+  .tip-top { @apply bottom-full left-1/2 -translate-x-1/2 mb-2; }
+  /* Collapse/expand control for the sidebar. */
+  .rail-toggle { @apply shrink-0 w-7 h-7 rounded-lg inline-flex items-center justify-center text-text-3 border-none bg-transparent cursor-pointer; transition: .15s var(--ease); }
+  .rail-toggle:hover { @apply text-text bg-surface; }
   .stream, .stage { @apply h-full; }
 
   /* ---- Sidebar ---- */
-  .sidebar { @apply flex flex-col gap-[2px] min-w-0 h-full border-r border-border bg-bg-2 px-3 py-[14px]; }
-  .sidebar.rail { @apply px-2 py-[14px] items-stretch; }
+  /* pt clears the macOS traffic-light controls in the overlay titlebar. */
+  .sidebar { @apply flex flex-col gap-[2px] min-w-0 h-full border-r border-border bg-bg-2 px-3 pt-[34px] pb-[14px]; }
+  .sidebar.rail { @apply px-2 pt-[34px] pb-[14px] items-stretch; }
   .sidebar.rail .brand { @apply justify-center pt-2 pb-[14px] px-0; }
   .sidebar.rail .nav-item { @apply justify-center py-[9px] px-0; }
   .sidebar.rail .compose-btn { @apply py-[10px] px-0; }
@@ -97,6 +111,18 @@
   .nav-item .count { @apply ml-auto text-[11px] text-text-3; }
   .nav-item .acct-dot { @apply inline-block w-[10px] h-[10px] rounded-full; }
   .nav-item .acct-email { @apply truncate; }
+  /* Scrollable nav region so any number of folders never push the footer off-screen. */
+  .sidebar-scroll { @apply flex-1 min-h-0 overflow-y-auto flex flex-col gap-[2px] -mx-1 px-1; }
+  /* Account row = clickable account + an inline folder-refresh icon. */
+  .acct-row { @apply relative; }
+  .acct-row .acct-main { @apply pr-8; }
+  .acct-refresh { @apply absolute right-1.5 top-1/2 z-10 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 cursor-pointer; transform: translateY(-50%); background: transparent; border: none; transition: .14s var(--ease); }
+  .acct-refresh:hover:not(:disabled) { @apply text-text bg-surface; }
+  .acct-refresh:disabled { @apply opacity-50 cursor-default; }
+  /* Folder list nested under an account, with a tree connector line. */
+  .folder-tree { @apply ml-[15px] pl-2.5 flex flex-col gap-[1px] mt-0.5 mb-1.5; border-left: 1px solid var(--border-2); }
+  .folder-item { @apply py-[7px] text-[12.5px]; }
+  .folder-item .ic { @apply w-[15px]; }
   .nav-label { @apply text-[10.5px] uppercase text-text-3 pt-4 px-[11px] pb-1.5 font-semibold; letter-spacing: .09em; }
   .sidebar .spacer { @apply flex-1; }
   .model-chip { @apply mt-2 px-[11px] py-2.5 border border-border rounded-xl bg-surface cursor-pointer text-left; transition: .15s var(--ease); }
@@ -108,32 +134,51 @@
 
   /* ---- Stream (list) ---- */
   .stream { @apply bg-bg border-r border-border overflow-hidden flex flex-col min-w-0; }
-  .stream-head { @apply px-[18px] pt-[18px] pb-2.5 flex items-center justify-between; }
-  .stream-head h2 { @apply text-[16px]; font-weight: 650; }
-  .filter { @apply text-[11px] text-text-2 bg-surface border border-border px-[9px] py-1 rounded-[20px]; }
+  .stream-head { @apply px-[18px] pt-[18px] pb-2.5 flex items-center justify-between gap-2; }
+  .stream-head h2 { @apply text-[16px] truncate min-w-0; font-weight: 650; }
+  .head-actions { @apply flex items-center gap-1.5 shrink-0; }
+  .filter { @apply inline-flex items-center gap-1 text-[11px] text-text-2 bg-surface border border-border px-[9px] py-1 rounded-[20px] whitespace-nowrap shrink-0; }
+  .stream-status { @apply mx-[18px] mb-1.5 -mt-1 text-[11.5px] text-text-3 truncate; }
+  .stream-status.err { color: var(--danger); }
   .search-box { @apply mx-2.5 mb-1 flex items-center gap-2 px-2.5 py-1.5 rounded-[10px] border border-border bg-bg-2 text-text-3; }
   .search-box input { @apply flex-1 bg-transparent border-none outline-none text-text text-[13px]; font-family: var(--font); }
   .search-box input::placeholder { @apply text-text-3; }
   .search-clear { @apply text-text-3 border-none bg-transparent inline-flex items-center p-0; }
   .search-clear:hover { @apply text-text; }
-  .list { @apply overflow-y-auto px-2.5 pt-1 pb-2.5 flex flex-col; gap: var(--gap); }
-  .mail { @apply rounded-xl cursor-pointer border border-transparent; padding: var(--row-pad); transition: .14s var(--ease); background: var(--bg); }
+  .list { @apply overflow-y-auto px-2.5 pt-1 pb-2.5 flex flex-col; gap: var(--gap); scroll-behavior: smooth; mask-image: linear-gradient(to bottom, transparent 0, #000 10px); }
+  /* Mail row — Design B: squircle avatar + sender/time, subject, AI summary line. */
+  .mail { @apply flex gap-3 rounded-xl cursor-pointer border border-transparent; padding: var(--row-pad); transition: .14s var(--ease); background: var(--bg); }
   .mail:hover { @apply bg-surface; }
   .mail.sel { @apply bg-surface border-border-2; }
-  .mail .top { @apply flex items-center gap-2 mb-[3px]; }
+  .mail-av { @apply shrink-0 w-[38px] h-[38px] flex items-center justify-center text-[14px] font-semibold select-none; border-radius: 13px; }
+  .mail-main { @apply min-w-0 flex-1; }
+  .mail-l1 { @apply flex items-center gap-2 mb-[2px]; }
+  .mail-unread { @apply w-[7px] h-[7px] rounded-full shrink-0; background: var(--accent); }
   .acct-dot { @apply w-[7px] h-[7px] rounded-full shrink-0 inline-block; }
-  .mail .from { @apply text-[13px] font-semibold; }
-  /* One leading dot = account color. Read rows dim it; unread rows keep it vivid. */
-  .mail:not(.unread) .acct-dot { @apply opacity-30; }
+  .mail .from { @apply text-[13px] font-semibold truncate; }
   .mail:not(.unread) .from { @apply font-medium text-text-2; }
-  .mail .time { @apply ml-auto text-[11px] text-text-3; }
-  .mail .subj { @apply text-[12.5px] mb-0.5; }
+  .mail .time { @apply ml-auto text-[11px] text-text-3 shrink-0 inline-flex items-center gap-1; }
+  .mail-flag { color: var(--warn); }
+  .mail .subj { @apply text-[12.5px] mb-0.5 truncate; }
   .mail .prev { @apply text-[12px] text-text-3 leading-[1.35] line-clamp-1; }
+  .mail-ai { @apply flex items-baseline gap-1.5 text-[12px] text-text-2 leading-[1.35]; }
+  .mail-ai > svg { color: var(--accent); flex: none; align-self: center; }
+  .mail-ai-text { @apply line-clamp-1; }
+  .mail-foot { @apply flex items-center gap-1.5 mt-[5px] flex-wrap; }
+  .mail-chip { @apply inline-flex items-center gap-1 text-[10.5px] text-text-3 px-1.5 py-0.5 rounded-[6px]; background: var(--surface); }
+  /* AI entity highlights inside the summary line. */
+  .hl { @apply rounded-[5px] px-1 font-medium; }
+  .hl-money { color: var(--good); background: color-mix(in oklch, var(--good) 15%, transparent); }
+  .hl-date { color: var(--accent); background: var(--accent-soft); }
+  .hl-percent { color: var(--warn); background: color-mix(in oklch, var(--warn) 16%, transparent); }
   .tag { @apply text-[9.5px] font-semibold uppercase px-1.5 py-0.5 rounded-[5px] inline-flex items-center gap-1; letter-spacing: .05em; }
   .tag.ai { @apply text-accent; background: var(--accent-soft); }
   .tag.urgent { @apply text-danger; background: rgba(255,99,99,.16); }
   .tag.cal { @apply text-good; background: rgba(70,209,139,.16); }
   .empty { @apply text-text-3 text-[13px] px-[18px] py-10 text-center; }
+  .priority-hint { @apply mx-2.5 mb-1 mt-0.5 px-3 py-2 rounded-lg text-[11.5px] text-text-2 flex items-center gap-1.5; background: var(--accent-soft); }
+  .priority-hint > span { @apply truncate min-w-0; }
+  .priority-hint b { @apply font-semibold text-text; }
   /* Swipe-to-action (touch/drag): archive on left-swipe, snooze on right-swipe. */
   .mail-wrap { @apply relative; }
   .mail-wrap .mail { @apply relative z-10; }
@@ -142,8 +187,9 @@
   .swipe-right { @apply inline-flex items-center gap-1.5; color: #fff; }
 
   /* ---- Stage (reading pane) ---- */
-  .stage { @apply overflow-y-auto bg-bg min-w-0; }
-  .stage-inner { @apply max-w-[740px] mx-auto pt-[14px] px-[34px] pb-[120px]; }
+  .stage { @apply overflow-y-auto overflow-x-hidden bg-bg min-w-0; }
+  /* Wider, fluid reading pane so emails have room to render properly. */
+  .stage-inner { @apply w-full max-w-[920px] mx-auto pt-[14px] px-6 pb-[120px] min-w-0; }
   .stage-bar { @apply sticky top-0 flex items-center gap-2 pt-[14px] pb-2.5 z-[5]; background: linear-gradient(var(--bg), var(--bg) 70%, transparent); }
   .stage-bar .spacer { @apply flex-1; }
   .iconbtn { @apply min-w-[32px] h-8 px-[9px] rounded-[9px] border border-border bg-surface text-text-2 inline-flex items-center justify-center gap-1.5 text-[14px]; transition: .15s var(--ease); }
@@ -158,16 +204,53 @@
   .composer .recip { @apply w-full bg-transparent border-none outline-none text-[13.5px] text-text py-2 border-b border-border; font-family: var(--font); }
   .composer .recip::placeholder { @apply text-text-3; }
   .composer .recip-subject { @apply text-[13.5px] font-semibold py-2 border-b border-border mb-2; }
+  .recip-row { @apply flex items-start gap-2 border-b border-border py-1; }
+  .recip-row .recip { @apply border-b-0; }
+  .recip-lbl { @apply shrink-0 text-[12.5px] text-text-3 pt-[9px] w-7; }
+  .recip-toggle { @apply shrink-0 self-center text-[12px] text-text-3 px-2 py-1 rounded-md border-none bg-transparent cursor-pointer; }
+  .recip-toggle:hover { @apply text-text bg-surface; }
+  /* Recipient chip input (Gmail-style tokens) */
+  .chips-input { @apply flex-1 flex flex-wrap items-center gap-1.5 min-w-0 py-1; }
+  .recip-chip { @apply inline-flex items-center gap-1 text-[12.5px] text-text rounded-md pl-2 pr-1 py-[3px]; background: var(--surface); }
+  .recip-chip button { @apply text-text-3 border-none bg-transparent cursor-pointer text-[15px] leading-none px-0.5; }
+  .recip-chip button:hover { @apply text-danger; }
+  .chips-field { @apply flex-1 min-w-[120px] bg-transparent border-none outline-none text-[13.5px] text-text py-1; font-family: var(--font); }
+  .chips-field::placeholder { @apply text-text-3; }
+
+  /* ---- Send later (schedule) popover ---- */
+  .sendlater { @apply relative inline-flex; }
+  .sendlater-backdrop { @apply fixed inset-0 z-[60]; }
+  .sendlater-menu { @apply absolute bottom-full left-0 mb-2 z-[61] w-[248px] rounded-[10px] p-1.5; background: var(--glass); backdrop-filter: blur(24px); border: 1px solid var(--border-2); box-shadow: var(--shadow); animation: pop .12s var(--ease); }
+  .sendlater-head { @apply px-2 py-1 text-[11px] uppercase tracking-wide text-text-3; }
+  .sendlater-opt { @apply w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-md text-[13px] text-text-2 border-none bg-transparent cursor-pointer text-left; }
+  .sendlater-opt:hover { @apply bg-surface text-text; }
+  .sendlater-when { @apply text-[12px] text-text-3; }
+  .sendlater-sep { @apply h-px my-1 bg-border; }
+  .sendlater-custom { @apply flex flex-col gap-1 px-2.5 py-1.5 text-[12px] text-text-3; }
+  .sendlater-custom input { @apply bg-surface border border-border-2 rounded-md px-2 py-1.5 text-[13px] text-text; font-family: var(--font); }
+  .sendlater-schedule { @apply w-full mt-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[13px] font-medium border-none cursor-pointer; background: var(--accent-soft); color: var(--accent); }
+  .sendlater-schedule:hover:not(:disabled) { filter: brightness(1.05); }
+  .sendlater-schedule:disabled { @apply opacity-40 cursor-not-allowed; }
+  .sendlater-note { @apply px-2.5 pt-1.5 text-[11px] leading-snug text-text-3; }
   .ai-summary .lbl { @apply flex items-center gap-[7px] text-[10.5px] uppercase text-accent mb-[7px]; letter-spacing: .08em; font-weight: 650; }
   .ai-summary p { @apply text-[13.5px] leading-[1.5]; }
   .chips { @apply flex gap-2 mt-3 flex-wrap; }
 
   .msg { @apply flex gap-[13px] mb-[22px]; }
   /* Replies are nested one level under the original, with a connector + arrow. */
-  .msg.reply { @apply relative ml-7 pl-[18px]; }
-  .msg.reply::before { content: ""; @apply absolute left-0 top-[-16px] bottom-1/2 w-[14px] border-l border-b border-border rounded-bl-[10px]; }
-  .msg .reply-arrow { @apply absolute left-[-2px] top-1.5 text-text-3; }
-  .avatar { @apply w-[38px] h-[38px] rounded-full shrink-0 flex items-center justify-center text-[14px] font-semibold text-white; background: linear-gradient(135deg, #7a8cff, #b58bff); }
+  /* Threaded replies render as indented cards (depth margin is set inline),
+     joined to the message above with a soft rounded connector elbow. */
+  /* Threaded replies: indented cards joined by a single continuous vertical
+     thread-spine (::before) with a short tick into each card (::after). Because
+     the spine spans each card plus the gap above it, consecutive segments meet
+     edge-to-edge into one unbroken line — it can never float/disconnect. */
+  .msg.reply { @apply relative rounded-2xl py-3 pl-3.5 pr-3.5; background: var(--bg-2); border: 1px solid var(--border); }
+  .msg.reply::before { content: ""; @apply absolute left-[-13px] top-[-22px] bottom-0 w-0; border-left: 1.5px solid var(--border-2); }
+  .msg.reply::after { content: ""; @apply absolute left-[-13px] top-[31px] w-[13px] h-0; border-top: 1.5px solid var(--border-2); }
+  .msg .reply-arrow { @apply hidden; }
+  .avatar { @apply w-[38px] h-[38px] shrink-0 flex items-center justify-center text-[14px] font-semibold; border-radius: 13px; }
+  .msg .meta-sub { @apply flex items-center gap-2 mt-1 mb-1 text-[12px] text-text-3; min-width: 0; }
+  .msg .to-line { @apply truncate; min-width: 0; }
   .msg .meta { @apply flex items-baseline gap-2 mb-1.5; }
   .msg .name { @apply text-[13.5px] font-semibold; }
   .msg .addr { @apply text-[11.5px] text-text-3; }
@@ -182,11 +265,31 @@
   .msg-details .auth-ok { color: var(--good); }
   .msg-details .auth-bad { color: var(--bad); }
   .msg-details-note { @apply text-text-3; }
-  .msg .text { @apply text-[14px] leading-[1.65]; }
+  .msg { min-width: 0; }
+  .msg > div { min-width: 0; }
+  /* Render the email body on its own white "letter" surface with dark default
+     text — independent of the app theme — so messages whose HTML assumes a white
+     background (the vast majority) stay legible instead of vanishing into a
+     same-colour background. Wrap long words and never scroll the whole pane. */
+  /* Sandboxed email iframe — renders the sender's HTML isolated, on white. */
+  .email-body { @apply min-w-0; }
+  .img-banner { @apply w-full flex items-center gap-2 mb-1.5 px-3 py-2 rounded-lg text-[12px] text-text-2 cursor-pointer; background: var(--accent-soft); border: 1px solid var(--border); transition: .14s var(--ease); }
+  .img-banner:hover { @apply text-text border-accent; }
+  .email-frame { @apply w-full block rounded-[10px] min-w-0; min-height: 40px; border: 1px solid rgba(20,20,30,0.10); background: #fff; color-scheme: light; }
+  .msg .text {
+    @apply text-[14px] leading-[1.65] min-w-0 max-w-full rounded-[10px] px-4 py-3.5;
+    overflow-wrap: anywhere; word-break: break-word;
+    background: #ffffff; color: #1b1c20; border: 1px solid rgba(20,20,30,0.10);
+    color-scheme: light;
+  }
+  .msg .text a { color: #2563eb; }
   .msg .text p { @apply mb-3; }
-  /* Constrain inbound email images so they render in-pane instead of overflowing. */
+  /* Constrain inbound email images/tables/preformatted text so they render
+     in-pane instead of forcing horizontal scroll. */
   .msg .text img { @apply max-w-full h-auto rounded-md my-2; }
-  .msg .text table { @apply max-w-full; }
+  .msg .text table { @apply max-w-full; display: block; overflow-x: auto; }
+  .msg .text pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg .text * { max-width: 100%; }
 
   /* ---- Composer + buttons ---- */
   .send { @apply inline-flex items-center gap-[7px] bg-accent text-white border-none px-4 py-2 rounded-[9px] text-[13px] font-semibold; }
@@ -307,6 +410,18 @@
   .menu { @apply absolute right-0 top-9 z-20 min-w-[170px] border border-border-2 rounded-[10px] p-1; background: var(--glass); backdrop-filter: blur(24px); box-shadow: var(--shadow); }
   .menu button { @apply w-full text-left px-2.5 py-2 rounded-md text-[13px] text-text-2 border-none bg-transparent; }
   .menu button:hover { @apply bg-surface text-text; }
+  /* Right-click context menu on mail rows. */
+  .ctx-backdrop { @apply fixed inset-0 z-[60]; }
+  .ctx-menu { @apply fixed z-[61] min-w-[210px] max-h-[80vh] overflow-y-auto border border-border-2 rounded-[10px] p-1; background: var(--glass); backdrop-filter: blur(24px); box-shadow: var(--shadow); animation: pop .12s var(--ease); }
+  .ctx-menu button { @apply w-full flex items-center gap-2.5 text-left px-2.5 py-2 rounded-md text-[13px] text-text-2 border-none bg-transparent cursor-pointer; }
+  .ctx-menu button:hover { @apply bg-surface text-text; }
+  .ctx-menu button.danger { color: var(--bad); }
+  .ctx-menu button.danger:hover { background: color-mix(in oklch, var(--bad) 14%, transparent); color: var(--bad); }
+  .ctx-sep { @apply h-px my-1 bg-border; }
+  .ctx-menu button.ctx-submenu { @apply justify-between; }
+  .ctx-caret { @apply ml-auto pl-3 text-text-3 text-[15px] leading-none; }
+  .ctx-menu button.ctx-back { @apply text-text-3 font-medium; }
+  .ctx-empty { @apply px-2.5 py-2 text-[12px] text-text-3; }
   .menu button.danger { color: var(--bad); }
   .menu button.danger:hover { background: color-mix(in oklch, var(--bad) 14%, transparent); color: var(--bad); }
 

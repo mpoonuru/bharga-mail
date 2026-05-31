@@ -32,6 +32,16 @@ import {
   SunIcon,
   MoonIcon,
   CalendarPlusIcon,
+  CopyIcon,
+  FlagIcon,
+  TrashIcon,
+  FolderIcon,
+  EnvelopeOpenIcon,
+  EnvelopeIcon,
+  ArchiveIcon,
+  SidebarSimpleIcon,
+  CaretLeftIcon,
+  CaretRightIcon,
   type Icon as PhosphorIcon,
   type IconWeight,
 } from "@phosphor-icons/react";
@@ -66,6 +76,16 @@ export const Icons = {
   sun: SunIcon,
   moon: MoonIcon,
   schedule: CalendarPlusIcon,
+  copy: CopyIcon,
+  flag: FlagIcon,
+  trash: TrashIcon,
+  folder: FolderIcon,
+  envelopeOpen: EnvelopeOpenIcon,
+  envelope: EnvelopeIcon,
+  archive: ArchiveIcon,
+  sidebar: SidebarSimpleIcon,
+  caretLeft: CaretLeftIcon,
+  caretRight: CaretRightIcon,
 } satisfies Record<string, PhosphorIcon>;
 
 export type IconName = keyof typeof Icons;

@@ -32,7 +32,7 @@ const ROLES: { id: AiRole; label: string; hint: string }[] = [
 ];
 
 export function Settings() {
-  const { ai, density, setDensity, theme, toggleTheme, assignRole, setPrivacy, updateModel, addModel, saveAi, connectGmail, connectMicrosoft, font, locale, setFont, setLocale, groupConversations, setGroupConversations, accounts, load, removeAccount } = useApp();
+  const { ai, density, setDensity, theme, toggleTheme, assignRole, setPrivacy, updateModel, addModel, saveAi, connectGmail, connectMicrosoft, font, locale, setFont, setLocale, groupConversations, setGroupConversations, highlights, setHighlights, autoOrganize, setAutoOrganize, accounts, load, removeAccount } = useApp();
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [editAccount, setEditAccount] = useState<{ id: string; initial: Partial<import("@/lib/bridge").ImapAccountInput> } | null>(null);
 
@@ -237,6 +237,20 @@ export function Settings() {
             <button className={!groupConversations ? "on" : ""} onClick={() => setGroupConversations(false)}>Off</button>
           </div>
         </div>
+        <div className="setting-row">
+          <div className="info"><b>Smart highlights</b><p>Highlight dates, amounts, %, and urgency/sentiment in emails.</p></div>
+          <div className="seg">
+            <button className={highlights ? "on" : ""} onClick={() => setHighlights(true)}>On</button>
+            <button className={!highlights ? "on" : ""} onClick={() => setHighlights(false)}>Off</button>
+          </div>
+        </div>
+        <div className="setting-row">
+          <div className="info"><b>Auto-organize new mail</b><p>Summarize &amp; prioritize incoming mail with AI on arrival. Needs a model assigned below; does nothing without one.</p></div>
+          <div className="seg">
+            <button className={autoOrganize ? "on" : ""} onClick={() => setAutoOrganize(true)}>On</button>
+            <button className={!autoOrganize ? "on" : ""} onClick={() => setAutoOrganize(false)}>Off</button>
+          </div>
+        </div>
       </div>
 
       <p className="sub" style={{ fontWeight: 600, color: "var(--text-2)", marginBottom: 8 }}>Accounts</p>
@@ -281,6 +295,16 @@ export function Settings() {
           )}
         </Modal>
         {acctStatus && <p className="sub" style={{ marginTop: 10 }}>{acctStatus}</p>}
+      </div>
+
+      <p className="sub" style={{ fontWeight: 600, color: "var(--text-2)", marginBottom: 8, marginTop: 18 }}>About</p>
+      <div className="card">
+        <div className="setting-row">
+          <div className="info"><b>Aether Mail</b><p>AI-native email client — your mail, your model, your machine. Version 0.1.0.</p></div>
+        </div>
+        <div className="setting-row">
+          <div className="info"><b>Built by</b><p>Arjun P</p></div>
+        </div>
       </div>
     </>
   );
