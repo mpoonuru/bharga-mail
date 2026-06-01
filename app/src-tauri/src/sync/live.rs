@@ -91,7 +91,7 @@ pub async fn poll_once(app: &AppHandle, store: &Arc<Store>) {
         let result = if id.starts_with("ms:") {
             crate::sync::microsoft::incremental(store, &id).await.map(|_| 0usize)
         } else if id.starts_with("imap:") {
-            crate::sync::imap::fetch_folder_async(store.clone(), id.clone(), "INBOX".into(), INBOX_LIMIT, true).await
+            crate::sync::imap::fetch_folder_async(store.clone(), id.clone(), "INBOX".into(), INBOX_LIMIT, true, false).await
         } else {
             crate::sync::gmail::incremental(store, &id).await.map(|_| 0usize)
         };

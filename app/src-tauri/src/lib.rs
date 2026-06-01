@@ -381,11 +381,24 @@ async fn sync_now(account_id: String, group: Option<bool>, state: State<'_, AppS
     if account_id.starts_with("ms:") {
         sync::microsoft::incremental(&state.store, &account_id).await.map(|_| 0).map_err(|e| e.to_string())
     } else if account_id.starts_with("imap:") {
-        sync::imap::fetch_folder_async(state.store.clone(), account_id, "INBOX".into(), 40, group.unwrap_or(true))
+        sync::imap::fetch_folder_async(state.store.clone(), account_id, "INBOX".into(), 75, group.unwrap_or(true), false)
             .await
             .map_err(|e| e.to_string())
     } else {
         sync::gmail::incremental(&state.store, &account_id).await.map(|_| 0).map_err(|e| e.to_string())
+    }
+}
+
+/// Backfill: pull OLDER messages for a folder by re-seeding the most-recent
+/// `count` (force_full bypasses the incremental cursor). Returns messages stored.
+#[tauri::command]
+async fn load_older(account_id: String, folder: String, count: u32, group: Option<bool>, state: State<'_, AppState>) -> Result<usize, String> {
+    if account_id.starts_with("imap:") {
+        sync::imap::fetch_folder_async(state.store.clone(), account_id, folder, count, group.unwrap_or(true), true)
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        Err("Loading older mail is currently available for IMAP accounts.".into())
     }
 }
 
@@ -403,7 +416,7 @@ async fn list_folders(account_id: String, state: State<'_, AppState>) -> Result<
 #[tauri::command]
 async fn sync_folder(account_id: String, folder: String, group: Option<bool>, state: State<'_, AppState>) -> Result<usize, String> {
     if account_id.starts_with("imap:") {
-        sync::imap::fetch_folder_async(state.store.clone(), account_id, folder, 40, group.unwrap_or(true))
+        sync::imap::fetch_folder_async(state.store.clone(), account_id, folder, 75, group.unwrap_or(true), false)
             .await
             .map_err(|e| e.to_string())
     } else {
@@ -706,6 +719,7 @@ pub fn run() {
             get_imap_account,
             remove_account,
             sync_now,
+            load_older,
             list_folders,
             sync_folder,
             folders,

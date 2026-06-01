@@ -9,7 +9,7 @@ use crate::store::{Message, MessageMeta, Party, Security, Store, Thread};
 
 /// Connect, select a folder, fetch the most recent messages, persist them.
 /// Runs blocking IMAP I/O; call via [`fetch_folder_async`] from async code.
-pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, group: bool) -> Result<usize, SyncError> {
+pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, group: bool, force_full: bool) -> Result<usize, SyncError> {
     let acct = store
         .imap_account(account_id)
         .ok_or_else(|| SyncError::Transient(format!("no saved IMAP settings for {account_id} — re-add the account")))?;
@@ -49,7 +49,9 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
     let uid_validity = mailbox.uid_validity;
     let uid_next = mailbox.uid_next;
     let cursor = store.imap_folder_cursor(account_id, folder);
-    let incremental = matches!((uid_validity, cursor), (Some(uv), Some((cv, _))) if uv == cv);
+    // `force_full` (backfill / "load older") bypasses the incremental cursor so a
+    // growing `limit` re-seeds the most-recent N and pulls in older messages.
+    let incremental = !force_full && matches!((uid_validity, cursor), (Some(uv), Some((cv, _))) if uv == cv);
 
     let fetches = if incremental {
         let prev_uid_next = cursor.expect("incremental implies a stored cursor").1;
@@ -440,8 +442,8 @@ pub fn test_login(host: &str, port: u16, security: Security, user: &str, pass: &
     Ok(())
 }
 
-pub async fn fetch_folder_async(store: std::sync::Arc<Store>, account_id: String, folder: String, limit: u32, group: bool) -> Result<usize, SyncError> {
-    tokio::task::spawn_blocking(move || fetch_folder(&store, &account_id, &folder, limit, group))
+pub async fn fetch_folder_async(store: std::sync::Arc<Store>, account_id: String, folder: String, limit: u32, group: bool, force_full: bool) -> Result<usize, SyncError> {
+    tokio::task::spawn_blocking(move || fetch_folder(&store, &account_id, &folder, limit, group, force_full))
         .await
         .map_err(|e| SyncError::Transient(e.to_string()))?
 }

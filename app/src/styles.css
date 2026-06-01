@@ -203,6 +203,9 @@
   .chip-clear { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] p-0 rounded-full border border-border bg-bg-2 text-text-3 cursor-pointer; transition: .14s var(--ease); }
   .chip-clear:hover { @apply text-text bg-surface border-border-2; }
   .list { @apply flex-1 min-h-0 overflow-y-auto px-2.5 pt-1 pb-4 flex flex-col; gap: var(--gap); scroll-behavior: smooth; }
+  .load-older { @apply mx-auto mt-2 mb-3 px-4 py-1.5 rounded-full text-[12px] font-medium text-text-2 border border-border bg-bg-2 cursor-pointer shrink-0; transition: .14s var(--ease); }
+  .load-older:hover:not(:disabled) { @apply text-text border-border-2 bg-surface; }
+  .load-older:disabled { @apply opacity-60 cursor-default; }
   /* Mail row — Design B: squircle avatar + sender/time, subject, AI summary line. */
   .mail { @apply flex gap-3 rounded-xl cursor-pointer border border-transparent; padding: var(--row-pad); transition: .14s var(--ease); background: transparent; }
   .mail:hover { @apply bg-surface; }

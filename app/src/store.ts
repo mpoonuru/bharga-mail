@@ -85,6 +85,9 @@ interface AppState {
   startLiveSync: () => Promise<void>;
   syncing: boolean;
   syncAll: () => Promise<{ total: number; errors: string[] }>;
+  mailWindow: number;
+  loadingOlder: boolean;
+  loadOlder: () => Promise<number>;
   removeAccount: (id: string) => Promise<void>;
   load: () => Promise<void>;
   toggleTask: (id: string) => void;
@@ -326,6 +329,22 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
   syncing: false,
+  mailWindow: 75,
+  loadingOlder: false,
+  loadOlder: async () => {
+    const { accounts, selectedFolder, groupConversations, loadingOlder } = get();
+    if (loadingOlder || accounts.length === 0) return 0;
+    const window = Math.min(get().mailWindow + 75, 1000); // grow the fetch window, capped
+    set({ loadingOlder: true, mailWindow: window });
+    const folder = selectedFolder || "INBOX";
+    let stored = 0;
+    for (const a of accounts) {
+      try { stored += await api.loadOlder(a.id, folder, window, groupConversations); } catch { /* per-account; ignore non-IMAP */ }
+    }
+    set({ threads: await api.listThreads(), loadingOlder: false });
+    return stored;
+  },
+
   syncAll: async () => {
     const accts = get().accounts;
     if (accts.length === 0 || get().syncing) return { total: 0, errors: [] };

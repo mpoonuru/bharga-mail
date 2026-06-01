@@ -331,6 +331,12 @@ export const api = {
     return invoke<number>("sync_now", { accountId, group });
   },
 
+  /** Backfill older mail for a folder by growing the fetch window. Returns stored count. */
+  async loadOlder(accountId: string, folder: string, count: number, group = true): Promise<number> {
+    if (!inTauri) return 0;
+    return invoke<number>("load_older", { accountId, folder, count, group });
+  },
+
   /** Persist read/unread for a thread (and best-effort push to the provider). */
   async setThreadRead(threadId: string, accountId: string, unread: boolean): Promise<void> {
     try {
