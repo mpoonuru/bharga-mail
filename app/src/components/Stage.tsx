@@ -17,6 +17,7 @@ import { Modal } from "@/components/ui/Modal";
 import { fullTime } from "@/lib/date";
 import { avatarColor } from "@/lib/colors";
 import { initials, senderLabel, showAddressLine, folderLabel } from "@/lib/avatar";
+import { senderTrust } from "@/lib/senderTrust";
 import { processEmail } from "@/lib/emailHtml";
 
 /**
@@ -225,6 +226,17 @@ export function Stage() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="meta">
                   <span className="name">{senderLabel(m.from.name, m.from.address)}</span>
+                  {(() => {
+                    const tr = senderTrust(m.meta?.auth);
+                    if (tr.level === "unknown") return null;
+                    return (
+                      <Tooltip label={`${tr.label} — ${tr.detail}`} side="bottom">
+                        <span className={`trust trust-${tr.tone}`} aria-label={tr.label}>
+                          <Icon name={tr.icon} size={14} weight="fill" />
+                        </span>
+                      </Tooltip>
+                    );
+                  })()}
                   {showAddressLine(m.from.name, m.from.address) && <span className="addr">{m.from.address}</span>}
                   <span className="when">{fullTime(m.when)}</span>
                   <button className="details-toggle" title="Show details" onClick={() => setDetailsFor(detailsFor === m.id ? null : m.id)}>

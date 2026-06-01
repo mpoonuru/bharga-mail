@@ -212,6 +212,13 @@
   .mail:not(.unread) .from { @apply font-medium text-text-2; }
   .mail .time { @apply ml-auto text-[11px] text-text-3 shrink-0 inline-flex items-center gap-1; }
   .mail-flag { color: var(--warn); }
+  /* Sender-trust shield (SPF/DKIM/DMARC verdict). */
+  .mail-trust, .trust { @apply inline-flex items-center shrink-0; }
+  .trust { @apply ml-1; }
+  .trust-ok { color: var(--good); }
+  .trust-warn { color: var(--warn); }
+  .trust-bad { color: var(--danger); }
+  .trust-muted { @apply text-text-3; }
   .mail .subj { @apply text-[12.5px] mb-0.5 truncate; }
   .mail .prev { @apply text-[12px] text-text-3 leading-[1.35] line-clamp-1; }
   .mail-ai { @apply flex items-baseline gap-1.5 text-[12px] text-text-2 leading-[1.35]; }

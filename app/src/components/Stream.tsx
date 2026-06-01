@@ -12,6 +12,7 @@ import { titlebarDoubleClick } from "@/lib/bridge";
 import { highlightInline } from "@/lib/highlightInline";
 import { deriveChips } from "@/lib/smartChips";
 import { SmartChips } from "@/components/ui/SmartChips";
+import { senderTrust } from "@/lib/senderTrust";
 
 const TITLES: Record<string, string> = {
   priority: "Priority",
@@ -303,6 +304,7 @@ function MailRow({
   const senderName = t.participants[0] || last?.from.name || last?.from.address || "";
   const senderSeed = last?.from.address || senderName;
   const avPaint = avatarColor(senderSeed);
+  const trust = senderTrust(last?.meta?.auth);
   const hasAttachments = t.messages?.some((m) => m.attachments && m.attachments.length > 0) ?? false;
   return (
     <div className="mail-wrap">
@@ -335,6 +337,11 @@ function MailRow({
           <div className="mail-l1">
             {t.unread && <span className="mail-unread" aria-label="Unread" />}
             <span className="from">{t.participants.map((p) => (p.includes("@") && !p.includes(" ") ? senderLabel(undefined, p) : p)).join(", ")}</span>
+            {trust.level !== "unknown" && (
+              <span className={`mail-trust trust-${trust.tone}`} title={`${trust.label} — ${trust.detail}`} aria-label={trust.label}>
+                <Icon name={trust.icon} size={12} weight="fill" />
+              </span>
+            )}
             <span className="time">{flagged && <Icon name="priority" size={12} weight="fill" className="mail-flag" aria-label="Flagged" />}{hasAttachments && <Icon name="attach" size={12} weight="duotone" aria-label="Has attachment" />}{shortTime(t.lastTime)}</span>
           </div>
           <div className="subj">{t.subject}</div>

@@ -31,6 +31,7 @@ export const threads: Thread[] = [
         from: { name: "Lena Hoffmann", address: "lena@northwind.co" },
         to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
         when: "2026-05-29T09:24:00Z",
+        meta: { auth: "spf=pass; dkim=pass; dmarc=pass", originIp: "203.0.113.24", messageId: "<renewal-7f3a@northwind.co>" },
         bodyHtml:
           "<p>Hi Arjun,</p><p>Following up on the renewal terms we discussed last week. Legal needs the signed agreement back by <b>Friday</b> to keep the same start date. Terms are identical to last year, with a 7% adjustment on the platform tier.</p><p>Happy to hop on a quick call if it's easier. Let me know how you'd like to proceed.</p><p>Best,<br>Lena</p>",
         attachments: [
@@ -58,6 +59,7 @@ export const threads: Thread[] = [
         from: { name: "Marco Reyes", address: "marco@pjtelesoft.de" },
         to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
         when: "2026-05-29T08:51:00Z",
+        meta: { auth: "spf=pass; dkim=pass; dmarc=pass", originIp: "198.51.100.7" },
         bodyHtml:
           "<p>Hey Arjun,</p><p>Are you free Thursday afternoon? I'd like to walk through the new release flow before we ship Friday.</p><p>— Marco</p>",
       },
@@ -79,6 +81,7 @@ export const threads: Thread[] = [
         from: { name: "Stripe", address: "no-reply@stripe.com" },
         to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
         when: "2026-05-29T07:30:00Z",
+        meta: { auth: "spf=pass; dkim=pass; dmarc=pass", originIp: "54.187.205.235", messageId: "<payout-9c11@stripe.com>" },
         bodyHtml: "<p>We initiated a transfer of <b>€4,210.00</b> to your account ending 4421. Funds typically arrive in 1–2 business days.</p>",
       },
     ],
@@ -100,6 +103,7 @@ export const threads: Thread[] = [
         from: { name: "Priya Nair", address: "priya@studio.design" },
         to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
         when: "2026-05-28T16:10:00Z",
+        meta: { auth: "spf=pass; dkim=fail; dmarc=none", originIp: "192.0.2.55" },
         bodyHtml: "<p>Thanks for the call! Notes are attached and the prototype is updated. Let me know your thoughts on the onboarding flow.</p>",
       },
     ],
@@ -120,6 +124,7 @@ export const threads: Thread[] = [
         from: { name: "Bharga Digest", address: "digest@bharga.app" },
         to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
         when: "2026-05-25T06:00:00Z",
+        meta: { auth: "spf=pass; dkim=pass; dmarc=pass" },
         bodyHtml: "<p>This week: 3 releases shipped, 12 issues closed, roadmap updated for Q3.</p>",
       },
     ],

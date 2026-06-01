@@ -45,6 +45,8 @@ import {
   CaretDownIcon,
   PushPinIcon,
   DotsSixVerticalIcon,
+  ShieldCheckIcon,
+  ShieldWarningIcon,
   type Icon as PhosphorIcon,
   type IconWeight,
 } from "@phosphor-icons/react";
@@ -92,6 +94,8 @@ export const Icons = {
   caretLeft: CaretLeftIcon,
   caretRight: CaretRightIcon,
   caretDown: CaretDownIcon,
+  shieldCheck: ShieldCheckIcon,
+  shieldWarning: ShieldWarningIcon,
 } satisfies Record<string, PhosphorIcon>;
 
 export type IconName = keyof typeof Icons;
