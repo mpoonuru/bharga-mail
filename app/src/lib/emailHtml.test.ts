@@ -68,6 +68,23 @@ describe("processEmail quoted-history collapsing", () => {
     expect(processEmail(src, opts).html).not.toContain("bh-quoted");
   });
 
+  it("folds a preceding <hr>/divider INTO the quote (no line dangling above the node)", () => {
+    const src = `<div>Best,<br>Kranthi</div><hr><div>From: Bob &lt;b@x.com&gt;<br>Sent: Mon<br>Subject: Hi</div><div>Original.</div>`;
+    const { html } = processEmail(src, opts);
+    const d = html.indexOf("<details");
+    expect(d).toBeGreaterThan(-1);
+    expect(html.slice(0, d)).toContain("Kranthi");   // new content stays above the fold
+    expect(html.slice(0, d)).not.toContain("<hr");    // divider is NOT left dangling above
+    expect(html.slice(d)).toContain("From:");         // quote (incl. divider) is folded in
+  });
+
+  it("never folds a signature image into the quote", () => {
+    const src = `<div>Regards,<br><img src="logo.png"></div><hr><div>From: Bob<br>Sent: Mon<br>Subject: Hi</div><p>Body.</p>`;
+    const { html } = processEmail(src, opts);
+    const d = html.indexOf("<details");
+    expect(html.slice(0, d)).toContain("logo.png");   // the signature logo stays visible
+  });
+
   it("leaves a normal email (no quote) untouched", () => {
     const src = `<p>Just a normal message with no quoted history at all.</p>`;
     expect(processEmail(src, opts).html).not.toContain("bh-quoted");

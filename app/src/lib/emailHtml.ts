@@ -200,6 +200,33 @@ function isDivider(el: Element): boolean {
   return el.tagName === "HR" || DIVIDER.test((el.textContent ?? "").trim());
 }
 
+/** A separator or empty spacer (divider line, <hr>, or an empty border <div>) —
+ *  but NOT an element that carries real content like an image/table (a logo in a
+ *  signature must never be pulled into the quote fold). */
+function isSeparatorOrEmpty(el: Element): boolean {
+  if (isDivider(el)) return true;
+  const hasText = (el.textContent ?? "").trim().length > 0; // trim() also strips nbsp
+  const hasMedia = !!el.querySelector("img,table,video,svg,picture,iframe,object,hr");
+  return !hasText && !hasMedia;
+}
+
+/** Refine where the collapse starts: pull in any divider/empty separators that
+ *  precede the quote (so a divider line never dangles ABOVE the node), climbing
+ *  out of wrapper elements when the quote is the leading content of its
+ *  container. Stops as soon as real new content precedes it. */
+function collapseStartFrom(boundary: Element): Element {
+  let s = boundary;
+  for (let guard = 0; guard < 8; guard++) {
+    let p = s.previousElementSibling;
+    while (p && isSeparatorOrEmpty(p)) { s = p; p = s.previousElementSibling; }
+    if (p) break; // real content precedes s at this level → clean boundary
+    const parent = s.parentElement;
+    if (!parent || parent.tagName === "BODY") break;
+    s = parent; // nothing above s in this wrapper → climb out of it
+  }
+  return s;
+}
+
 function findQuoteBoundary(doc: Document): Element | null {
   const body = doc.body;
   // 1) Known quote containers — pick the earliest in document order.
@@ -264,8 +291,12 @@ function extractQuoteMeta(raw: string): { who: string; when: string; count: numb
  *  (the earlier sender's avatar bead + name + date on a spine) rather than a
  *  generic "•••". Returns true if anything collapsed. */
 function collapseQuotes(doc: Document): boolean {
-  const boundary = findQuoteBoundary(doc);
-  if (!boundary?.parentNode) return false;
+  const found = findQuoteBoundary(doc);
+  if (!found?.parentNode) return false;
+  // Refine the start so any divider/separator above the quote folds in WITH it
+  // (no dangling line), climbing out of wrapper elements as needed.
+  const boundary = collapseStartFrom(found);
+  if (!boundary.parentNode) return false;
   // Don't collapse a pure forward (no real new content above the quote) — there'd
   // be nothing left to show. A short reply like "Thanks!" must still collapse.
   try {
