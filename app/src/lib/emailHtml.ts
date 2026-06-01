@@ -190,11 +190,51 @@ function scanLinksInDoc(doc: Document, senderDomain?: string): LinkAssessment[] 
   return risky;
 }
 
+// Conversation cards: when the message a reply quotes is ALREADY shown as its own
+// card above, the embedded copy is redundant, so remove it (just the tail — never
+// an accordion, never the original message). Conservative: only acts on a clear
+// quote container or header, and never strips when there's no new content above.
+const TRIM_CONTAINERS = ".gmail_quote, blockquote[type='cite'], .moz-cite-prefix, .yahoo_quoted, #divRplyFwdMsg, #appendonsend, #x_divRplyFwdMsg, #x_appendonsend";
+const TRIM_FWD = /\b(from|von|da):.*\b(sent|gesendet|inviato|date):.*(subject|betreff|oggetto|objet|asunto):/i;
+const TRIM_REPLY = /\bon\b.+\bwrote:|am\b.+\bschrieb.*:|il\b.+\bha\s+scritto:|le\b.+\ba\s+écrit\s*:|el\b.+\bescribió\s*:/i;
+
+function trimQuotedTail(doc: Document): void {
+  let b: Element | null = doc.body.querySelector(TRIM_CONTAINERS);
+  if (!b) {
+    for (const el of doc.body.querySelectorAll("p,div,blockquote,td,font,pre")) {
+      const t = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (t && (TRIM_REPLY.test(t) || TRIM_FWD.test(t))) { b = el; break; }
+    }
+  }
+  if (!b?.parentNode) return;
+  // Pull preceding dividers/empties so the separator doesn't linger.
+  let s: Element = b;
+  for (
+    let p = s.previousElementSibling;
+    p && (p.tagName === "HR" || /^[\s_–—-]{6,}$/.test((p.textContent ?? "").trim()) || ((p.textContent ?? "").trim() === "" && !p.querySelector("img,table")));
+    p = s.previousElementSibling
+  ) s = p;
+  // Never strip if there's essentially no new content above (would blank the card).
+  try {
+    const r = doc.createRange();
+    r.setStart(doc.body, 0);
+    r.setEndBefore(s);
+    if (r.toString().replace(/\s+/g, "").length < 3) return;
+  } catch { return; }
+  const parent = s.parentNode;
+  if (!parent) return;
+  while (s.nextSibling) parent.removeChild(s.nextSibling);
+  parent.removeChild(s);
+}
+
 export function processEmail(
   html: string,
-  opts: { showImages: boolean; highlight: boolean; dark?: boolean; sender?: string },
+  opts: { showImages: boolean; highlight: boolean; dark?: boolean; sender?: string; trimQuote?: boolean },
 ): { html: string; blocked: number; links: LinkAssessment[] } {
   const doc = new DOMParser().parseFromString(sanitizeEmail(html), "text/html");
+  if (opts.trimQuote) {
+    try { trimQuotedTail(doc); } catch { /* never let trimming break rendering */ }
+  }
   if (opts.dark) {
     try { adaptForDark(doc); } catch { /* never let adaptation break rendering */ }
   }

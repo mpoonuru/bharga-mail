@@ -55,13 +55,30 @@ export const threads: Thread[] = [
     aiDraft: "Thursday at 14:00 works for me — I'll send an invite with a Meet link.",
     messages: [
       {
+        id: "m2a",
+        from: { name: "Arjun", address: "itmanagement@pjtelesoft.de" },
+        to: [{ name: "Marco Reyes", address: "marco@pjtelesoft.de" }],
+        when: "2026-05-28T17:40:00Z",
+        meta: { auth: "spf=pass; dkim=pass; dmarc=pass" },
+        bodyHtml: "<p>Hi Marco,</p><p>The staging deploy is green. Can we do a quick walkthrough before the Friday release? I want to confirm the rollback steps and the migration order.</p><p>Thanks,<br>Arjun</p>",
+      },
+      {
         id: "m2",
         from: { name: "Marco Reyes", address: "marco@pjtelesoft.de" },
         to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
         when: "2026-05-29T08:51:00Z",
         meta: { auth: "spf=pass; dkim=pass; dmarc=pass", originIp: "198.51.100.7" },
-        bodyHtml:
-          "<p>Hey Arjun,</p><p>Are you free Thursday afternoon? I'd like to walk through the new release flow before we ship Friday.</p><p>— Marco</p>",
+        bodyHtml: "<p>Hey Arjun,</p><p>Are you free Thursday afternoon? I'd like to walk through the new release flow before we ship Friday.</p><p>— Marco</p>" +
+          "<div>________________________________</div><div>From: Arjun &lt;itmanagement@pjtelesoft.de&gt;<br>Sent: Wednesday, May 28, 2026 5:40 PM<br>Subject: Deployment pipeline</div><p>Hi Marco, the staging deploy is green. Can we do a quick walkthrough…</p>",
+      },
+      {
+        id: "m2c",
+        from: { name: "Arjun", address: "itmanagement@pjtelesoft.de" },
+        to: [{ name: "Marco Reyes", address: "marco@pjtelesoft.de" }],
+        when: "2026-05-29T09:32:00Z",
+        meta: { auth: "spf=pass; dkim=pass; dmarc=pass" },
+        bodyHtml: "<p>Thursday at 14:00 works for me — I'll send an invite with a Meet link. Let's start with the rollback plan.</p><p>— Arjun</p>" +
+          "<div>On Thu, May 29, 2026, Marco Reyes wrote:</div><blockquote>Hey Arjun, Are you free Thursday afternoon? I'd like to walk through the new release flow…</blockquote>",
       },
     ],
   },

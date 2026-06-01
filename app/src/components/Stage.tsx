@@ -26,7 +26,7 @@ import { processEmail } from "@/lib/emailHtml";
  * sanitize (DOMPurify) → block remote images by default → render in a sandboxed
  * iframe (no scripts) with an internal CSP. Auto-sizes to its content.
  */
-function EmailBody({ html, sender }: { html: string; sender?: string }) {
+function EmailBody({ html, sender, trimQuote }: { html: string; sender?: string; trimQuote?: boolean }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [showImages, setShowImages] = useState(false);
   const [confirm, setConfirm] = useState<{ href: string; host: string; level: string } | null>(null);
@@ -36,8 +36,8 @@ function EmailBody({ html, sender }: { html: string; sender?: string }) {
   const dark = theme === "dark";
 
   const processed = useMemo(
-    () => processEmail(html, { showImages, highlight: highlights, dark, sender }),
-    [html, showImages, highlights, dark, sender],
+    () => processEmail(html, { showImages, highlight: highlights, dark, sender, trimQuote }),
+    [html, showImages, highlights, dark, sender, trimQuote],
   );
   const body = processed.html;
 
@@ -284,9 +284,12 @@ export function Stage() {
             </motion.div>
           )}
 
-          {thread.messages.map((m, i) => (
-            <motion.div className={`msg${i > 0 ? " reply" : ""}`} key={m.id} style={i > 0 ? { marginLeft: Math.min(i, 5) * 30 } : undefined} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + i * 0.06, ease: [0.2, 0.8, 0.2, 1] }}>
-              {i > 0 && <span className="reply-arrow" title="Reply"><Icon name="reply" size={13} weight="duotone" /></span>}
+          {/* Conversation: the current (latest) message on top, then the rest of the
+              chain beneath it as individual connected cards (ISO `when` sorts as a
+              string, newest first). */}
+          {[...thread.messages].sort((a, b) => (a.when < b.when ? 1 : a.when > b.when ? -1 : 0)).map((m, i, arr) => (
+            <motion.div className={`msg${i > 0 ? " reply" : ""}`} key={m.id} style={i > 0 ? { marginLeft: Math.min(i, 5) * 26 } : undefined} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + i * 0.06, ease: [0.2, 0.8, 0.2, 1] }}>
+              {i > 0 && <span className="reply-arrow" title="Earlier message"><Icon name="reply" size={13} weight="duotone" /></span>}
               {(() => { const c = avatarColor(m.from.address || m.from.name); return (
               <div className="avatar" style={{ background: c.bg, color: c.fg, boxShadow: `0 0 0 1.5px ${c.ring}` }}>{initials(m.from.name || m.from.address)}</div>
               ); })()}
@@ -332,7 +335,7 @@ export function Stage() {
                     {!m.meta && <div className="msg-details-note">Full headers are captured for IMAP accounts on the next sync.</div>}
                   </div>
                 )}
-                <EmailBody html={m.bodyHtml} sender={m.from.address} />
+                <EmailBody html={m.bodyHtml} sender={m.from.address} trimQuote={i < arr.length - 1} />
                 {m.attachments && m.attachments.length > 0 && (
                   <div className="attach-row" style={{ marginTop: 10 }}>
                     {m.attachments.map((a) => {
