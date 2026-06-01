@@ -33,8 +33,9 @@ interface AppState {
   // navigation
   view: View;
   selectedThreadId: string | null;
+  selectedMessageId: string | null;
   setView: (v: View) => void;
-  selectThread: (id: string) => void;
+  selectThread: (id: string, messageId?: string) => void;
 
   // chrome state
   theme: Theme;
@@ -233,8 +234,9 @@ applyDoc(loadTheme(), loadDensity());
 export const useApp = create<AppState>((set, get) => ({
   view: "priority",
   selectedThreadId: "t1",
+  selectedMessageId: null,
   setView: (v) => set({ view: v, composeOpen: false, drawerOpen: false, mobileStage: false }),
-  selectThread: (id) => set({ selectedThreadId: id, mobileStage: true }),
+  selectThread: (id, messageId) => set({ selectedThreadId: id, selectedMessageId: messageId ?? null, mobileStage: true }),
 
   theme: loadTheme(),
   density: loadDensity(),

@@ -200,8 +200,14 @@ function EmailBody({ html, sender, trimQuote }: { html: string; sender?: string;
 type Mode = "reply" | "replyAll" | "forward";
 
 export function Stage() {
-  const { threads, accounts, selectedThreadId, toggleFocus, createTask, snoozeThread, archiveThread, toggleRead, deleteThread, setView, contentPx, setContentPx } = useApp();
+  const { threads, accounts, selectedThreadId, selectedMessageId, toggleFocus, createTask, snoozeThread, archiveThread, toggleRead, deleteThread, setView, contentPx, setContentPx } = useApp();
   const thread = useMemo(() => threads.find((t) => t.id === selectedThreadId) ?? null, [threads, selectedThreadId]);
+  // The conversation root (oldest message) keeps its full content; replies above
+  // it have their redundant quoted copy trimmed.
+  const oldestMessageId = useMemo(
+    () => thread?.messages.reduce((o, m) => (o && o.when <= m.when ? o : m), thread.messages[0])?.id,
+    [thread],
+  );
   // The mailbox this conversation lives in (account email), for the header chip.
   const mailboxLabel = accounts.find((a) => a.id === thread?.accountId)?.email ?? "";
   const [moreOpen, setMoreOpen] = useState(false);
@@ -284,10 +290,15 @@ export function Stage() {
             </motion.div>
           )}
 
-          {/* Conversation: the current (latest) message on top, then the rest of the
-              chain beneath it as individual connected cards (ISO `when` sorts as a
-              string, newest first). */}
-          {[...thread.messages].sort((a, b) => (a.when < b.when ? 1 : a.when > b.when ? -1 : 0)).map((m, i, arr) => (
+          {/* Conversation: the message you clicked is on top; the rest of the chain
+              follows newest-first as individual connected cards. */}
+          {[...thread.messages].sort((a, b) => {
+            if (selectedMessageId) {
+              if (a.id === selectedMessageId) return -1;
+              if (b.id === selectedMessageId) return 1;
+            }
+            return a.when < b.when ? 1 : a.when > b.when ? -1 : 0;
+          }).map((m, i) => (
             <motion.div className="msg" key={m.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + i * 0.06, ease: [0.2, 0.8, 0.2, 1] }}>
               {(() => { const c = avatarColor(m.from.address || m.from.name); return (
               <div className="avatar" style={{ background: c.bg, color: c.fg, boxShadow: `0 0 0 1.5px ${c.ring}` }}>{initials(m.from.name || m.from.address)}</div>
@@ -334,7 +345,7 @@ export function Stage() {
                     {!m.meta && <div className="msg-details-note">Full headers are captured for IMAP accounts on the next sync.</div>}
                   </div>
                 )}
-                <EmailBody html={m.bodyHtml} sender={m.from.address} trimQuote={i < arr.length - 1} />
+                <EmailBody html={m.bodyHtml} sender={m.from.address} trimQuote={m.id !== oldestMessageId} />
                 {m.attachments && m.attachments.length > 0 && (
                   <div className="attach-row" style={{ marginTop: 10 }}>
                     {m.attachments.map((a) => {

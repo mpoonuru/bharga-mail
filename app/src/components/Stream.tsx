@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion } from "motion/react";
 import dayjs from "dayjs";
 import { useApp } from "@/store";
-import type { Thread, View } from "@/types";
+import type { Thread, View, Message } from "@/types";
 import { Tag } from "@/components/ui/Tag";
 import { Icon } from "@/components/icons";
 import { shortTime } from "@/lib/date";
@@ -13,7 +13,7 @@ import { highlightInline } from "@/lib/highlightInline";
 import { deriveChips } from "@/lib/smartChips";
 import { SmartChips } from "@/components/ui/SmartChips";
 import { senderTrust } from "@/lib/senderTrust";
-import { threadThreat } from "@/lib/threat";
+import { threadThreat, messageThreat } from "@/lib/threat";
 
 const TITLES: Record<string, string> = {
   priority: "Priority",
@@ -30,8 +30,8 @@ const SORT_LABEL: Record<SortMode, string> = { newest: "Newest", sender: "Sender
 const NEXT: Record<SortMode, SortMode> = { newest: "sender", sender: "unread", unread: "newest" };
 
 // Date bucket for the grouped (accordion) view — Outlook-style sections.
-function dateBucket(t: Thread, now: dayjs.Dayjs): string {
-  const d = dayjs(t.lastTime);
+function dateBucket(when: string, now: dayjs.Dayjs): string {
+  const d = dayjs(when);
   if (!d.isValid()) return "Earlier";
   if (d.isSame(now, "day")) return "Today";
   if (d.isSame(now.subtract(1, "day"), "day")) return "Yesterday";
@@ -42,31 +42,28 @@ function dateBucket(t: Thread, now: dayjs.Dayjs): string {
   return d.format("MMMM YYYY");
 }
 
+// One row per message — each email is its own row in the list.
+type Row = { t: Thread; m: Message };
+function sortRows(rows: Row[], mode: SortMode): Row[] {
+  const arr = [...rows];
+  if (mode === "sender") {
+    arr.sort((a, b) => (a.m.from.name || a.m.from.address).localeCompare(b.m.from.name || b.m.from.address));
+  } else if (mode === "unread") {
+    arr.sort((a, b) => Number(b.t.unread) - Number(a.t.unread));
+  } else {
+    arr.sort((a, b) => (a.m.when < b.m.when ? 1 : a.m.when > b.m.when ? -1 : 0));
+  }
+  return arr;
+}
+
 function labelTag(t: Thread) {
   if (t.labels.includes("urgent")) return <Tag variant="urgent">Urgent</Tag>;
   if (t.labels.includes("meeting")) return <Tag variant="cal">Meeting</Tag>;
   return null;
 }
 
-function sortThreads(list: Thread[], mode: SortMode): Thread[] {
-  const arr = [...list];
-  if (mode === "sender") {
-    arr.sort((a, b) => (a.participants[0] ?? "").localeCompare(b.participants[0] ?? ""));
-  } else if (mode === "unread") {
-    arr.sort((a, b) => Number(b.unread) - Number(a.unread));
-  } else {
-    arr.sort((a, b) => {
-      const da = dayjs(a.lastTime);
-      const db = dayjs(b.lastTime);
-      if (da.isValid() && db.isValid()) return db.valueOf() - da.valueOf();
-      return 0;
-    });
-  }
-  return arr;
-}
-
 export function Stream() {
-  const { view, threads, accounts, selectedThreadId, selectThread, triageInbox, setView, archiveThread, snoozeThread, toggleRead, deleteThread, moveThread, markSpam, flaggedIds, toggleFlag, requestCompose, requestAiReply, createTask, folders, selectedAccountId, selectedFolder, syncing, syncAll } = useApp();
+  const { view, threads, accounts, selectedThreadId, selectedMessageId, selectThread, triageInbox, setView, archiveThread, snoozeThread, toggleRead, deleteThread, moveThread, markSpam, flaggedIds, toggleFlag, requestCompose, requestAiReply, createTask, folders, selectedAccountId, selectedFolder, syncing, syncAll } = useApp();
   // When viewing all accounts together, show which mailbox each thread is from.
   const acctEmail: Record<string, string> = Object.fromEntries(accounts.map((a) => [a.id, a.email]));
   const copyText = (s: string) => { try { void navigator.clipboard.writeText(s); } catch { /* ignore */ } };
@@ -132,18 +129,18 @@ export function Stream() {
   const filtered = query
     ? scoped.filter((t) => [t.subject, t.preview, t.participants.join(" ")].join(" ").toLowerCase().includes(query))
     : chipScoped;
-  const list = sortThreads(filtered, sortMode);
-  // Date-grouped accordion sections, but only when sorting by date (Newest) and
-  // not searching — grouping by date is meaningless under sender/unread sort.
+  // Flatten the matched threads into one row PER MESSAGE — each email shows as
+  // its own row, sorted/bucketed by that message's own time.
+  const rows: Row[] = sortRows(filtered.flatMap((t) => t.messages.map((m) => ({ t, m }))), sortMode);
   const grouped = sortMode === "newest" && !query;
   const now = dayjs();
-  const groups: { label: string; items: Thread[] }[] = [];
+  const groups: { label: string; items: Row[] }[] = [];
   if (grouped) {
-    for (const t of list) {
-      const label = dateBucket(t, now);
+    for (const r of rows) {
+      const label = dateBucket(r.m.when, now);
       const tail = groups[groups.length - 1];
-      if (tail && tail.label === label) tail.items.push(t);
-      else groups.push({ label, items: [t] });
+      if (tail && tail.label === label) tail.items.push(r);
+      else groups.push({ label, items: [r] });
     }
   }
 
@@ -193,7 +190,7 @@ export function Stream() {
         </div>
       )}
       <div className="list" ref={listRef}>
-        {list.length === 0 && (
+        {rows.length === 0 && (
           query ? (
             <div className="empty">No results for “{q}”</div>
           ) : threads.length === 0 ? (
@@ -206,22 +203,23 @@ export function Stream() {
           )
         )}
         {(() => {
-          const renderRow = (t: Thread, i: number) => (
+          const renderRow = (r: Row, i: number) => (
             <MailRow
-              key={t.id}
-              t={t}
+              key={r.m.id}
+              t={r.t}
+              msg={r.m}
               index={i}
-              selected={selectedThreadId === t.id}
-              onOpen={() => selectThread(t.id)}
-              onArchive={() => archiveThread(t.id)}
-              onSnooze={() => snoozeThread(t.id)}
-              mailbox={!selectedAccountId ? acctEmail[t.accountId] : undefined}
-              flagged={flaggedIds.includes(t.id)}
+              selected={selectedMessageId ? selectedMessageId === r.m.id : selectedThreadId === r.t.id}
+              onOpen={() => selectThread(r.t.id, r.m.id)}
+              onArchive={() => archiveThread(r.t.id)}
+              onSnooze={() => snoozeThread(r.t.id)}
+              mailbox={!selectedAccountId ? acctEmail[r.t.accountId] : undefined}
+              flagged={flaggedIds.includes(r.t.id)}
               quiet={!!query}
-              onContext={(x, y) => setCtx({ x: Math.max(8, Math.min(x, window.innerWidth - 224)), y: Math.max(8, Math.min(y, window.innerHeight - 580)), t })}
+              onContext={(x, y) => setCtx({ x: Math.max(8, Math.min(x, window.innerWidth - 224)), y: Math.max(8, Math.min(y, window.innerHeight - 580)), t: r.t })}
             />
           );
-          if (!grouped) return list.map((t, i) => renderRow(t, i));
+          if (!grouped) return rows.map((r, i) => renderRow(r, i));
           return groups.map((g) => {
             const open = !collapsedGroups.has(g.label);
             return (
@@ -231,7 +229,7 @@ export function Stream() {
                   <span>{g.label}</span>
                   <span className="date-count">{g.items.length}</span>
                 </button>
-                {open && g.items.map((t, i) => renderRow(t, i))}
+                {open && g.items.map((r, i) => renderRow(r, i))}
               </div>
             );
           });
@@ -296,22 +294,27 @@ export function Stream() {
 }
 
 function MailRow({
-  t, index, selected, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, quiet,
+  t, msg, index, selected, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, quiet,
 }: {
-  t: Thread; index: number; selected: boolean; onOpen: () => void; onArchive: () => void; onSnooze: () => void; onContext: (x: number, y: number) => void; mailbox?: string; flagged?: boolean; quiet?: boolean;
+  t: Thread; msg?: Message; index: number; selected: boolean; onOpen: () => void; onArchive: () => void; onSnooze: () => void; onContext: (x: number, y: number) => void; mailbox?: string; flagged?: boolean; quiet?: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
-  const last = t.messages[t.messages.length - 1];
-  const senderName = t.participants[0] || last?.from.name || last?.from.address || "";
-  const senderSeed = last?.from.address || senderName;
+  // When `msg` is given, this row is one individual email in a conversation;
+  // otherwise it represents the whole thread (latest message).
+  const m = msg ?? t.messages[t.messages.length - 1];
+  const senderName = msg ? (msg.from.name || msg.from.address) : (t.participants[0] || m?.from.name || m?.from.address || "");
+  const senderSeed = m?.from.address || senderName;
   const avPaint = avatarColor(senderSeed);
-  const trust = senderTrust(last?.meta?.auth);
+  const trust = senderTrust(m?.meta?.auth);
   // Escalate to red "Likely phishing" when failed auth + a deceptive link coincide.
-  const threat = threadThreat(t);
+  const threat = msg ? messageThreat(msg) : threadThreat(t);
   const shield = threat.level === "phishing"
     ? { show: true, tone: "bad", icon: "shieldWarning" as const, label: "Likely phishing", detail: threat.reason }
     : { show: trust.level !== "unknown", tone: trust.tone, icon: trust.icon, label: trust.label, detail: trust.detail };
-  const hasAttachments = t.messages?.some((m) => m.attachments && m.attachments.length > 0) ?? false;
+  const hasAttachments = msg ? !!(msg.attachments && msg.attachments.length) : (t.messages?.some((x) => x.attachments && x.attachments.length > 0) ?? false);
+  const rowFrom = msg ? senderLabel(msg.from.name, msg.from.address) : t.participants.map((p) => (p.includes("@") && !p.includes(" ") ? senderLabel(undefined, p) : p)).join(", ");
+  const rowTime = msg ? msg.when : t.lastTime;
+  const rowPreview = msg ? (msg.bodyHtml.replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim()) : t.preview;
   return (
     <div className="mail-wrap">
       {/* swipe-action background — only rendered while actually dragging */}
@@ -342,7 +345,7 @@ function MailRow({
         <div className="mail-main">
           <div className="mail-l1">
             {t.unread && <span className="mail-unread" aria-label="Unread" />}
-            <span className="from">{t.participants.map((p) => (p.includes("@") && !p.includes(" ") ? senderLabel(undefined, p) : p)).join(", ")}</span>
+            <span className="from">{rowFrom}</span>
             <span className="time">
               {shield.show && (
                 <span className={`mail-trust trust-${shield.tone}`} title={`${shield.label} — ${shield.detail}`} aria-label={shield.label}>
@@ -351,17 +354,17 @@ function MailRow({
               )}
               {flagged && <Icon name="priority" size={12} weight="fill" className="mail-flag" aria-label="Flagged" />}
               {hasAttachments && <Icon name="attach" size={12} weight="duotone" aria-label="Has attachment" />}
-              {shortTime(t.lastTime)}
+              {shortTime(rowTime)}
             </span>
           </div>
           <div className="subj">{t.subject}</div>
-          {t.aiSummary ? (
+          {!msg && t.aiSummary ? (
             <div className="mail-ai">
               <Icon name="ai" size={12} weight="duotone" />
               <span className="mail-ai-text">{highlightInline(t.aiSummary)}</span>
             </div>
           ) : (
-            <div className="prev">{t.preview}</div>
+            <div className="prev">{rowPreview}</div>
           )}
           {(labelTag(t) || t.aiDraft || mailbox) && (
             <div className="mail-foot">
