@@ -64,6 +64,20 @@ async fn ai_summarize(thread_text: String, state: State<'_, AppState>) -> Result
     provider.chat(&prompts::summarize(&thread_text)).await.map_err(|e| e.to_string())
 }
 
+/// Phase-2 phishing verdict from the local Triage model (private, no API cost).
+/// Returns the parsed verdict as JSON: { level, confidence, reason }.
+#[tauri::command]
+async fn ai_phishing_check(thread_text: String, links: String, state: State<'_, AppState>) -> Result<String, String> {
+    let model = model_for(&state, Role::Triage)
+        .or_else(|| model_for(&state, Role::Summarize))
+        .ok_or("No model assigned to Triage. Add one in Settings.")?;
+    let out = build_provider(&model)
+        .chat(&prompts::phishing_check(&thread_text, &links))
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::to_string(&prompts::parse_phishing(&out)).map_err(|e| e.to_string())
+}
+
 /// Build a semantic index: embed any threads that don't yet have a vector.
 /// Returns how many were indexed.
 #[tauri::command]
@@ -559,10 +573,41 @@ async fn download_attachment(
         .or_else(|_| app.path().app_data_dir())
         .unwrap_or_else(|_| std::env::temp_dir());
     std::fs::create_dir_all(&dir).ok();
-    let path = dir.join(&name);
+    // SECURITY: `name` is attacker-controlled (the sender sets the attachment's
+    // Content-Disposition filename). `Path::join` would let an *absolute* name
+    // replace the download dir entirely, and `../` segments would traverse out —
+    // a malicious email could otherwise write arbitrary bytes anywhere and (via
+    // the `open` below) get them executed. Reduce to a bare basename and confirm
+    // the result stays inside the download dir.
+    let safe_name = std::path::Path::new(&name)
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .filter(|s| !s.is_empty() && s != "." && s != "..")
+        .unwrap_or_else(|| "attachment".to_string());
+    let path = dir.join(&safe_name);
+    if path.parent() != Some(dir.as_path()) {
+        return Err("Invalid attachment name.".into());
+    }
     std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    // Only auto-open well-known, non-executable document/image types. Anything
+    // else is merely revealed in Finder so we never execute untrusted content.
     #[cfg(target_os = "macos")]
-    let _ = std::process::Command::new("open").arg(&path).spawn();
+    {
+        const OPENABLE: &[&str] = &[
+            "pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "txt", "md",
+            "csv", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pages", "numbers",
+            "key", "ics", "vcf",
+        ];
+        let ext = std::path::Path::new(&safe_name)
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        let mut cmd = std::process::Command::new("open");
+        if !OPENABLE.contains(&ext.as_str()) {
+            cmd.arg("-R"); // reveal in Finder instead of executing
+        }
+        let _ = cmd.arg(&path).spawn();
+    }
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -590,7 +635,6 @@ fn open_store_resilient(dir: &std::path::Path) -> Store {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -639,6 +683,7 @@ pub fn run() {
             set_ai_profile,
             ai_draft_reply,
             ai_summarize,
+            ai_phishing_check,
             ai_ask_inbox,
             ai_triage_inbox,
             reindex_embeddings,

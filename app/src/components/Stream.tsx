@@ -340,7 +340,7 @@ function MailRow({
             <span className="time">
               {trust.level !== "unknown" && (
                 <span className={`mail-trust trust-${trust.tone}`} title={`${trust.label} — ${trust.detail}`} aria-label={trust.label}>
-                  <Icon name={trust.icon} size={12} weight="fill" />
+                  <Icon name={trust.icon} size={15} weight="duotone" />
                 </span>
               )}
               {flagged && <Icon name="priority" size={12} weight="fill" className="mail-flag" aria-label="Flagged" />}

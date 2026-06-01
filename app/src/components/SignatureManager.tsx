@@ -4,6 +4,7 @@ import { Modal } from "@/components/ui/Modal";
 import { RichText, type RichTextHandle } from "@/components/ui/RichText";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/icons";
+import { sanitizeEmail } from "@/lib/emailHtml";
 
 // Manage multiple rich-text signatures: list, add, edit, delete, set default.
 export function SignatureManager() {
@@ -40,7 +41,7 @@ export function SignatureManager() {
           </button>
           <div className="sig-info">
             <b>{s.name}{defaultSignatureId === s.id && <span className="sig-badge">Default</span>}</b>
-            <div className="sig-preview" dangerouslySetInnerHTML={{ __html: s.html }} />
+            <div className="sig-preview" dangerouslySetInnerHTML={{ __html: sanitizeEmail(s.html) }} />
           </div>
           <button className="iconbtn" title="Edit" onClick={() => openEdit(s.id)}><Icon name="compose" size={14} /></button>
           <button className="iconbtn" title="Delete" onClick={() => deleteSignature(s.id)}><Icon name="close" size={14} /></button>

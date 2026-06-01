@@ -69,10 +69,19 @@ export function assessLink(href: string, text: string, senderDomain?: string): L
   const textDom = domainInText(text);
   if (textDom && textDom !== reg) { reasons.push(`Text says “${textDom}” but it actually goes to “${reg}”`); bump("dangerous"); }
 
-  // Brand impersonation (worse when paired with a sign-in lure).
+  // Brand impersonation. A domain is the brand's only when the registrable
+  // domain's main label EXACTLY equals the brand (paypal.com / paypal.de) — not
+  // merely contains it. This catches embedded look-alikes the old substring test
+  // let through, e.g. "secure-paypal-login.com" or "paypal.com.evil.ru".
   const hay = `${text} ${url.pathname}`.toLowerCase();
-  const brand = BRANDS.find((b) => hay.includes(b));
-  if (brand && !reg.includes(brand)) { reasons.push(`Mentions “${brand}” but isn’t a ${brand} domain`); bump(LURE.test(hay) ? "dangerous" : "suspicious"); }
+  const regLabel = reg.split(".")[0] ?? "";
+  const brand = BRANDS.find((b) => hay.includes(b) || reg.includes(b));
+  if (brand && regLabel !== brand) {
+    reasons.push(`Mentions “${brand}” but the real domain is “${reg}”`);
+    // Embedding the brand inside the domain, or pairing it with a sign-in lure,
+    // is a strong phishing signal.
+    bump(reg.includes(brand) || LURE.test(hay) ? "dangerous" : "suspicious");
+  }
 
   // Sign-in request over plain http.
   if (url.protocol === "http:" && LURE.test(hay)) { reasons.push("Asks you to sign in over an unencrypted (http) link"); bump("suspicious"); }

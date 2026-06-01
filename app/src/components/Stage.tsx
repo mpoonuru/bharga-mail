@@ -39,6 +39,21 @@ function EmailBody({ html, sender }: { html: string; sender?: string }) {
     [html, showImages, highlights, dark, sender],
   );
   const body = processed.html;
+
+  // Phase-2: ask the local AI model whether the message itself reads like a
+  // phishing attempt (intent — urgency, credential harvesting), beyond the
+  // deterministic link checks. Only runs when there's something worth judging.
+  const [aiVerdict, setAiVerdict] = useState<{ level: string; confidence: number; reason: string } | null>(null);
+  useEffect(() => {
+    setAiVerdict(null);
+    const plain = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000);
+    const lure = /(verify|suspend|unusual activity|within \d+\s?h|confirm your|update your|password|account will be|sign\s?in|log\s?in)/i.test(plain);
+    if (processed.links.length === 0 && !lure) return;
+    const summary = processed.links.map((l) => `${l.level.toUpperCase()} ${l.host}: ${l.reasons[0]}`).join("\n");
+    let alive = true;
+    void api.phishingCheck(plain, summary).then((v) => { if (alive && v && v.level !== "safe") setAiVerdict(v); });
+    return () => { alive = false; };
+  }, [html, processed.links]);
   // Defense in depth: the sandbox already blocks scripts (no allow-scripts); this
   // internal CSP additionally forbids scripts/objects/frames inside the email and
   // only permits images, inline styles, and fonts.
@@ -124,21 +139,27 @@ function EmailBody({ html, sender }: { html: string; sender?: string }) {
     }
   };
 
-  const danger = processed.links.some((l) => l.level === "dangerous");
+  const danger = processed.links.some((l) => l.level === "dangerous") || aiVerdict?.level === "phishing";
+  const showPhish = processed.links.length > 0 || (!!aiVerdict && aiVerdict.level !== "safe");
   return (
     <div className="email-body">
-      {processed.links.length > 0 && (
+      {showPhish && (
         <div className={`phish-banner${danger ? " danger" : ""}`}>
           <Icon name="shieldWarning" size={15} weight="fill" />
           <div className="phish-main">
-            <b>{danger ? "This message may be a phishing attempt" : "Suspicious links detected"}</b>
-            <ul className="phish-list">
-              {processed.links.slice(0, 4).map((l, i) => (
-                <li key={i}>
-                  <span className="phish-host">{l.host}</span> — {l.reasons[0]}
-                </li>
-              ))}
-            </ul>
+            <b>{danger ? "This message may be a phishing attempt" : "Suspicious message"}</b>
+            {aiVerdict && (
+              <div className="phish-ai"><Icon name="ai" size={11} weight="duotone" /> Bharga AI · {aiVerdict.confidence}% confident — {aiVerdict.reason}</div>
+            )}
+            {processed.links.length > 0 && (
+              <ul className="phish-list">
+                {processed.links.slice(0, 4).map((l, i) => (
+                  <li key={i}>
+                    <span className="phish-host">{l.host}</span> — {l.reasons[0]}
+                  </li>
+                ))}
+              </ul>
+            )}
             <span className="phish-hint">Bharga will confirm the real destination before opening any flagged link.</span>
           </div>
         </div>
@@ -279,7 +300,7 @@ export function Stage() {
                       return (
                         <Tooltip label={`${tr.label} — ${tr.detail}`} side="bottom">
                           <span className={`trust trust-${tr.tone}`} aria-label={tr.label}>
-                            <Icon name={tr.icon} size={14} weight="fill" />
+                            <Icon name={tr.icon} size={17} weight="duotone" />
                           </span>
                         </Tooltip>
                       );

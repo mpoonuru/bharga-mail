@@ -30,6 +30,16 @@ describe("assessLink", () => {
     expect(a.host).toBe("account-verify.ru");
   });
 
+  it("flags brand embedded in the domain (look-alike), not just text mismatch", () => {
+    const a = assessLink("https://secure-paypal-login.com/verify", "Sign in")!;
+    expect(a.level).toBe("dangerous");
+  });
+
+  it("does not flag the brand's real domain", () => {
+    expect(assessLink("https://www.paypal.com/account", "PayPal")!.level).toBe("safe");
+    expect(assessLink("https://paypal.de/login", "Login")!.level).toBe("safe");
+  });
+
   it("treats a raw IP as suspicious", () => {
     expect(assessLink("http://203.0.113.9/pay", "click")!.level).toBe("suspicious");
   });

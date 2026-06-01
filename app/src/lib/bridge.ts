@@ -143,6 +143,29 @@ export const api = {
     }
   },
 
+  /** Phase-2 phishing verdict. Production routes to the local Triage model
+   *  (ai_phishing_check) — private, no API cost. In the browser preview (no
+   *  model) a lightweight on-device heuristic stands in so the UX is demoable. */
+  async phishingCheck(
+    threadText: string,
+    links: string,
+  ): Promise<{ level: "phishing" | "suspicious" | "safe"; confidence: number; reason: string } | null> {
+    try {
+      return JSON.parse(await invoke<string>("ai_phishing_check", { threadText, links }));
+    } catch {
+      const t = `${threadText} ${links}`.toLowerCase();
+      const lc = links.toLowerCase();
+      const threat = /(suspend|unusual activity|within \d+\s?h|verify your|confirm your|update your|account will be|locked|unauthori[sz]ed|act now|click here)/.test(t);
+      const cred = /(log\s?in|sign\s?in|password|verify|account|billing|payment|wallet|bank)/.test(t);
+      const hasDanger = /dangerous/.test(lc);
+      const hasRisky = /dangerous|suspicious/.test(lc);
+      if (hasDanger && (threat || cred)) return { level: "phishing", confidence: 88, reason: "Urgency/credential lure paired with a deceptive link." };
+      if (threat && cred) return { level: "phishing", confidence: 80, reason: "Urgent account threat asking you to verify or sign in." };
+      if (hasRisky || threat) return { level: "suspicious", confidence: 58, reason: hasRisky ? "Contains a suspicious link." : "Uses pressure/urgency language." };
+      return { level: "safe", confidence: 12, reason: "No phishing signals detected." };
+    }
+  },
+
   /** Auto-triage the inbox: summarize + classify priority for new threads. */
   async triageInbox(): Promise<number> {
     try {

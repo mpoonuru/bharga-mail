@@ -358,6 +358,8 @@
   .phish-banner > svg { @apply mt-0.5 shrink-0; }
   .phish-main { @apply min-w-0 flex flex-col gap-1; }
   .phish-main b { @apply text-text text-[12.5px] font-semibold; }
+  .phish-ai { @apply inline-flex items-center gap-1 text-[11.5px] font-medium; color: inherit; }
+  .phish-ai > svg { color: var(--accent); }
   .phish-list { @apply list-none p-0 m-0 flex flex-col gap-0.5 text-text-2; }
   .phish-host { @apply font-semibold; color: inherit; }
   .phish-hint { @apply text-text-3 text-[11px]; }
