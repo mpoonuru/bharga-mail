@@ -206,6 +206,7 @@
   .load-older { @apply mx-auto mt-2 mb-3 px-4 py-1.5 rounded-full text-[12px] font-medium text-text-2 border border-border bg-bg-2 cursor-pointer shrink-0; transition: .14s var(--ease); }
   .load-older:hover:not(:disabled) { @apply text-text border-border-2 bg-surface; }
   .load-older:disabled { @apply opacity-60 cursor-default; }
+  .load-older--done { @apply text-text-3 border-transparent bg-transparent cursor-default; }
   /* Mail row — Design B: squircle avatar + sender/time, subject, AI summary line. */
   .mail { @apply flex gap-3 rounded-xl cursor-pointer border border-transparent; padding: var(--row-pad); transition: .14s var(--ease); background: transparent; }
   .mail:hover { @apply bg-surface; }

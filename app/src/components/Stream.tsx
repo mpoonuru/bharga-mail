@@ -63,7 +63,7 @@ function labelTag(t: Thread) {
 }
 
 export function Stream() {
-  const { view, threads, accounts, selectedThreadId, selectedMessageId, selectThread, triageInbox, setView, archiveThread, snoozeThread, toggleRead, deleteThread, moveThread, markSpam, flaggedIds, toggleFlag, requestCompose, requestAiReply, createTask, folders, selectedAccountId, selectedFolder, syncing, syncAll, loadOlder, loadingOlder } = useApp();
+  const { view, threads, accounts, selectedThreadId, selectedMessageId, selectThread, triageInbox, setView, archiveThread, snoozeThread, toggleRead, deleteThread, moveThread, markSpam, flaggedIds, toggleFlag, requestCompose, requestAiReply, createTask, folders, selectedAccountId, selectedFolder, syncing, syncAll, loadOlder, loadingOlder, reachedEnd } = useApp();
   // When viewing all accounts together, show which mailbox each thread is from.
   const acctEmail: Record<string, string> = Object.fromEntries(accounts.map((a) => [a.id, a.email]));
   const copyText = (s: string) => { try { void navigator.clipboard.writeText(s); } catch { /* ignore */ } };
@@ -235,9 +235,13 @@ export function Stream() {
           });
         })()}
         {!query && rows.length > 0 && (
-          <button className="load-older" onClick={() => void loadOlder()} disabled={loadingOlder}>
-            {loadingOlder ? "Loading older…" : "Load older ↓"}
-          </button>
+          reachedEnd ? (
+            <div className="load-older load-older--done">All caught up · nothing older</div>
+          ) : (
+            <button className="load-older" onClick={() => void loadOlder()} disabled={loadingOlder}>
+              {loadingOlder ? "Loading older…" : "Load older ↓"}
+            </button>
+          )
         )}
       </div>
 

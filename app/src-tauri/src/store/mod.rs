@@ -635,6 +635,20 @@ impl Store {
         }
     }
 
+    /// How many messages we've already cached for an account's folder — used to
+    /// compute the next OLDER chunk to backfill (we always hold the most-recent
+    /// contiguous block, so `total - count` is the boundary below which is unsynced).
+    pub fn message_count_for_folder(&self, account_id: &str, folder: &str) -> usize {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT COUNT(*) FROM messages m JOIN threads t ON m.thread_id = t.id WHERE t.account_id=?1 AND t.folder=?2",
+            params![account_id, folder],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        .max(0) as usize
+    }
+
     /// Advance the IMAP incremental cursor for a folder (upserts the row so it
     /// works even before the folder list has been enumerated).
     pub fn set_imap_folder_cursor(&self, account_id: &str, folder: &str, uid_validity: u32, uid_next: u32) -> rusqlite::Result<()> {

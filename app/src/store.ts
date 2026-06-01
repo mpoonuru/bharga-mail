@@ -85,8 +85,8 @@ interface AppState {
   startLiveSync: () => Promise<void>;
   syncing: boolean;
   syncAll: () => Promise<{ total: number; errors: string[] }>;
-  mailWindow: number;
   loadingOlder: boolean;
+  reachedEnd: boolean;
   loadOlder: () => Promise<number>;
   removeAccount: (id: string) => Promise<void>;
   load: () => Promise<void>;
@@ -282,7 +282,7 @@ export const useApp = create<AppState>((set, get) => ({
   folders: [],
   selectedFolder: null,
   setAccount: (selectedAccountId) => {
-    set({ selectedAccountId, selectedFolder: null, folders: [], view: "inbox", mobileStage: false });
+    set({ selectedAccountId, selectedFolder: null, folders: [], view: "inbox", mobileStage: false, reachedEnd: false });
     if (selectedAccountId) {
       void get().loadFolders(selectedAccountId);
       void get().refreshFolders(selectedAccountId);
@@ -317,7 +317,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setFolder: async (name) => {
     const acct = get().selectedAccountId;
-    set({ selectedFolder: name, view: "inbox", mobileStage: false });
+    set({ selectedFolder: name, view: "inbox", mobileStage: false, reachedEnd: false });
     if (acct && name) {
       try {
         await api.syncFolder(acct, name, get().groupConversations);
@@ -329,19 +329,20 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
   syncing: false,
-  mailWindow: 75,
   loadingOlder: false,
+  reachedEnd: false,
   loadOlder: async () => {
-    const { accounts, selectedFolder, groupConversations, loadingOlder } = get();
-    if (loadingOlder || accounts.length === 0) return 0;
-    const window = Math.min(get().mailWindow + 75, 1000); // grow the fetch window, capped
-    set({ loadingOlder: true, mailWindow: window });
+    const { accounts, selectedFolder, groupConversations, loadingOlder, reachedEnd } = get();
+    if (loadingOlder || reachedEnd || accounts.length === 0) return 0;
+    set({ loadingOlder: true });
     const folder = selectedFolder || "INBOX";
+    const PAGE = 75; // fetch one fixed page of OLDER mail per call (no re-download)
     let stored = 0;
     for (const a of accounts) {
-      try { stored += await api.loadOlder(a.id, folder, window, groupConversations); } catch { /* per-account; ignore non-IMAP */ }
+      try { stored += await api.loadOlder(a.id, folder, PAGE, groupConversations); } catch { /* per-account; ignore non-IMAP */ }
     }
-    set({ threads: await api.listThreads(), loadingOlder: false });
+    // Nothing older came back across every account → we've hit the bottom.
+    set({ threads: await api.listThreads(), loadingOlder: false, reachedEnd: stored === 0 });
     return stored;
   },
 

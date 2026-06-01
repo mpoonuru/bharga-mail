@@ -72,10 +72,33 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
             let _ = session.logout();
             return Ok(0);
         }
-        let start = total.saturating_sub(limit).saturating_add(1).max(1);
-        session
-            .fetch(format!("{start}:{total}"), "(FLAGS BODY[])")
-            .map_err(|e| SyncError::Transient(e.to_string()))?
+        if force_full {
+            // Backfill ("load older"): fetch the `limit` messages immediately
+            // OLDER than what we already hold. We always keep the most-recent
+            // contiguous block, so `total - have` is the boundary below which is
+            // unsynced; pull the next page down from there. No re-download of the
+            // overlap, and no schema needed — just the local message count.
+            let have = store.message_count_for_folder(account_id, folder) as u32;
+            if have >= total {
+                // Already cached the whole mailbox — nothing older to fetch.
+                if let (Some(uv), Some(next)) = (uid_validity, uid_next) {
+                    let _ = store.set_imap_folder_cursor(account_id, folder, uv, next);
+                }
+                let _ = session.logout();
+                return Ok(0);
+            }
+            let hi = total.saturating_sub(have);
+            let lo = hi.saturating_sub(limit).saturating_add(1).max(1);
+            session
+                .fetch(format!("{lo}:{hi}"), "(FLAGS BODY[])")
+                .map_err(|e| SyncError::Transient(e.to_string()))?
+        } else {
+            // Initial seed: the most-recent `limit` messages.
+            let start = total.saturating_sub(limit).saturating_add(1).max(1);
+            session
+                .fetch(format!("{start}:{total}"), "(FLAGS BODY[])")
+                .map_err(|e| SyncError::Transient(e.to_string()))?
+        }
     };
 
     let mut n = 0;
