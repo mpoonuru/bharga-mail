@@ -1,5 +1,7 @@
 import DOMPurify, { type Config } from "dompurify";
 import { assessLink, type LinkAssessment } from "@/lib/linkRisk";
+import { avatarColor } from "@/lib/colors";
+import { initials } from "@/lib/avatar";
 
 /**
  * Email HTML pipeline (the standard mail-client approach):
@@ -225,30 +227,87 @@ function findQuoteBoundary(doc: Document): Element | null {
   return null;
 }
 
-/** Collapse quoted history into a <details>. Returns true if anything collapsed. */
+/** Pull the quoted sender + date + depth out of the quote header so the collapsed
+ *  node can show WHO wrote the earlier message (not a faceless "•••"). */
+function extractQuoteMeta(raw: string): { who: string; when: string; count: number } {
+  // Strip divider runs first — "________From:" would otherwise hide the \b before
+  // "from" (underscore is a word char), so the sender wouldn't parse.
+  const t = raw.replace(/[_]{2,}|[-–—]{2,}/g, " ").replace(/\s+/g, " ").slice(0, 800);
+  let who = "";
+  let when = "";
+  // Outlook: "From: NAME <…>"  +  "Sent/Date: …"
+  const from = t.match(/\b(?:from|von|da|de):\s*([^<\n]+?)\s*(?:<|sent:|gesendet:|inviato:|enviado:|date:|$)/i);
+  if (from?.[1]) who = from[1].trim();
+  const sent = t.match(/\b(?:sent|gesendet|inviato|enviado|date):\s*(.+?)(?:\s*\b(?:to|an|à|para|cc):|$)/i);
+  if (sent?.[1]) when = sent[1].trim();
+  // Gmail: "On <when>, <who> wrote:"
+  if (!who || !when) {
+    const on = t.match(/\bon\b\s+(.+?)\s+wrote:/i);
+    if (on?.[1]) {
+      const seg = on[1].replace(/<[^>]+>/g, "").trim();
+      const lc = seg.lastIndexOf(",");
+      if (lc > -1) { if (!when) when = seg.slice(0, lc).trim(); if (!who) who = seg.slice(lc + 1).trim(); }
+      else if (!who) who = seg;
+    }
+  }
+  if (who.includes("@")) who = (who.split("@")[0] ?? "").replace(/[._-]+/g, " ").trim();
+  who = who.replace(/["']/g, "").trim().slice(0, 28);
+  if (who && who === who.toLowerCase()) who = who.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  // Shorten the date to "Mon DD" when we can find it.
+  const dm = when.match(/\b([A-Z][a-z]{2,8})\.?\s+(\d{1,2})\b/);
+  when = dm ? `${dm[1]} ${dm[2]}` : when.slice(0, 18).trim();
+  const count = ((t.match(/\b(?:from|von|da|de):/gi)?.length) ?? 0) + ((t.match(/\bwrote:/gi)?.length) ?? 0);
+  return { who: who || "Earlier messages", when, count: Math.max(1, count) };
+}
+
+/** Collapse quoted history into a <details>, presented as a Bharga "thread node"
+ *  (the earlier sender's avatar bead + name + date on a spine) rather than a
+ *  generic "•••". Returns true if anything collapsed. */
 function collapseQuotes(doc: Document): boolean {
   const boundary = findQuoteBoundary(doc);
   if (!boundary?.parentNode) return false;
   // Don't collapse a pure forward (no real new content above the quote) — there'd
-  // be nothing left to show.
+  // be nothing left to show. A short reply like "Thanks!" must still collapse.
   try {
     const range = doc.createRange();
     range.setStart(doc.body, 0);
     range.setEndBefore(boundary);
-    // Only bail when there's essentially NOTHING above the quote (a pure forward).
-    // A short reply like "Thanks!" must still collapse the history below it.
     if (range.toString().replace(/\s+/g, "").length < 3) return false;
   } catch { return false; }
 
   const details = doc.createElement("details");
   details.className = "bh-quoted";
   const summary = doc.createElement("summary");
-  summary.textContent = "•••";
-  summary.setAttribute("title", "Show quoted text");
+  summary.className = "bh-qnode";
+  summary.setAttribute("title", "Show earlier messages");
   details.appendChild(summary);
   boundary.parentNode.insertBefore(details, boundary);
   // Move the boundary and everything after it (within this parent) into <details>.
   while (details.nextSibling) details.appendChild(details.nextSibling);
+
+  // Build the node from the quoted header now that the quote is inside <details>.
+  const meta = extractQuoteMeta(details.textContent ?? "");
+  const paint = avatarColor(meta.who);
+  const bead = doc.createElement("span");
+  bead.className = "bh-qbead";
+  bead.textContent = initials(meta.who);
+  bead.setAttribute("style", `background:${paint.bg};color:${paint.fg};box-shadow:0 0 0 1.5px ${paint.ring}`);
+  const label = doc.createElement("span");
+  label.className = "bh-qtext";
+  const who = doc.createElement("b");
+  who.textContent = meta.who;
+  label.appendChild(who);
+  if (meta.when) label.appendChild(doc.createTextNode(` · ${meta.when}`));
+  if (meta.count > 1) {
+    const c = doc.createElement("span");
+    c.className = "bh-qcount";
+    c.textContent = ` · +${meta.count - 1} more`;
+    label.appendChild(c);
+  }
+  const chev = doc.createElement("span");
+  chev.className = "bh-qchev";
+  chev.textContent = "›";
+  summary.append(bead, label, chev);
   return true;
 }
 
