@@ -144,11 +144,18 @@ export function Stream() {
   const now = dayjs();
   const groups: { label: string; items: Row[] }[] = [];
   if (grouped) {
+    // Group by bucket label into ONE group per label (first-seen order). The
+    // previous "merge only adjacent" approach split a label into multiple groups
+    // whenever dateBucket revisited it across the sorted list (e.g. week buckets
+    // straddling a month, or repeated month names across years). That produced
+    // DUPLICATE React keys on the group divs, which silently breaks list
+    // reconciliation — the list froze and stopped updating on folder/view switch.
+    const byLabel = new Map<string, Row[]>();
     for (const r of rows) {
       const label = dateBucket(r.m.when, now);
-      const tail = groups[groups.length - 1];
-      if (tail && tail.label === label) tail.items.push(r);
-      else groups.push({ label, items: [r] });
+      let bucket = byLabel.get(label);
+      if (!bucket) { bucket = []; byLabel.set(label, bucket); groups.push({ label, items: bucket }); }
+      bucket.push(r);
     }
   }
 
@@ -197,7 +204,7 @@ export function Stream() {
           <Icon name="ai" size={12} weight="duotone" /> <span>Not AI-sorted yet — showing unread &amp; urgent.</span>
         </div>
       )}
-      <div className="list" ref={listRef}>
+      <div className="list" ref={listRef} key={`${view}|${selectedFolder ?? ""}|${selectedAccountId ?? ""}|${query ? "q" : ""}`}>
         {rows.length === 0 && (
           query ? (
             <div className="empty">No results for “{q}”</div>
