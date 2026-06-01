@@ -40,7 +40,7 @@ function AccountRow({ a }: { a: Account }) {
   const [busy, setBusy] = useState(false);
   const isFocused = selectedAccountId === a.id;
   return (
-    <Reorder.Item value={a.id} as="div" dragListener={false} dragControls={controls} className="acct-reorder">
+    <Reorder.Item value={a.id} as="div" dragListener={false} dragControls={controls} layout="position" className="acct-reorder">
       <div className="acct-row">
         <button className="acct-drag" title="Drag to reorder" aria-label="Drag to reorder" onPointerDown={(e) => controls.start(e)}>
           <Icon name="grip" size={13} weight="bold" />
