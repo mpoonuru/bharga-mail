@@ -316,11 +316,16 @@
   .ai-summary p { @apply text-[13.5px] leading-[1.5]; }
   .chips { @apply flex gap-2 mt-3 flex-wrap; }
 
-  /* Conversation: every message is its own aligned card; consecutive cards are
-     joined by a short vertical connector at the avatar column. No cascade indent
-     and no elbow, so it stays connected for any number of messages. */
-  .msg { @apply relative flex gap-[13px] mb-[18px] rounded-2xl py-3 pl-3.5 pr-3.5; background: var(--bg-2); border: 1px solid var(--border); }
-  .msg + .msg::before { content: ""; @apply absolute left-[34px] top-[-19px] h-[19px] w-0; border-left: 2px solid color-mix(in oklch, var(--accent) 55%, transparent); }
+  /* Conversation: indented reply cards (30px/level) joined to the message above
+     by a rounded elbow — the curved staircase look. The elbow rises from the
+     parent card's bottom edge and curves into each child; for the root (not a
+     card) a spine runs down its avatar gutter to the first elbow. The 30px/level
+     indent matches the elbow's 16px reach so it stays connected for any depth. */
+  .msg { @apply flex gap-[13px] mb-[22px]; }
+  .msg.reply { @apply relative rounded-2xl py-3 pl-3.5 pr-3.5; background: var(--bg-2); border: 1px solid var(--border); }
+  .msg.reply::before { content: ""; @apply absolute left-[-16px] top-[-22px] w-[16px] h-[40px] rounded-bl-[14px]; border-left: 1.5px solid var(--border-2); border-bottom: 1.5px solid var(--border-2); }
+  .msg:not(.reply):has(+ .msg.reply) { position: relative; }
+  .msg:not(.reply):has(+ .msg.reply)::after { content: ""; @apply absolute left-[14px] top-[44px] bottom-[-1px] w-0; border-left: 1.5px solid var(--border-2); }
   .msg .reply-arrow { @apply hidden; }
   .avatar { @apply w-[38px] h-[38px] shrink-0 flex items-center justify-center text-[14px] font-semibold; border-radius: 13px; }
   .msg .meta-sub { @apply flex items-center gap-2 mt-1 mb-1 text-[12px] text-text-3; min-width: 0; }
