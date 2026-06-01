@@ -245,7 +245,16 @@ export const useApp = create<AppState>((set, get) => ({
   // specific mailbox: clear selectedFolder. Otherwise the view and a folder would
   // both read as selected, and the list would still be folder-filtered.
   setView: (v) => set({ view: v, selectedFolder: null, composeOpen: false, drawerOpen: false, mobileStage: false }),
-  selectThread: (id, messageId) => set({ selectedThreadId: id, selectedMessageId: messageId ?? null, mobileStage: true }),
+  selectThread: (id, messageId) => {
+    set({ selectedThreadId: id, selectedMessageId: messageId ?? null, mobileStage: true });
+    // Opening a conversation marks it read — locally now, and \Seen on the server
+    // (best-effort). Only fire when it was actually unread.
+    const t = get().threads.find((x) => x.id === id);
+    if (t?.unread) {
+      set({ threads: get().threads.map((x) => (x.id === id ? { ...x, unread: false } : x)) });
+      void api.setThreadRead(id, t.accountId, false);
+    }
+  },
 
   theme: loadTheme(),
   density: loadDensity(),

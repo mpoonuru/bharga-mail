@@ -61,7 +61,7 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
             return Ok(0);
         }
         session
-            .uid_fetch(format!("{prev_uid_next}:*"), "(FLAGS BODY[])")
+            .uid_fetch(format!("{prev_uid_next}:*"), "(FLAGS BODY.PEEK[])")
             .map_err(|e| SyncError::Transient(e.to_string()))?
     } else {
         let total = mailbox.exists;
@@ -90,13 +90,13 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
             let hi = total.saturating_sub(have);
             let lo = hi.saturating_sub(limit).saturating_add(1).max(1);
             session
-                .fetch(format!("{lo}:{hi}"), "(FLAGS BODY[])")
+                .fetch(format!("{lo}:{hi}"), "(FLAGS BODY.PEEK[])")
                 .map_err(|e| SyncError::Transient(e.to_string()))?
         } else {
             // Initial seed: the most-recent `limit` messages.
             let start = total.saturating_sub(limit).saturating_add(1).max(1);
             session
-                .fetch(format!("{start}:{total}"), "(FLAGS BODY[])")
+                .fetch(format!("{start}:{total}"), "(FLAGS BODY.PEEK[])")
                 .map_err(|e| SyncError::Transient(e.to_string()))?
         }
     };
@@ -402,7 +402,7 @@ pub fn fetch_attachment(store: &Store, account_id: &str, message_id: &str, filen
     let seq = seqs.into_iter().next().ok_or_else(|| SyncError::Transient("message not found on server".into()))?;
 
     let raw = {
-        let fetches = session.fetch(seq.to_string(), "BODY[]").map_err(|e| SyncError::Transient(e.to_string()))?;
+        let fetches = session.fetch(seq.to_string(), "BODY.PEEK[]").map_err(|e| SyncError::Transient(e.to_string()))?;
         fetches
             .iter()
             .next()
