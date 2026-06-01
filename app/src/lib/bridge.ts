@@ -33,6 +33,21 @@ export async function toggleMaximizeWindow(): Promise<void> {
   }
 }
 
+/** Begin a native OS window drag. Tauri's built-in `data-tauri-drag-region` only
+ *  fires when the cursor is exactly on the attributed element (not its children),
+ *  so the header strips — packed with a logo, title text and buttons — have almost
+ *  no grabbable area. We drive the drag explicitly from a mousedown handler. On
+ *  macOS this uses performWindowDragWithEvent, so double-click-to-zoom still works. */
+export async function startWindowDrag(): Promise<void> {
+  if (!inTauri) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().startDragging();
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Double-click handler for title-bar / drag-region strips: zoom (maximize) the
  *  window like a native macOS title bar — but ignore double-clicks that land on
  *  interactive controls (buttons, inputs, links) inside the strip. */

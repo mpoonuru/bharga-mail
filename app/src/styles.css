@@ -300,6 +300,13 @@
   .recip-chip button:hover { @apply text-danger; }
   .chips-field { @apply flex-1 min-w-[120px] bg-transparent border-none outline-none text-[13.5px] text-text py-1; font-family: var(--font); }
   .chips-field::placeholder { @apply text-text-3; }
+  .chips-entry { @apply relative flex-1 min-w-[120px]; }
+  .from-select { @apply flex-1 min-w-0 bg-transparent border-none outline-none text-[13.5px] text-text py-1 cursor-pointer; font-family: var(--font); }
+  .recip-suggest { @apply absolute left-0 top-full z-[90] mt-1 w-max min-w-[240px] max-w-[380px] rounded-xl border border-border-2 py-1 list-none overflow-hidden; background: var(--bg-2); box-shadow: var(--shadow); }
+  .recip-suggest li { @apply flex items-baseline gap-2 px-3 py-1.5 cursor-pointer; }
+  .recip-suggest li.active { background: var(--surface); }
+  .rs-name { @apply text-[13px] text-text shrink-0; }
+  .rs-addr { @apply text-[12px] text-text-3 truncate; }
 
   /* ---- Send later (schedule) popover ---- */
   .sendlater { @apply relative inline-flex; }

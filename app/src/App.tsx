@@ -15,7 +15,7 @@ import { Icon } from "@/components/icons";
 import { useHotkeys } from "@/lib/useHotkeys";
 import { useViewport } from "@/lib/useViewport";
 import { applyFont, applyLocale } from "@/lib/prefs";
-import { toggleMaximizeWindow } from "@/lib/bridge";
+import { toggleMaximizeWindow, startWindowDrag } from "@/lib/bridge";
 
 export function App() {
   const { view, load, focusMode, composeOpen, theme, density } = useApp();
@@ -38,6 +38,16 @@ export function App() {
   //  • suppress the webview's default right-click menu (Reload/Inspect) everywhere
   //    except editable fields, where the native copy/paste menu is wanted.
   useEffect(() => {
+    // Anything interactive that must keep its own click/drag must be excluded here.
+    const NO_DRAG = "button, input, textarea, select, a, [role='button'], [contenteditable='true'], .ProseMirror, .recip-chip, .splitter";
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const t = e.target as HTMLElement | null;
+      if (!t || t.closest(NO_DRAG)) return;
+      // Grab anywhere inside a header drag-region (title text, logo, empty space)
+      // and move the window — Tauri's native attribute alone barely grabs anything.
+      if (t.closest("[data-tauri-drag-region]")) void startWindowDrag();
+    };
     const onDblClick = (e: MouseEvent) => {
       const t = e.target as HTMLElement | null;
       if (!t || t.closest("button, input, textarea, a, [role='button'], .ProseMirror")) return;
@@ -48,9 +58,11 @@ export function App() {
       if (t && t.closest("input, textarea, [contenteditable='true'], .ProseMirror")) return;
       e.preventDefault();
     };
+    document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("dblclick", onDblClick);
     document.addEventListener("contextmenu", onContextMenu);
     return () => {
+      document.removeEventListener("mousedown", onMouseDown);
       document.removeEventListener("dblclick", onDblClick);
       document.removeEventListener("contextmenu", onContextMenu);
     };

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { useApp } from "@/store";
 import { api } from "@/lib/bridge";
@@ -7,13 +7,18 @@ import { Button } from "@/components/ui/Button";
 import { RichText, type RichTextHandle } from "@/components/ui/RichText";
 import { Attachments, type Attach } from "@/components/ui/Attachments";
 import { SendLater } from "@/components/ui/SendLater";
-import { RecipientChips } from "@/components/ui/RecipientChips";
+import { RecipientChips, type Contact } from "@/components/ui/RecipientChips";
 
 // Full-screen new-message composer (opened from the sidebar or the "C" hotkey).
 export function Compose() {
   const setCompose = useApp((s) => s.setCompose);
   const queueSend = useApp((s) => s.queueSend);
+  const accounts = useApp((s) => s.accounts);
+  const selectedAccountId = useApp((s) => s.selectedAccountId);
+  const threads = useApp((s) => s.threads);
   const defaultSig = useApp((s) => s.signatures.find((x) => x.id === s.defaultSignatureId));
+  // "From" account — defaults to the focused account, else the first connected one.
+  const [from, setFrom] = useState(selectedAccountId ?? accounts[0]?.id ?? "");
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
   const [bcc, setBcc] = useState("");
@@ -24,6 +29,28 @@ export function Compose() {
   const editorRef = useRef<RichTextHandle>(null);
   const initialHtml = defaultSig?.html ? `<p></p><p>--<br>${defaultSig.html}</p>` : "";
 
+  // Autocomplete contacts: every distinct From/To address seen across the mailbox,
+  // newest threads first (so frequent/recent correspondents surface). Skip our own
+  // account addresses.
+  const contacts = useMemo<Contact[]>(() => {
+    const own = new Set(accounts.map((a) => a.email.toLowerCase()));
+    const seen = new Set<string>();
+    const out: Contact[] = [];
+    for (const t of threads) {
+      for (const m of t.messages) {
+        for (const p of [m.from, ...(m.to ?? [])]) {
+          const addr = p?.address?.trim();
+          if (!addr || !addr.includes("@")) continue;
+          const key = addr.toLowerCase();
+          if (seen.has(key) || own.has(key)) continue;
+          seen.add(key);
+          out.push({ name: p.name?.trim() || undefined, address: addr });
+        }
+      }
+    }
+    return out;
+  }, [threads, accounts]);
+
   async function help() {
     setBusy(true);
     const draft = await api.draftReply("__new__", `Subject: ${subject}\nTo: ${to}`);
@@ -33,6 +60,7 @@ export function Compose() {
 
   async function send(atTs?: number) {
     await queueSend({
+      accountId: from || undefined,
       to,
       cc,
       bcc,
@@ -54,15 +82,25 @@ export function Compose() {
         </div>
         <h1 className="subject">New message</h1>
         <div className="composer">
+          {accounts.length > 0 && (
+            <div className="recip-row">
+              <span className="recip-lbl">From</span>
+              <select className="from-select" value={from} onChange={(e) => setFrom(e.target.value)}>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.email}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="recip-row">
             <span className="recip-lbl">To</span>
-            <RecipientChips value={to} onChange={setTo} placeholder="Add people…" />
+            <RecipientChips value={to} onChange={setTo} placeholder="Add people…" suggestions={contacts} />
             {!showCc && (
               <button type="button" className="recip-toggle" onClick={() => setShowCc(true)} title="Add Cc / Bcc">Cc / Bcc</button>
             )}
           </div>
-          {showCc && <div className="recip-row"><span className="recip-lbl">Cc</span><RecipientChips value={cc} onChange={setCc} placeholder="Add Cc…" /></div>}
-          {showCc && <div className="recip-row"><span className="recip-lbl">Bcc</span><RecipientChips value={bcc} onChange={setBcc} placeholder="Add Bcc…" /></div>}
+          {showCc && <div className="recip-row"><span className="recip-lbl">Cc</span><RecipientChips value={cc} onChange={setCc} placeholder="Add Cc…" suggestions={contacts} /></div>}
+          {showCc && <div className="recip-row"><span className="recip-lbl">Bcc</span><RecipientChips value={bcc} onChange={setBcc} placeholder="Add Bcc…" suggestions={contacts} /></div>}
           <input placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} style={{ ...inp, borderTop: "1px solid var(--border)" }} />
           <div style={{ marginTop: 10 }}>
             <RichText ref={editorRef} initialHtml={initialHtml} placeholder="Write your message… (or let AI draft it)" minHeight={200} />

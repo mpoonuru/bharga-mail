@@ -109,6 +109,9 @@ interface AppState {
     subject: string;
     body: string;
     threadId?: string;
+    /** Explicit sending account (the Compose "From" picker). Falls back to the
+     *  thread's account / focused account / first account when omitted. */
+    accountId?: string;
     attachments?: { name: string; mime: string; dataB64: string }[];
     /** Absolute epoch-seconds to send at (scheduled send). Omit for immediate. */
     sendAt?: number;
@@ -651,14 +654,14 @@ export const useApp = create<AppState>((set, get) => ({
       set({ triaging: false });
     }
   },
-  queueSend: async ({ to, cc, bcc, subject, body, threadId, attachments, sendAt }) => {
+  queueSend: async ({ to, cc, bcc, subject, body, threadId, accountId: fromId, attachments, sendAt }) => {
     const def = get().signatures.find((s) => s.id === get().defaultSignatureId);
     const fullBody = def?.html ? `${body}<br><br>--<br>${def.html}` : body;
-    // Route from the right account: a reply uses the thread's account; a new
-    // message uses the focused account (or the only/first connected one).
+    // Route from the right account: an explicit From (Compose picker) wins, else a
+    // reply uses the thread's account, else the focused / first connected one.
     const thread = threadId ? get().threads.find((t) => t.id === threadId) : null;
     const accountId =
-      thread?.accountId ?? get().selectedAccountId ?? get().accounts[0]?.id ?? activeAccountId;
+      fromId ?? thread?.accountId ?? get().selectedAccountId ?? get().accounts[0]?.id ?? activeAccountId;
     const scheduled = typeof sendAt === "number" && sendAt * 1000 > Date.now();
     const id = await api.queueSend({
       accountId,
