@@ -316,18 +316,11 @@
   .ai-summary p { @apply text-[13.5px] leading-[1.5]; }
   .chips { @apply flex gap-2 mt-3 flex-wrap; }
 
-  .msg { @apply flex gap-[13px] mb-[22px]; }
-  /* Threaded replies: indented cards (30px/level, depth set inline) joined to the
-     parent by a rounded elbow connector. The elbow rises from the parent card's
-     solid bottom edge and curves into each child — the approved staircase look. */
-  .msg.reply { @apply relative rounded-2xl py-3 pl-3.5 pr-3.5; background: var(--bg-2); border: 1px solid var(--border); }
-  .msg.reply::before { content: ""; @apply absolute left-[-16px] top-[-22px] w-[16px] h-[40px] rounded-bl-[14px]; border-left: 1.5px solid var(--border-2); border-bottom: 1.5px solid var(--border-2); }
-  /* The root message isn't a card, so the first reply's elbow has no edge above it
-     to attach to and looks like it floats. When the root has replies, run a spine
-     down its left gutter — from below its avatar to the first elbow (x:14 = the
-     reply elbow's column) — so root → first reply reads as connected like the rest. */
-  .msg:not(.reply):has(+ .msg.reply) { position: relative; }
-  .msg:not(.reply):has(+ .msg.reply)::after { content: ""; @apply absolute left-[15px] top-[44px] bottom-[-1px] w-0; border-left: 1.5px solid var(--border-2); }
+  /* Conversation: every message is its own aligned card; consecutive cards are
+     joined by a short vertical connector at the avatar column. No cascade indent
+     and no elbow, so it stays connected for any number of messages. */
+  .msg { @apply relative flex gap-[13px] mb-[18px] rounded-2xl py-3 pl-3.5 pr-3.5; background: var(--bg-2); border: 1px solid var(--border); }
+  .msg + .msg::before { content: ""; @apply absolute left-[34px] top-[-19px] h-[19px] w-0; border-left: 2px solid color-mix(in oklch, var(--accent) 55%, transparent); }
   .msg .reply-arrow { @apply hidden; }
   .avatar { @apply w-[38px] h-[38px] shrink-0 flex items-center justify-center text-[14px] font-semibold; border-radius: 13px; }
   .msg .meta-sub { @apply flex items-center gap-2 mt-1 mb-1 text-[12px] text-text-3; min-width: 0; }
