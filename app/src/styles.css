@@ -227,8 +227,26 @@
   .trust-warn { color: var(--warn); }
   .trust-bad { color: var(--danger); }
   .trust-muted { @apply text-text-3; }
-  .mail .subj { @apply text-[12.5px] mb-0.5 truncate; }
+  .subj-row { @apply flex items-center gap-2 mb-0.5; }
+  .mail .subj { @apply text-[12.5px] truncate min-w-0 flex-1; }
+  .mail-replyglyph { @apply text-text-3 shrink-0; }
   .mail .prev { @apply text-[12px] text-text-3 leading-[1.35] line-clamp-1; }
+  /* Conversation count badge + disclosure chevron (Apple-Mail accordion). */
+  .convo-toggle { @apply shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-[2px] border-none cursor-pointer text-[11px] font-semibold; background: var(--accent-soft); color: var(--accent); transition: .12s var(--ease); }
+  .convo-toggle:hover { background: color-mix(in oklch, var(--accent) 22%, transparent); }
+  .convo-count { @apply leading-none; }
+  /* Expanded accordion: child messages, indented under their header with a spine. */
+  .convo.open { @apply rounded-xl; background: color-mix(in oklch, var(--surface) 55%, transparent); }
+  .convo-kids { @apply ml-[26px] pl-3 pb-1 flex flex-col gap-0.5; border-left: 1.5px solid var(--border-2); }
+  .convo-kid { @apply flex gap-2.5 items-start px-2 py-[7px] rounded-lg cursor-pointer border border-transparent; transition: .12s var(--ease); }
+  .convo-kid:hover { @apply bg-surface; }
+  .convo-kid.sel { @apply border-border-2; background-color: var(--surface); background-image: var(--ambient); }
+  .ck-av { @apply shrink-0 w-7 h-7 flex items-center justify-center text-[11px] font-semibold select-none rounded-[9px]; }
+  .ck-main { @apply min-w-0 flex-1; }
+  .ck-l1 { @apply flex items-center gap-1.5; }
+  .ck-from { @apply text-[12.5px] font-semibold truncate; }
+  .ck-time { @apply ml-auto text-[11px] text-text-3 shrink-0 inline-flex items-center gap-1; }
+  .ck-prev { @apply text-[11.5px] text-text-3 line-clamp-1 mt-px; }
   .mail-ai { @apply flex items-baseline gap-1.5 text-[12px] text-text-2 leading-[1.35]; }
   .mail-ai > svg { color: var(--accent); flex: none; align-self: center; }
   .mail-ai-text { @apply line-clamp-1; }

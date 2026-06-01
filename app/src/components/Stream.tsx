@@ -42,8 +42,35 @@ function dateBucket(when: string, now: dayjs.Dayjs): string {
   return d.format("MMMM YYYY");
 }
 
-// One row per message — each email is its own row in the list.
+// One row per CONVERSATION — `m` is the thread's newest message (used for the
+// collapsed row's time/preview/avatar). Multi-message threads expand inline.
 type Row = { t: Thread; m: Message };
+
+/** The newest message in a thread (by parsed date — `when` is RFC 2822, not sortable). */
+function latestMessage(t: Thread): Message {
+  return t.messages.reduce((a, b) => (whenMs(b.when) > whenMs(a.when) ? b : a), t.messages[0]);
+}
+
+/** Apple-Mail-style participant line: distinct senders by first appearance,
+ *  first names, last one joined with "&" (e.g. "Imran, Aamir & Lilian"). */
+function participantsLabel(t: Thread): string {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const m of t.messages) {
+    const addr = (m.from.address || "").toLowerCase();
+    const first = m.from.name?.trim().split(/\s+/)[0] || m.from.address || "";
+    const key = addr || first.toLowerCase();
+    if (!first || seen.has(key)) continue;
+    seen.add(key);
+    names.push(first);
+  }
+  if (names.length === 0) return t.participants?.[0] ?? "";
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
+}
+
+const plainPreview = (html: string) =>
+  html.replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
 // `when` arrives as the raw RFC 2822 email Date header (e.g. "Wed, 16 Oct 2024
 // 13:02:49 +0200"), which is NOT lexically sortable — string compare orders by
 // weekday name and day digits, not the actual instant. Always sort on the parsed
@@ -83,6 +110,9 @@ export function Stream() {
   // scroll) whenever the view/folder/account changes.
   const [activeChips, setActiveChips] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // Which conversations have their accordion expanded (thread id set).
+  const [expandedConvos, setExpandedConvos] = useState<Set<string>>(new Set());
+  const toggleConvo = (id: string) => setExpandedConvos((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   // On any selection change (smart view, folder, or account) reset the per-list
   // UI state: scroll to top, clear chip filters, and — importantly — un-collapse
   // date groups. Date-bucket labels ("Last week"…) are shared across folders, so
@@ -91,6 +121,7 @@ export function Stream() {
     listRef.current?.scrollTo({ top: 0 });
     setActiveChips(new Set());
     setCollapsedGroups(new Set());
+    setExpandedConvos(new Set());
   }, [view, selectedFolder, selectedAccountId]);
   const toggleGroup = (label: string) => setCollapsedGroups((s) => { const n = new Set(s); if (n.has(label)) n.delete(label); else n.add(label); return n; });
 
@@ -141,9 +172,10 @@ export function Stream() {
   const filtered = query
     ? scoped.filter((t) => [t.subject, t.preview, t.participants.join(" ")].join(" ").toLowerCase().includes(query))
     : chipScoped;
-  // Flatten the matched threads into one row PER MESSAGE — each email shows as
-  // its own row, sorted/bucketed by that message's own time.
-  const rows: Row[] = sortRows(filtered.flatMap((t) => t.messages.map((m) => ({ t, m }))), sortMode);
+  // One row per CONVERSATION (Apple-Mail style): the thread, keyed/sorted/bucketed
+  // by its NEWEST message. Multi-message threads carry a count badge + a disclosure
+  // chevron and expand inline into their messages (newest→oldest).
+  const rows: Row[] = sortRows(filtered.map((t) => ({ t, m: latestMessage(t) })), sortMode);
   const grouped = sortMode === "newest" && !query;
   const now = dayjs();
   const groups: { label: string; items: Row[] }[] = [];
@@ -222,22 +254,50 @@ export function Stream() {
           )
         )}
         {(() => {
-          const renderRow = (r: Row, i: number) => (
-            <MailRow
-              key={r.m.id}
-              t={r.t}
-              msg={r.m}
-              index={i}
-              selected={selectedMessageId ? selectedMessageId === r.m.id : selectedThreadId === r.t.id}
-              onOpen={() => selectThread(r.t.id, r.m.id)}
-              onArchive={() => archiveThread(r.t.id)}
-              onSnooze={() => snoozeThread(r.t.id)}
-              mailbox={!selectedAccountId ? acctEmail[r.t.accountId] : undefined}
-              flagged={flaggedIds.includes(r.t.id)}
-              quiet={!!query}
-              onContext={(x, y) => setCtx({ x: Math.max(8, Math.min(x, window.innerWidth - 224)), y: Math.max(8, Math.min(y, window.innerHeight - 580)), t: r.t })}
-            />
-          );
+          const openCtx = (t: Thread) => (x: number, y: number) =>
+            setCtx({ x: Math.max(8, Math.min(x, window.innerWidth - 224)), y: Math.max(8, Math.min(y, window.innerHeight - 580)), t });
+          const renderRow = (r: Row, i: number) => {
+            const count = r.t.messages.length;
+            const isOpen = expandedConvos.has(r.t.id);
+            const kids = isOpen && count > 1
+              ? [...r.t.messages].sort((a, b) => whenMs(b.when) - whenMs(a.when))
+              : [];
+            return (
+              <div key={r.t.id} className={`convo${isOpen ? " open" : ""}`}>
+                <MailRow
+                  t={r.t}
+                  msg={r.m}
+                  convo
+                  count={count}
+                  expanded={isOpen}
+                  onToggleExpand={count > 1 ? () => toggleConvo(r.t.id) : undefined}
+                  index={i}
+                  selected={selectedThreadId === r.t.id && !selectedMessageId}
+                  onOpen={() => selectThread(r.t.id, r.m.id)}
+                  onArchive={() => archiveThread(r.t.id)}
+                  onSnooze={() => snoozeThread(r.t.id)}
+                  mailbox={!selectedAccountId ? acctEmail[r.t.accountId] : undefined}
+                  flagged={flaggedIds.includes(r.t.id)}
+                  quiet={!!query}
+                  onContext={openCtx(r.t)}
+                />
+                {kids.length > 0 && (
+                  <div className="convo-kids">
+                    {kids.map((cm) => (
+                      <ChildRow
+                        key={cm.id}
+                        t={r.t}
+                        m={cm}
+                        selected={selectedMessageId === cm.id}
+                        onOpen={() => selectThread(r.t.id, cm.id)}
+                        onContext={openCtx(r.t)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          };
           if (!grouped) return rows.map((r, i) => renderRow(r, i));
           return groups.map((g) => {
             const open = !collapsedGroups.has(g.label);
@@ -323,26 +383,33 @@ export function Stream() {
 
 function MailRow({
   t, msg, index, selected, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, quiet,
+  convo, count, expanded, onToggleExpand,
 }: {
   t: Thread; msg?: Message; index: number; selected: boolean; onOpen: () => void; onArchive: () => void; onSnooze: () => void; onContext: (x: number, y: number) => void; mailbox?: string; flagged?: boolean; quiet?: boolean;
+  convo?: boolean; count?: number; expanded?: boolean; onToggleExpand?: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
-  // When `msg` is given, this row is one individual email in a conversation;
-  // otherwise it represents the whole thread (latest message).
+  // `convo`: the collapsed conversation header (msg = its newest message, but the
+  // sender line shows the whole participant list + a message-count badge).
   const m = msg ?? t.messages[t.messages.length - 1];
   const senderName = msg ? (msg.from.name || msg.from.address) : (t.participants[0] || m?.from.name || m?.from.address || "");
   const senderSeed = m?.from.address || senderName;
   const avPaint = avatarColor(senderSeed);
   const trust = senderTrust(m?.meta?.auth);
   // Escalate to red "Likely phishing" when failed auth + a deceptive link coincide.
-  const threat = msg ? messageThreat(msg) : threadThreat(t);
+  const threat = convo ? threadThreat(t) : msg ? messageThreat(msg) : threadThreat(t);
   const shield = threat.level === "phishing"
     ? { show: true, tone: "bad", icon: "shieldWarning" as const, label: "Likely phishing", detail: threat.reason }
     : { show: trust.level !== "unknown", tone: trust.tone, icon: trust.icon, label: trust.label, detail: trust.detail };
-  const hasAttachments = msg ? !!(msg.attachments && msg.attachments.length) : (t.messages?.some((x) => x.attachments && x.attachments.length > 0) ?? false);
-  const rowFrom = msg ? senderLabel(msg.from.name, msg.from.address) : t.participants.map((p) => (p.includes("@") && !p.includes(" ") ? senderLabel(undefined, p) : p)).join(", ");
-  const rowTime = msg ? msg.when : t.lastTime;
-  const rowPreview = msg ? (msg.bodyHtml.replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim()) : t.preview;
+  const hasAttachments = convo ? (t.messages?.some((x) => x.attachments && x.attachments.length > 0) ?? false) : msg ? !!(msg.attachments && msg.attachments.length) : false;
+  const multi = !!(convo && count && count > 1);
+  const isReplyish = /^\s*(re|aw|fwd|fw)\s*:/i.test(t.subject);
+  const rowFrom = convo
+    ? participantsLabel(t)
+    : msg ? senderLabel(msg.from.name, msg.from.address)
+    : t.participants.map((p) => (p.includes("@") && !p.includes(" ") ? senderLabel(undefined, p) : p)).join(", ");
+  const rowTime = m?.when ?? t.lastTime;
+  const rowPreview = plainPreview(m?.bodyHtml ?? "") || t.preview;
   return (
     <div className="mail-wrap">
       {/* swipe-action background — only rendered while actually dragging */}
@@ -373,6 +440,7 @@ function MailRow({
         <div className="mail-main">
           <div className="mail-l1">
             {t.unread && <span className="mail-unread" aria-label="Unread" />}
+            {convo && isReplyish && <Icon name="reply" size={12} weight="bold" className="mail-replyglyph" aria-hidden />}
             <span className="from">{rowFrom}</span>
             <span className="time">
               {shield.show && (
@@ -385,8 +453,21 @@ function MailRow({
               {shortTime(rowTime)}
             </span>
           </div>
-          <div className="subj">{t.subject}</div>
-          {!msg && t.aiSummary ? (
+          <div className="subj-row">
+            <span className="subj">{t.subject}</span>
+            {multi && onToggleExpand && (
+              <button
+                className={`convo-toggle${expanded ? " open" : ""}`}
+                onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+                title={`${count} messages`}
+                aria-label={`${count} messages, ${expanded ? "collapse" : "expand"}`}
+              >
+                <span className="convo-count">{count}</span>
+                <Icon name={expanded ? "caretDown" : "caretRight"} size={11} weight="bold" />
+              </button>
+            )}
+          </div>
+          {(convo || !msg) && t.aiSummary ? (
             <div className="mail-ai">
               <Icon name="ai" size={12} weight="duotone" />
               <span className="mail-ai-text">{highlightInline(t.aiSummary)}</span>
@@ -403,6 +484,39 @@ function MailRow({
           )}
         </div>
       </motion.div>
+    </div>
+  );
+}
+
+// A compact child row inside an expanded conversation accordion: one message,
+// indented under its conversation header, newest→oldest.
+function ChildRow({ t, m, selected, onOpen, onContext }: {
+  t: Thread; m: Message; selected: boolean; onOpen: () => void; onContext: (x: number, y: number) => void;
+}) {
+  const sender = senderLabel(m.from.name, m.from.address);
+  const av = avatarColor(m.from.address || sender);
+  const hasAtt = !!(m.attachments && m.attachments.length);
+  const isReplyish = /^\s*(re|aw|fwd|fw)\s*:/i.test(t.subject);
+  return (
+    <div
+      className={`convo-kid${selected ? " sel" : ""}`}
+      onClick={onOpen}
+      onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY); }}
+      role="button"
+      tabIndex={0}
+    >
+      <div className="ck-av" style={{ background: av.bg, color: av.fg }} aria-hidden>{initials(m.from.name || m.from.address)}</div>
+      <div className="ck-main">
+        <div className="ck-l1">
+          {isReplyish && <Icon name="reply" size={11} weight="bold" className="mail-replyglyph" aria-hidden />}
+          <span className="ck-from">{sender}</span>
+          <span className="ck-time">
+            {hasAtt && <Icon name="attach" size={11} weight="duotone" aria-label="Has attachment" />}
+            {shortTime(m.when)}
+          </span>
+        </div>
+        <div className="ck-prev">{plainPreview(m.bodyHtml)}</div>
+      </div>
     </div>
   );
 }
