@@ -1,3 +1,5 @@
+import { AVATAR_TINTS, AVATAR_GRADIENT_ANGLE } from "@/constants/avatarTints";
+
 // Per-account colors in OKLCH. All swatches share the same lightness/chroma and
 // differ only in hue, so they're perceptually even and harmonious — exactly what
 // OKLCH is good at. Each account is mapped to a stable color by hashing its id.
@@ -21,11 +23,6 @@ export function accountGradient(id: string): string {
   return `linear-gradient(135deg, oklch(0.72 0.15 ${hue}), oklch(0.66 0.16 ${(hue + 40) % 360}))`;
 }
 
-// A wider hue wheel for per-sender avatars (each correspondent gets a stable
-// color). Topup-arena style: a LIGHT gradient tile (≈ Tailwind 50→100) with
-// saturated mid-tone text (≈ 600) and a slightly deeper hairline ring (≈ 200).
-const AVATAR_HUES = [268, 312, 348, 18, 45, 72, 110, 152, 192, 232];
-
 export interface AvatarPaint {
   /** light two-stop gradient for the tile background */
   bg: string;
@@ -35,17 +32,17 @@ export interface AvatarPaint {
   ring: string;
 }
 
-/** A stable light-gradient avatar paint for a sender, hashed from a seed. */
+/** A stable light-gradient avatar paint for a sender, hashed from a seed.
+ *  The actual colors live in `src/constants/avatarTints.ts` — this just hashes
+ *  the seed to a stable index and composes the gradient. Matches topup-arena's
+ *  soft category-tile look (Tailwind 50→100 bg, 200 ring, 600 text). */
 export function avatarColor(seed: string): AvatarPaint {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  const hue = AVATAR_HUES[h % AVATAR_HUES.length];
-  const hue2 = (hue + 22) % 360; // slight hue rotation between stops for a richer, visible gradient
+  const tint = AVATAR_TINTS[h % AVATAR_TINTS.length];
   return {
-    // Wider lightness/chroma spread + a hue shift so the gradient actually reads
-    // (topup-arena category-tile style) instead of looking like a flat tint.
-    bg: `linear-gradient(140deg, oklch(0.95 0.06 ${hue}), oklch(0.83 0.13 ${hue2}))`,
-    fg: `oklch(0.47 0.16 ${hue})`,
-    ring: `oklch(0.83 0.10 ${hue})`,
+    bg: `linear-gradient(${AVATAR_GRADIENT_ANGLE}, ${tint.bgFrom}, ${tint.bgTo})`,
+    fg: tint.text,
+    ring: tint.ring,
   };
 }
