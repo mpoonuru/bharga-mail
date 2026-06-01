@@ -129,6 +129,31 @@ export const threads: Thread[] = [
       },
     ],
   },
+  {
+    id: "t6",
+    accountId: "acc1",
+    subject: "Action required: your account will be suspended",
+    preview: "We detected unusual activity. Verify within 24 hours to avoid suspension…",
+    participants: ["PayPal Service"],
+    lastTime: "7h",
+    unread: true,
+    labels: ["urgent"],
+    view: ["inbox"],
+    messages: [
+      {
+        id: "m6",
+        from: { name: "PayPal Service", address: "service@paypa1-secure.com" },
+        to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
+        when: "2026-05-31T22:00:00Z",
+        // Failed authentication — a real spoof would not pass DMARC.
+        meta: { auth: "spf=softfail; dkim=fail; dmarc=fail", originIp: "45.137.21.9" },
+        bodyHtml:
+          "<p>Dear Customer,</p><p>We detected unusual activity on your account. To avoid <b>permanent suspension</b>, please verify your details within 24 hours.</p>" +
+          "<p><a href=\"http://paypal.com.account-verify.ru/login\">Verify your PayPal account at paypal.com</a></p>" +
+          "<p>Thank you,<br>PayPal Security Team</p>",
+      },
+    ],
+  },
 ];
 
 export const tasks: Task[] = [

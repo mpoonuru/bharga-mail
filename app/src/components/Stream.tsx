@@ -337,12 +337,16 @@ function MailRow({
           <div className="mail-l1">
             {t.unread && <span className="mail-unread" aria-label="Unread" />}
             <span className="from">{t.participants.map((p) => (p.includes("@") && !p.includes(" ") ? senderLabel(undefined, p) : p)).join(", ")}</span>
-            {trust.level !== "unknown" && (
-              <span className={`mail-trust trust-${trust.tone}`} title={`${trust.label} — ${trust.detail}`} aria-label={trust.label}>
-                <Icon name={trust.icon} size={12} weight="fill" />
-              </span>
-            )}
-            <span className="time">{flagged && <Icon name="priority" size={12} weight="fill" className="mail-flag" aria-label="Flagged" />}{hasAttachments && <Icon name="attach" size={12} weight="duotone" aria-label="Has attachment" />}{shortTime(t.lastTime)}</span>
+            <span className="time">
+              {trust.level !== "unknown" && (
+                <span className={`mail-trust trust-${trust.tone}`} title={`${trust.label} — ${trust.detail}`} aria-label={trust.label}>
+                  <Icon name={trust.icon} size={12} weight="fill" />
+                </span>
+              )}
+              {flagged && <Icon name="priority" size={12} weight="fill" className="mail-flag" aria-label="Flagged" />}
+              {hasAttachments && <Icon name="attach" size={12} weight="duotone" aria-label="Has attachment" />}
+              {shortTime(t.lastTime)}
+            </span>
           </div>
           <div className="subj">{t.subject}</div>
           {t.aiSummary ? (

@@ -1,4 +1,5 @@
 import DOMPurify, { type Config } from "dompurify";
+import { assessLink, type LinkAssessment } from "@/lib/linkRisk";
 
 /**
  * Email HTML pipeline (the standard mail-client approach):
@@ -174,10 +175,25 @@ function adaptForDark(doc: Document): void {
   });
 }
 
+/** Flag risky links in-place (data-risk + data-real for the iframe CSS / click
+ *  interceptor) and return the risky ones for the warning banner. */
+function scanLinksInDoc(doc: Document, senderDomain?: string): LinkAssessment[] {
+  const risky: LinkAssessment[] = [];
+  doc.querySelectorAll("a[href]").forEach((a) => {
+    const r = assessLink(a.getAttribute("href") ?? "", (a.textContent ?? "").trim(), senderDomain);
+    if (r && r.level !== "safe") {
+      a.setAttribute("data-risk", r.level);
+      a.setAttribute("data-real", r.host);
+      risky.push(r);
+    }
+  });
+  return risky;
+}
+
 export function processEmail(
   html: string,
-  opts: { showImages: boolean; highlight: boolean; dark?: boolean },
-): { html: string; blocked: number } {
+  opts: { showImages: boolean; highlight: boolean; dark?: boolean; sender?: string },
+): { html: string; blocked: number; links: LinkAssessment[] } {
   const doc = new DOMParser().parseFromString(sanitizeEmail(html), "text/html");
   if (opts.dark) {
     try { adaptForDark(doc); } catch { /* never let adaptation break rendering */ }
@@ -185,6 +201,8 @@ export function processEmail(
   if (opts.highlight) {
     try { highlightEntities(doc); } catch { /* never let highlighting break rendering */ }
   }
+  let links: LinkAssessment[] = [];
+  try { links = scanLinksInDoc(doc, opts.sender?.split("@")[1]?.toLowerCase()); } catch { /* never let link-scan break rendering */ }
   const blocked = opts.showImages ? 0 : blockRemoteInDoc(doc);
-  return { html: doc.body.innerHTML, blocked };
+  return { html: doc.body.innerHTML, blocked, links };
 }

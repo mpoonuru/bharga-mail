@@ -25,17 +25,18 @@ import { processEmail } from "@/lib/emailHtml";
  * sanitize (DOMPurify) → block remote images by default → render in a sandboxed
  * iframe (no scripts) with an internal CSP. Auto-sizes to its content.
  */
-function EmailBody({ html }: { html: string }) {
+function EmailBody({ html, sender }: { html: string; sender?: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [showImages, setShowImages] = useState(false);
+  const [confirm, setConfirm] = useState<{ href: string; host: string; level: string } | null>(null);
   const highlights = useApp((s) => s.highlights);
   const theme = useApp((s) => s.theme);
   const contentPx = useApp((s) => s.contentPx);
   const dark = theme === "dark";
 
   const processed = useMemo(
-    () => processEmail(html, { showImages, highlight: highlights, dark }),
-    [html, showImages, highlights, dark],
+    () => processEmail(html, { showImages, highlight: highlights, dark, sender }),
+    [html, showImages, highlights, dark, sender],
   );
   const body = processed.html;
   // Defense in depth: the sandbox already blocks scripts (no allow-scripts); this
@@ -60,6 +61,10 @@ function EmailBody({ html }: { html: string }) {
   img{max-width:100%;height:auto;}
   table{max-width:100%;}
   a{color:${link};}
+  /* Phishing / risky-link marking (see lib/linkRisk). */
+  a[data-risk]{text-decoration:underline wavy #d97706;text-underline-offset:2px;cursor:pointer;}
+  a[data-risk=dangerous]{text-decoration-color:#ef4444;background:rgba(239,68,68,.10);border-radius:3px;}
+  a[data-risk]::after{content:" \\26A0\\FE0F";font-size:.8em;}
   *{max-width:100%;box-sizing:border-box;}
   /* Tame quoted history: browsers default blockquotes to margin:0 40px (both
      sides, per nesting level), which collapses deeply-nested "On … wrote:"
@@ -101,21 +106,61 @@ function EmailBody({ html }: { html: string }) {
     // Re-measure as fonts/images/late layout settle so the last lines aren't clipped.
     [60, 200, 500, 1200].forEach((ms) => setTimeout(resize, ms));
     try {
-      ref.current?.contentDocument?.querySelectorAll("img").forEach((img) => {
+      const d = ref.current?.contentDocument;
+      d?.querySelectorAll("img").forEach((img) => {
         if (!(img as HTMLImageElement).complete) img.addEventListener("load", resize, { once: true });
       });
+      // Safe-click: intercept clicks on flagged links and confirm the real
+      // destination before leaving (the iframe is same-origin srcdoc).
+      d?.addEventListener("click", (e) => {
+        const a = (e.target as HTMLElement | null)?.closest?.("a[data-risk]") as HTMLAnchorElement | null;
+        if (!a) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setConfirm({ href: a.href, host: a.getAttribute("data-real") || a.hostname, level: a.getAttribute("data-risk") || "suspicious" });
+      }, true);
     } catch {
       /* ignore */
     }
   };
 
+  const danger = processed.links.some((l) => l.level === "dangerous");
   return (
     <div className="email-body">
+      {processed.links.length > 0 && (
+        <div className={`phish-banner${danger ? " danger" : ""}`}>
+          <Icon name="shieldWarning" size={15} weight="fill" />
+          <div className="phish-main">
+            <b>{danger ? "This message may be a phishing attempt" : "Suspicious links detected"}</b>
+            <ul className="phish-list">
+              {processed.links.slice(0, 4).map((l, i) => (
+                <li key={i}>
+                  <span className="phish-host">{l.host}</span> — {l.reasons[0]}
+                </li>
+              ))}
+            </ul>
+            <span className="phish-hint">Bharga will confirm the real destination before opening any flagged link.</span>
+          </div>
+        </div>
+      )}
       {processed.blocked > 0 && !showImages && (
         <button className="img-banner" onClick={() => setShowImages(true)}>
           <Icon name="attach" size={13} weight="duotone" />
           {processed.blocked} remote image{processed.blocked > 1 ? "s" : ""} blocked for your privacy — Load images
         </button>
+      )}
+      {confirm && (
+        <div className="lc-backdrop" onClick={() => setConfirm(null)}>
+          <div className={`lc-card${confirm.level === "dangerous" ? " danger" : ""}`} onClick={(e) => e.stopPropagation()} role="alertdialog">
+            <div className="lc-head"><Icon name="shieldWarning" size={18} weight="fill" /> {confirm.level === "dangerous" ? "Dangerous link" : "Suspicious link"}</div>
+            <p>This link actually goes to <b>{confirm.host}</b> — Bharga flagged it as possibly unsafe.</p>
+            <div className="lc-url">{confirm.href}</div>
+            <div className="lc-actions">
+              <button onClick={() => setConfirm(null)}>Stay safe</button>
+              <button className="lc-danger" onClick={() => { window.open(confirm.href, "_blank", "noopener,noreferrer"); setConfirm(null); }}>Open anyway</button>
+            </div>
+          </div>
+        </div>
       )}
       <iframe
         ref={ref}
@@ -226,22 +271,24 @@ export function Stage() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="meta">
                   <span className="name">{senderLabel(m.from.name, m.from.address)}</span>
-                  {(() => {
-                    const tr = senderTrust(m.meta?.auth);
-                    if (tr.level === "unknown") return null;
-                    return (
-                      <Tooltip label={`${tr.label} — ${tr.detail}`} side="bottom">
-                        <span className={`trust trust-${tr.tone}`} aria-label={tr.label}>
-                          <Icon name={tr.icon} size={14} weight="fill" />
-                        </span>
-                      </Tooltip>
-                    );
-                  })()}
                   {showAddressLine(m.from.name, m.from.address) && <span className="addr">{m.from.address}</span>}
-                  <span className="when">{fullTime(m.when)}</span>
-                  <button className="details-toggle" title="Show details" onClick={() => setDetailsFor(detailsFor === m.id ? null : m.id)}>
-                    <Icon name={detailsFor === m.id ? "close" : "more"} size={12} />
-                  </button>
+                  <span className="meta-right">
+                    {(() => {
+                      const tr = senderTrust(m.meta?.auth);
+                      if (tr.level === "unknown") return null;
+                      return (
+                        <Tooltip label={`${tr.label} — ${tr.detail}`} side="bottom">
+                          <span className={`trust trust-${tr.tone}`} aria-label={tr.label}>
+                            <Icon name={tr.icon} size={14} weight="fill" />
+                          </span>
+                        </Tooltip>
+                      );
+                    })()}
+                    <span className="when">{fullTime(m.when)}</span>
+                    <button className="details-toggle" title="Show details" onClick={() => setDetailsFor(detailsFor === m.id ? null : m.id)}>
+                      <Icon name={detailsFor === m.id ? "close" : "more"} size={12} />
+                    </button>
+                  </span>
                 </div>
                 <div className="meta-sub">
                   {m.to.length > 0 && <span className="to-line">To: {m.to.map((p) => p.name || p.address).join(", ")}</span>}
@@ -259,7 +306,7 @@ export function Stage() {
                     {!m.meta && <div className="msg-details-note">Full headers are captured for IMAP accounts on the next sync.</div>}
                   </div>
                 )}
-                <EmailBody html={m.bodyHtml} />
+                <EmailBody html={m.bodyHtml} sender={m.from.address} />
                 {m.attachments && m.attachments.length > 0 && (
                   <div className="attach-row" style={{ marginTop: 10 }}>
                     {m.attachments.map((a) => {

@@ -212,9 +212,8 @@
   .mail:not(.unread) .from { @apply font-medium text-text-2; }
   .mail .time { @apply ml-auto text-[11px] text-text-3 shrink-0 inline-flex items-center gap-1; }
   .mail-flag { color: var(--warn); }
-  /* Sender-trust shield (SPF/DKIM/DMARC verdict). */
+  /* Sender-trust shield (SPF/DKIM/DMARC verdict). Sits on the right, before the time. */
   .mail-trust, .trust { @apply inline-flex items-center shrink-0; }
-  .trust { @apply ml-1; }
   .trust-ok { color: var(--good); }
   .trust-warn { color: var(--warn); }
   .trust-bad { color: var(--danger); }
@@ -331,8 +330,9 @@
   .msg .meta { @apply flex items-baseline gap-2 mb-1.5; }
   .msg .name { @apply text-[13.5px] font-semibold; }
   .msg .addr { @apply text-[11.5px] text-text-3; }
-  .msg .when { @apply ml-auto text-[11px] text-text-3; }
-  .msg .details-toggle { @apply ml-1.5 text-text-3 inline-flex items-center cursor-pointer bg-transparent border-none; }
+  .msg .meta-right { @apply ml-auto flex items-center gap-2 shrink-0; }
+  .msg .when { @apply text-[11px] text-text-3; }
+  .msg .details-toggle { @apply text-text-3 inline-flex items-center cursor-pointer bg-transparent border-none; }
   .msg .details-toggle:hover { @apply text-text; }
   .msg-details { @apply mt-1.5 mb-2 p-3 rounded-[10px] text-[12px] bg-bg-2 border border-border; }
   .msg-details > div { @apply flex gap-2 py-[3px]; }
@@ -348,10 +348,31 @@
      follows the app theme (dark letter in dark mode, white in light); the iframe's
      internal <style> sets the matching background/ink so plain + simple emails
      adapt cleanly, while emails that ship their own colours keep them. */
-  .email-body { @apply min-w-0; }
+  .email-body { @apply min-w-0 relative; }
   .img-banner { @apply w-full flex items-center gap-2 mb-1.5 px-3 py-2 rounded-lg text-[12px] text-text-2 cursor-pointer; background: var(--accent-soft); border: 1px solid var(--border); transition: .14s var(--ease); }
   .img-banner:hover { @apply text-text border-accent; }
   .email-frame { @apply w-full block rounded-[10px] min-w-0; min-height: 40px; border: 1px solid var(--border); background: var(--bg-2); }
+  /* Phishing warning banner above a risky message body. */
+  .phish-banner { @apply w-full flex items-start gap-2.5 mb-2 px-3 py-2.5 rounded-lg text-[12px]; color: var(--warn); background: color-mix(in oklch, var(--warn) 12%, transparent); border: 1px solid color-mix(in oklch, var(--warn) 35%, transparent); }
+  .phish-banner.danger { color: var(--danger); background: color-mix(in oklch, var(--danger) 12%, transparent); border-color: color-mix(in oklch, var(--danger) 40%, transparent); }
+  .phish-banner > svg { @apply mt-0.5 shrink-0; }
+  .phish-main { @apply min-w-0 flex flex-col gap-1; }
+  .phish-main b { @apply text-text text-[12.5px] font-semibold; }
+  .phish-list { @apply list-none p-0 m-0 flex flex-col gap-0.5 text-text-2; }
+  .phish-host { @apply font-semibold; color: inherit; }
+  .phish-hint { @apply text-text-3 text-[11px]; }
+  /* Safe-click confirmation when opening a flagged link. */
+  .lc-backdrop { @apply absolute inset-0 z-50 flex items-center justify-center p-6; background: oklch(0 0 0 / 0.45); backdrop-filter: blur(2px); }
+  .lc-card { @apply max-w-[420px] w-full rounded-xl p-4 flex flex-col gap-2.5; background: var(--surface); border: 1px solid color-mix(in oklch, var(--warn) 45%, var(--border)); box-shadow: 0 18px 50px -12px oklch(0 0 0 / 0.5); }
+  .lc-card.danger { border-color: color-mix(in oklch, var(--danger) 55%, var(--border)); }
+  .lc-head { @apply flex items-center gap-2 text-[14px] font-semibold; color: var(--warn); }
+  .lc-card.danger .lc-head { color: var(--danger); }
+  .lc-card p { @apply text-[12.5px] text-text-2 m-0; }
+  .lc-url { @apply text-[11.5px] text-text-3 break-all px-2.5 py-1.5 rounded-md; background: var(--bg-2); border: 1px solid var(--border); font-family: var(--mono, monospace); }
+  .lc-actions { @apply flex justify-end gap-2 mt-1; }
+  .lc-actions button { @apply px-3 py-1.5 rounded-lg text-[12.5px] font-semibold cursor-pointer border border-border bg-bg-2 text-text; transition: .14s var(--ease); }
+  .lc-actions button:hover { @apply bg-surface; }
+  .lc-actions .lc-danger { color: var(--danger); border-color: color-mix(in oklch, var(--danger) 45%, transparent); }
   .msg .text {
     @apply text-[14px] leading-[1.65] min-w-0 max-w-full rounded-[10px] px-4 py-3.5;
     overflow-wrap: anywhere; word-break: break-word;
