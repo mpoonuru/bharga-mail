@@ -184,6 +184,19 @@
   .search-box input::placeholder { @apply text-text-3; }
   .search-clear { @apply text-text-3 border-none bg-transparent inline-flex items-center p-0; }
   .search-clear:hover { @apply text-text; }
+  /* Smart chips — AI-derived, multi-select filter bar above the stream. */
+  .smart-chips { @apply mx-2.5 mt-1.5 mb-0.5 flex items-center gap-1.5 overflow-x-auto pb-1; scrollbar-width: none; }
+  .smart-chips::-webkit-scrollbar { display: none; }
+  .smart-chips-lead { @apply inline-flex items-center shrink-0 pr-0.5; color: var(--accent); }
+  .chip { @apply shrink-0 inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-full border border-border bg-bg-2 text-text-2 text-[12px] font-medium cursor-pointer whitespace-nowrap; transition: .14s var(--ease); }
+  .chip:hover { @apply bg-surface text-text border-border-2; }
+  .chip.on { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 40%, transparent); background: var(--accent-soft); font-weight: 600; }
+  .chip-label { @apply leading-none; }
+  .chip-count { @apply text-[11px] text-text-3 tabular-nums; }
+  .chip.on .chip-count { color: color-mix(in oklch, var(--accent) 80%, var(--text)); }
+  .chip-new { @apply text-[10px] font-semibold leading-none text-white px-1.5 py-0.5 rounded-full; background: var(--accent); }
+  .chip-clear { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] p-0 rounded-full border border-border bg-bg-2 text-text-3 cursor-pointer; transition: .14s var(--ease); }
+  .chip-clear:hover { @apply text-text bg-surface border-border-2; }
   .list { @apply flex-1 min-h-0 overflow-y-auto px-2.5 pt-1 pb-4 flex flex-col; gap: var(--gap); scroll-behavior: smooth; }
   /* Mail row — Design B: squircle avatar + sender/time, subject, AI summary line. */
   .mail { @apply flex gap-3 rounded-xl cursor-pointer border border-transparent; padding: var(--row-pad); transition: .14s var(--ease); background: transparent; }

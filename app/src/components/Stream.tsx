@@ -10,6 +10,8 @@ import { avatarColor } from "@/lib/colors";
 import { initials, senderLabel } from "@/lib/avatar";
 import { titlebarDoubleClick } from "@/lib/bridge";
 import { highlightInline } from "@/lib/highlightInline";
+import { deriveChips } from "@/lib/smartChips";
+import { SmartChips } from "@/components/ui/SmartChips";
 
 const TITLES: Record<string, string> = {
   priority: "Priority",
@@ -74,7 +76,10 @@ export function Stream() {
   // Reset the scroll to the top when the view/folder/account changes, so you
   // never land mid-scroll on a half-clipped row.
   const listRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { listRef.current?.scrollTo({ top: 0 }); }, [view, selectedFolder, selectedAccountId]);
+  // Smart-chip filters are scoped to the current view — reset the selection (and
+  // scroll) whenever the view/folder/account changes.
+  const [activeChips, setActiveChips] = useState<Set<string>>(new Set());
+  useEffect(() => { listRef.current?.scrollTo({ top: 0 }); setActiveChips(new Set()); }, [view, selectedFolder, selectedAccountId]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const toggleGroup = (label: string) => setCollapsedGroups((s) => { const n = new Set(s); if (n.has(label)) n.delete(label); else n.add(label); return n; });
 
@@ -111,10 +116,20 @@ export function Stream() {
   } else {
     inView = scoped.filter((t) => t.view.includes(view as View));
   }
+  // Smart chips — emergent, multi-label filters derived from the threads in view.
+  const selfDomain = (selectedAccountId ? accounts.find((a) => a.id === selectedAccountId)?.email : accounts[0]?.email)?.split("@")[1];
+  const chips = deriveChips(inView, selfDomain);
+  // Drop any selection that no longer exists in the current chip set.
+  const liveChips = new Set([...activeChips].filter((id) => chips.some((c) => c.id === id)));
+  const chipScoped = liveChips.size
+    ? inView.filter((t) => chips.some((c) => liveChips.has(c.id) && c.test(t)))
+    : inView;
+  const toggleChip = (id: string) => setActiveChips((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
   const query = q.trim().toLowerCase();
   const filtered = query
     ? scoped.filter((t) => [t.subject, t.preview, t.participants.join(" ")].join(" ").toLowerCase().includes(query))
-    : inView;
+    : chipScoped;
   const list = sortThreads(filtered, sortMode);
   // Date-grouped accordion sections, but only when sorting by date (Newest) and
   // not searching — grouping by date is meaningless under sender/unread sort.
@@ -169,6 +184,7 @@ export function Stream() {
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search mail…" />
         {q && <button className="search-clear" onClick={() => setQ("")} title="Clear"><Icon name="close" size={13} /></button>}
       </div>
+      {!query && <SmartChips chips={chips} active={liveChips} onToggle={toggleChip} onClear={() => setActiveChips(new Set())} />}
       {priorityFallback && !query && (
         <div className="priority-hint">
           <Icon name="ai" size={12} weight="duotone" /> <span>Not AI-sorted yet — showing unread &amp; urgent.</span>
