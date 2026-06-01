@@ -69,8 +69,21 @@ function participantsLabel(t: Thread): string {
   return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
 }
 
+// Plain-text preview from message HTML. CRITICAL: strip <style>/<script>/<head>
+// and comment BLOCKS (content included) BEFORE stripping tags — otherwise Outlook's
+// `<style>v\:* {behavior:url(#default#VML);}…</style>` boilerplate leaks in as the
+// preview. Tag-only stripping (/<[^>]+>/) removes the tags but keeps the CSS text.
 const plainPreview = (html: string) =>
-  html.replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
+  (html || "")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<head[\s\S]*?<\/head>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 // `when` arrives as the raw RFC 2822 email Date header (e.g. "Wed, 16 Oct 2024
 // 13:02:49 +0200"), which is NOT lexically sortable — string compare orders by
 // weekday name and day digits, not the actual instant. Always sort on the parsed
@@ -409,7 +422,9 @@ function MailRow({
     : msg ? senderLabel(msg.from.name, msg.from.address)
     : t.participants.map((p) => (p.includes("@") && !p.includes(" ") ? senderLabel(undefined, p) : p)).join(", ");
   const rowTime = m?.when ?? t.lastTime;
-  const rowPreview = plainPreview(m?.bodyHtml ?? "") || t.preview;
+  // Conversation header → the backend's clean, quote-trimmed thread preview. Only
+  // per-message rows fall back to deriving from raw HTML (now style-stripped).
+  const rowPreview = convo ? (t.preview || plainPreview(m?.bodyHtml ?? "")) : (plainPreview(m?.bodyHtml ?? "") || t.preview);
   return (
     <div className="mail-wrap">
       {/* swipe-action background — only rendered while actually dragging */}
