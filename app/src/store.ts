@@ -238,7 +238,10 @@ export const useApp = create<AppState>((set, get) => ({
   view: "priority",
   selectedThreadId: "t1",
   selectedMessageId: null,
-  setView: (v) => set({ view: v, composeOpen: false, drawerOpen: false, mobileStage: false }),
+  // A smart view (Priority / All Inbox / Flagged…) spans folders, so leaving a
+  // specific mailbox: clear selectedFolder. Otherwise the view and a folder would
+  // both read as selected, and the list would still be folder-filtered.
+  setView: (v) => set({ view: v, selectedFolder: null, composeOpen: false, drawerOpen: false, mobileStage: false }),
   selectThread: (id, messageId) => set({ selectedThreadId: id, selectedMessageId: messageId ?? null, mobileStage: true }),
 
   theme: loadTheme(),

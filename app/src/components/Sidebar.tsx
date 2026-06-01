@@ -99,7 +99,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
 
   const NavButton = ({ n, badge }: { n: { id: View; icon: IconName; label: string }; badge?: number }) => {
     const btn = (
-      <button className={`nav-item${view === n.id ? " active" : ""}`} onClick={() => setView(n.id)}>
+      <button className={`nav-item${view === n.id && !selectedFolder ? " active" : ""}`} onClick={() => setView(n.id)}>
         <span className="ic"><Icon name={n.icon} size={17} weight="duotone" /></span>
         {!rail && n.label}
         {!rail && badge ? <span className="count">{badge}</span> : null}
