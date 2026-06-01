@@ -81,28 +81,6 @@ function EmailBody({ html, sender }: { html: string; sender?: string }) {
   a[data-risk]{text-decoration:underline wavy #d97706;text-underline-offset:2px;cursor:pointer;}
   a[data-risk=dangerous]{text-decoration-color:#ef4444;background:rgba(239,68,68,.10);border-radius:3px;}
   a[data-risk]::after{content:" \\26A0\\FE0F";font-size:.8em;}
-  /* Quoted history as a Bharga "thread node": the earlier sender's avatar bead +
-     name + date on a connector spine — not a generic "•••". Native <details>, no JS. */
-  details.bh-quoted{margin:16px 0 6px;}
-  summary.bh-qnode{display:inline-flex;align-items:center;gap:9px;cursor:pointer;list-style:none;user-select:none;
-    max-width:100%;padding:4px 11px 4px 5px;border-radius:13px;
-    background:${dark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.035)"};
-    border:1px solid ${dark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.09)"};transition:border-color .14s ease;}
-  summary.bh-qnode::-webkit-details-marker{display:none;}
-  summary.bh-qnode:hover{border-color:${dark ? "rgba(140,150,255,.40)" : "rgba(90,100,230,.32)"};}
-  .bh-qbead{width:24px;height:24px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
-    font-size:10.5px;font-weight:700;flex:none;}
-  .bh-qtext{font-size:12.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-    color:${dark ? "#aab0bb" : "#5f6470"};}
-  .bh-qtext b{font-weight:600;color:${dark ? "#e7e8ec" : "#1b1c20"};}
-  .bh-qcount{color:${dark ? "#7e828c" : "#9098a4"};}
-  .bh-qchev{flex:none;font-size:15px;line-height:1;color:${dark ? "#7e828c" : "#9098a4"};transition:transform .18s ease;}
-  details.bh-quoted[open] summary.bh-qnode .bh-qchev{transform:rotate(90deg);}
-  /* Expanded: nest the history on an accent spine, like a thread reply. */
-  details.bh-quoted[open]{position:relative;margin-left:11px;padding:2px 0 2px 16px;
-    border-left:1.5px solid ${dark ? "rgba(140,150,255,.30)" : "rgba(90,100,230,.24)"};}
-  details.bh-quoted[open] summary.bh-qnode{margin:0 0 10px -28px;
-    background:${dark ? "#15161b" : "#ffffff"};}
   *{max-width:100%;box-sizing:border-box;}
   /* Tame quoted history: browsers default blockquotes to margin:0 40px (both
      sides, per nesting level), which collapses deeply-nested "On … wrote:"
@@ -157,9 +135,6 @@ function EmailBody({ html, sender }: { html: string; sender?: string }) {
         e.stopPropagation();
         setConfirm({ href: a.href, host: a.getAttribute("data-real") || a.hostname, level: a.getAttribute("data-risk") || "suspicious" });
       }, true);
-      // Re-measure when a collapsed-quote <details> opens/closes. `toggle` does
-      // not bubble, so capture it at the document.
-      d?.addEventListener("toggle", () => { resize(); [40, 160, 360].forEach((ms) => setTimeout(resize, ms)); }, true);
     } catch {
       /* ignore */
     }

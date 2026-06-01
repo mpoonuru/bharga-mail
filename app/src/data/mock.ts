@@ -61,10 +61,7 @@ export const threads: Thread[] = [
         when: "2026-05-29T08:51:00Z",
         meta: { auth: "spf=pass; dkim=pass; dmarc=pass", originIp: "198.51.100.7" },
         bodyHtml:
-          "<p>Hey Arjun,</p><p>Are you free Thursday afternoon? I'd like to walk through the new release flow before we ship Friday.</p><p>— Marco</p>" +
-          "<div style=\"border-top:1px solid #d0d0d8;margin-top:18px\"></div>" +
-          "<div>From: Arjun User &lt;itmanagement@pjtelesoft.de&gt;<br>Sent: Wednesday, May 28, 2026 6:12 PM<br>To: Marco Reyes &lt;marco@pjtelesoft.de&gt;<br>Subject: Deployment pipeline</div>" +
-          "<p>Hi Marco, the staging deploy is green. Can we do a quick walkthrough this week before the Friday release? I want to confirm the rollback steps and the migration order.</p><p>Thanks,<br>Arjun</p>",
+          "<p>Hey Arjun,</p><p>Are you free Thursday afternoon? I'd like to walk through the new release flow before we ship Friday.</p><p>— Marco</p>",
       },
     ],
   },

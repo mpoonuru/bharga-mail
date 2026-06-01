@@ -1,7 +1,5 @@
 import DOMPurify, { type Config } from "dompurify";
 import { assessLink, type LinkAssessment } from "@/lib/linkRisk";
-import { avatarColor } from "@/lib/colors";
-import { initials } from "@/lib/avatar";
 
 /**
  * Email HTML pipeline (the standard mail-client approach):
@@ -38,7 +36,7 @@ const PATTERNS: RegExp[] = [
 
 function highlightEntities(doc: Document) {
   const combined = new RegExp(PATTERNS.map((re) => `(${re.source})`).join("|"), "gi");
-  const skip = new Set(["A", "STYLE", "SCRIPT", "CODE", "PRE", "MARK", "HEAD", "TITLE", "TEXTAREA", "BUTTON", "DETAILS"]);
+  const skip = new Set(["A", "STYLE", "SCRIPT", "CODE", "PRE", "MARK", "HEAD", "TITLE", "TEXTAREA", "BUTTON"]);
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       let el = node.parentElement;
@@ -177,171 +175,6 @@ function adaptForDark(doc: Document): void {
   });
 }
 
-// ---- Quoted-history collapsing (Gmail "•••" behaviour) ---------------------
-// Real mail clients show only the NEW content of a reply and tuck the quoted
-// history below it behind an expander. We do the same: detect the boundary
-// between the reply and the quote, then wrap the quote in a native <details> so
-// it collapses with NO JavaScript (the email iframe is script-less; <details>
-// is handled by the browser UA). Heuristics mirror Gmail/Apple Mail.
-
-// Known quote containers across providers.
-const QUOTE_CONTAINERS =
-  ".gmail_quote, blockquote[type='cite'], .moz-cite-prefix, .yahoo_quoted, #divRplyFwdMsg, #appendonsend, #x_divRplyFwdMsg, #x_appendonsend";
-// "On <date>, <name> wrote:" + de/fr/it/es equivalents.
-const REPLY_HEADER = /^\s*(on\b.+\bwrote:|am\b.+\bschrieb.*:|le\b.+\ba\s+écrit\s*:|il\b.+\bha\s+scritto\s*:|el\b.+\bescribió\s*:)\s*$/i;
-// Outlook forwarded/replied header block (From/Sent/Subject, localized). No \b
-// before "subject" because the lines often run together (<br>-joined text has no
-// space, e.g. "…meSubject:").
-const FWD_HEADER = /\b(from|von|da|de):.*\b(sent|gesendet|inviato|enviado|date):.*(subject|betreff|oggetto|objet|asunto):/i;
-// A line of underscores/dashes used as a divider.
-const DIVIDER = /^[\s_–—-]{8,}$/;
-
-function isDivider(el: Element): boolean {
-  return el.tagName === "HR" || DIVIDER.test((el.textContent ?? "").trim());
-}
-
-/** A separator or empty spacer (divider line, <hr>, or an empty border <div>) —
- *  but NOT an element that carries real content like an image/table (a logo in a
- *  signature must never be pulled into the quote fold). */
-function isSeparatorOrEmpty(el: Element): boolean {
-  if (isDivider(el)) return true;
-  const hasText = (el.textContent ?? "").trim().length > 0; // trim() also strips nbsp
-  const hasMedia = !!el.querySelector("img,table,video,svg,picture,iframe,object,hr");
-  return !hasText && !hasMedia;
-}
-
-/** Refine where the collapse starts: pull in any divider/empty separators that
- *  precede the quote (so a divider line never dangles ABOVE the node), climbing
- *  out of wrapper elements when the quote is the leading content of its
- *  container. Stops as soon as real new content precedes it. */
-function collapseStartFrom(boundary: Element): Element {
-  let s = boundary;
-  for (let guard = 0; guard < 8; guard++) {
-    let p = s.previousElementSibling;
-    while (p && isSeparatorOrEmpty(p)) { s = p; p = s.previousElementSibling; }
-    if (p) break; // real content precedes s at this level → clean boundary
-    const parent = s.parentElement;
-    if (!parent || parent.tagName === "BODY") break;
-    s = parent; // nothing above s in this wrapper → climb out of it
-  }
-  return s;
-}
-
-function findQuoteBoundary(doc: Document): Element | null {
-  const body = doc.body;
-  // 1) Known quote containers — pick the earliest in document order.
-  const containers = [...body.querySelectorAll(QUOTE_CONTAINERS)];
-  if (containers.length) {
-    return containers.reduce((best, el) =>
-      best.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING ? el : best);
-  }
-  const blocks = [...body.querySelectorAll("p,div,blockquote,span,td,hr,font,pre")];
-  // 2) A divider line immediately followed by a reply/forward header.
-  for (let i = 0; i < blocks.length; i++) {
-    if (!isDivider(blocks[i])) continue;
-    const after = blocks.slice(i + 1, i + 6).map((e) => (e.textContent ?? "").replace(/\s+/g, " ").trim()).join(" ");
-    if (REPLY_HEADER.test(after.slice(0, 140)) || FWD_HEADER.test(after)) return blocks[i];
-  }
-  // 3) A reply/forward header on its own (prefer a divider right before it).
-  for (const el of blocks) {
-    const own = (el.textContent ?? "").replace(/\s+/g, " ").trim();
-    if (!own) continue;
-    if (REPLY_HEADER.test(own) || FWD_HEADER.test(own)) {
-      const prev = el.previousElementSibling;
-      return prev && isDivider(prev) ? prev : el;
-    }
-  }
-  return null;
-}
-
-/** Pull the quoted sender + date + depth out of the quote header so the collapsed
- *  node can show WHO wrote the earlier message (not a faceless "•••"). */
-function extractQuoteMeta(raw: string): { who: string; when: string; count: number } {
-  // Strip divider runs first — "________From:" would otherwise hide the \b before
-  // "from" (underscore is a word char), so the sender wouldn't parse.
-  const t = raw.replace(/[_]{2,}|[-–—]{2,}/g, " ").replace(/\s+/g, " ").slice(0, 800);
-  let who = "";
-  let when = "";
-  // Outlook: "From: NAME <…>"  +  "Sent/Date: …"
-  const from = t.match(/\b(?:from|von|da|de):\s*([^<\n]+?)\s*(?:<|sent:|gesendet:|inviato:|enviado:|date:|$)/i);
-  if (from?.[1]) who = from[1].trim();
-  const sent = t.match(/\b(?:sent|gesendet|inviato|enviado|date):\s*(.+?)(?:\s*\b(?:to|an|à|para|cc):|$)/i);
-  if (sent?.[1]) when = sent[1].trim();
-  // Gmail: "On <when>, <who> wrote:"
-  if (!who || !when) {
-    const on = t.match(/\bon\b\s+(.+?)\s+wrote:/i);
-    if (on?.[1]) {
-      const seg = on[1].replace(/<[^>]+>/g, "").trim();
-      const lc = seg.lastIndexOf(",");
-      if (lc > -1) { if (!when) when = seg.slice(0, lc).trim(); if (!who) who = seg.slice(lc + 1).trim(); }
-      else if (!who) who = seg;
-    }
-  }
-  if (who.includes("@")) who = (who.split("@")[0] ?? "").replace(/[._-]+/g, " ").trim();
-  who = who.replace(/["']/g, "").trim().slice(0, 28);
-  if (who && who === who.toLowerCase()) who = who.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-  // Shorten the date to "Mon DD" when we can find it.
-  const dm = when.match(/\b([A-Z][a-z]{2,8})\.?\s+(\d{1,2})\b/);
-  when = dm ? `${dm[1]} ${dm[2]}` : when.slice(0, 18).trim();
-  const count = ((t.match(/\b(?:from|von|da|de):/gi)?.length) ?? 0) + ((t.match(/\bwrote:/gi)?.length) ?? 0);
-  return { who: who || "Earlier messages", when, count: Math.max(1, count) };
-}
-
-/** Collapse quoted history into a <details>, presented as a Bharga "thread node"
- *  (the earlier sender's avatar bead + name + date on a spine) rather than a
- *  generic "•••". Returns true if anything collapsed. */
-function collapseQuotes(doc: Document): boolean {
-  const found = findQuoteBoundary(doc);
-  if (!found?.parentNode) return false;
-  // Refine the start so any divider/separator above the quote folds in WITH it
-  // (no dangling line), climbing out of wrapper elements as needed.
-  const boundary = collapseStartFrom(found);
-  if (!boundary.parentNode) return false;
-  // Don't collapse a pure forward (no real new content above the quote) — there'd
-  // be nothing left to show. A short reply like "Thanks!" must still collapse.
-  try {
-    const range = doc.createRange();
-    range.setStart(doc.body, 0);
-    range.setEndBefore(boundary);
-    if (range.toString().replace(/\s+/g, "").length < 3) return false;
-  } catch { return false; }
-
-  const details = doc.createElement("details");
-  details.className = "bh-quoted";
-  const summary = doc.createElement("summary");
-  summary.className = "bh-qnode";
-  summary.setAttribute("title", "Show earlier messages");
-  details.appendChild(summary);
-  boundary.parentNode.insertBefore(details, boundary);
-  // Move the boundary and everything after it (within this parent) into <details>.
-  while (details.nextSibling) details.appendChild(details.nextSibling);
-
-  // Build the node from the quoted header now that the quote is inside <details>.
-  const meta = extractQuoteMeta(details.textContent ?? "");
-  const paint = avatarColor(meta.who);
-  const bead = doc.createElement("span");
-  bead.className = "bh-qbead";
-  bead.textContent = initials(meta.who);
-  bead.setAttribute("style", `background:${paint.bg};color:${paint.fg};box-shadow:0 0 0 1.5px ${paint.ring}`);
-  const label = doc.createElement("span");
-  label.className = "bh-qtext";
-  const who = doc.createElement("b");
-  who.textContent = meta.who;
-  label.appendChild(who);
-  if (meta.when) label.appendChild(doc.createTextNode(` · ${meta.when}`));
-  if (meta.count > 1) {
-    const c = doc.createElement("span");
-    c.className = "bh-qcount";
-    c.textContent = ` · +${meta.count - 1} more`;
-    label.appendChild(c);
-  }
-  const chev = doc.createElement("span");
-  chev.className = "bh-qchev";
-  chev.textContent = "›";
-  summary.append(bead, label, chev);
-  return true;
-}
-
 /** Flag risky links in-place (data-risk + data-real for the iframe CSS / click
  *  interceptor) and return the risky ones for the warning banner. */
 function scanLinksInDoc(doc: Document, senderDomain?: string): LinkAssessment[] {
@@ -362,7 +195,6 @@ export function processEmail(
   opts: { showImages: boolean; highlight: boolean; dark?: boolean; sender?: string },
 ): { html: string; blocked: number; links: LinkAssessment[] } {
   const doc = new DOMParser().parseFromString(sanitizeEmail(html), "text/html");
-  try { collapseQuotes(doc); } catch { /* never let quote-collapsing break rendering */ }
   if (opts.dark) {
     try { adaptForDark(doc); } catch { /* never let adaptation break rendering */ }
   }
