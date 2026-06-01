@@ -36,7 +36,7 @@ const PATTERNS: RegExp[] = [
 
 function highlightEntities(doc: Document) {
   const combined = new RegExp(PATTERNS.map((re) => `(${re.source})`).join("|"), "gi");
-  const skip = new Set(["A", "STYLE", "SCRIPT", "CODE", "PRE", "MARK", "HEAD", "TITLE", "TEXTAREA", "BUTTON"]);
+  const skip = new Set(["A", "STYLE", "SCRIPT", "CODE", "PRE", "MARK", "HEAD", "TITLE", "TEXTAREA", "BUTTON", "DETAILS"]);
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       let el = node.parentElement;
@@ -175,6 +175,83 @@ function adaptForDark(doc: Document): void {
   });
 }
 
+// ---- Quoted-history collapsing (Gmail "•••" behaviour) ---------------------
+// Real mail clients show only the NEW content of a reply and tuck the quoted
+// history below it behind an expander. We do the same: detect the boundary
+// between the reply and the quote, then wrap the quote in a native <details> so
+// it collapses with NO JavaScript (the email iframe is script-less; <details>
+// is handled by the browser UA). Heuristics mirror Gmail/Apple Mail.
+
+// Known quote containers across providers.
+const QUOTE_CONTAINERS =
+  ".gmail_quote, blockquote[type='cite'], .moz-cite-prefix, .yahoo_quoted, #divRplyFwdMsg, #appendonsend, #x_divRplyFwdMsg, #x_appendonsend";
+// "On <date>, <name> wrote:" + de/fr/it/es equivalents.
+const REPLY_HEADER = /^\s*(on\b.+\bwrote:|am\b.+\bschrieb.*:|le\b.+\ba\s+écrit\s*:|il\b.+\bha\s+scritto\s*:|el\b.+\bescribió\s*:)\s*$/i;
+// Outlook forwarded/replied header block (From/Sent/Subject, localized). No \b
+// before "subject" because the lines often run together (<br>-joined text has no
+// space, e.g. "…meSubject:").
+const FWD_HEADER = /\b(from|von|da|de):.*\b(sent|gesendet|inviato|enviado|date):.*(subject|betreff|oggetto|objet|asunto):/i;
+// A line of underscores/dashes used as a divider.
+const DIVIDER = /^[\s_–—-]{8,}$/;
+
+function isDivider(el: Element): boolean {
+  return el.tagName === "HR" || DIVIDER.test((el.textContent ?? "").trim());
+}
+
+function findQuoteBoundary(doc: Document): Element | null {
+  const body = doc.body;
+  // 1) Known quote containers — pick the earliest in document order.
+  const containers = [...body.querySelectorAll(QUOTE_CONTAINERS)];
+  if (containers.length) {
+    return containers.reduce((best, el) =>
+      best.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING ? el : best);
+  }
+  const blocks = [...body.querySelectorAll("p,div,blockquote,span,td,hr,font,pre")];
+  // 2) A divider line immediately followed by a reply/forward header.
+  for (let i = 0; i < blocks.length; i++) {
+    if (!isDivider(blocks[i])) continue;
+    const after = blocks.slice(i + 1, i + 6).map((e) => (e.textContent ?? "").replace(/\s+/g, " ").trim()).join(" ");
+    if (REPLY_HEADER.test(after.slice(0, 140)) || FWD_HEADER.test(after)) return blocks[i];
+  }
+  // 3) A reply/forward header on its own (prefer a divider right before it).
+  for (const el of blocks) {
+    const own = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (!own) continue;
+    if (REPLY_HEADER.test(own) || FWD_HEADER.test(own)) {
+      const prev = el.previousElementSibling;
+      return prev && isDivider(prev) ? prev : el;
+    }
+  }
+  return null;
+}
+
+/** Collapse quoted history into a <details>. Returns true if anything collapsed. */
+function collapseQuotes(doc: Document): boolean {
+  const boundary = findQuoteBoundary(doc);
+  if (!boundary?.parentNode) return false;
+  // Don't collapse a pure forward (no real new content above the quote) — there'd
+  // be nothing left to show.
+  try {
+    const range = doc.createRange();
+    range.setStart(doc.body, 0);
+    range.setEndBefore(boundary);
+    // Only bail when there's essentially NOTHING above the quote (a pure forward).
+    // A short reply like "Thanks!" must still collapse the history below it.
+    if (range.toString().replace(/\s+/g, "").length < 3) return false;
+  } catch { return false; }
+
+  const details = doc.createElement("details");
+  details.className = "bh-quoted";
+  const summary = doc.createElement("summary");
+  summary.textContent = "•••";
+  summary.setAttribute("title", "Show quoted text");
+  details.appendChild(summary);
+  boundary.parentNode.insertBefore(details, boundary);
+  // Move the boundary and everything after it (within this parent) into <details>.
+  while (details.nextSibling) details.appendChild(details.nextSibling);
+  return true;
+}
+
 /** Flag risky links in-place (data-risk + data-real for the iframe CSS / click
  *  interceptor) and return the risky ones for the warning banner. */
 function scanLinksInDoc(doc: Document, senderDomain?: string): LinkAssessment[] {
@@ -195,6 +272,7 @@ export function processEmail(
   opts: { showImages: boolean; highlight: boolean; dark?: boolean; sender?: string },
 ): { html: string; blocked: number; links: LinkAssessment[] } {
   const doc = new DOMParser().parseFromString(sanitizeEmail(html), "text/html");
+  try { collapseQuotes(doc); } catch { /* never let quote-collapsing break rendering */ }
   if (opts.dark) {
     try { adaptForDark(doc); } catch { /* never let adaptation break rendering */ }
   }

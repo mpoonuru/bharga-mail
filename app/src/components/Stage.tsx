@@ -80,6 +80,15 @@ function EmailBody({ html, sender }: { html: string; sender?: string }) {
   a[data-risk]{text-decoration:underline wavy #d97706;text-underline-offset:2px;cursor:pointer;}
   a[data-risk=dangerous]{text-decoration-color:#ef4444;background:rgba(239,68,68,.10);border-radius:3px;}
   a[data-risk]::after{content:" \\26A0\\FE0F";font-size:.8em;}
+  /* Collapsed quoted history (Gmail-style "•••" expander). Native <details>, no JS. */
+  details.bh-quoted{margin:10px 0;}
+  details.bh-quoted>summary{display:inline-block;cursor:pointer;list-style:none;user-select:none;
+    padding:1px 12px;border-radius:14px;font-size:13px;line-height:1.5;letter-spacing:1px;
+    background:${dark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.06)"};color:${dark ? "#9aa0aa" : "#5f6470"};}
+  details.bh-quoted>summary::-webkit-details-marker{display:none;}
+  details.bh-quoted>summary:hover{background:${dark ? "rgba(255,255,255,.14)" : "rgba(0,0,0,.10)"};}
+  details.bh-quoted[open]>summary{margin-bottom:8px;letter-spacing:0;}
+  details.bh-quoted[open]{border-left:2px solid ${dark ? "rgba(255,255,255,.14)" : "rgba(0,0,0,.12)"};padding-left:12px;}
   *{max-width:100%;box-sizing:border-box;}
   /* Tame quoted history: browsers default blockquotes to margin:0 40px (both
      sides, per nesting level), which collapses deeply-nested "On … wrote:"
@@ -134,6 +143,9 @@ function EmailBody({ html, sender }: { html: string; sender?: string }) {
         e.stopPropagation();
         setConfirm({ href: a.href, host: a.getAttribute("data-real") || a.hostname, level: a.getAttribute("data-risk") || "suspicious" });
       }, true);
+      // Re-measure when a collapsed-quote <details> opens/closes. `toggle` does
+      // not bubble, so capture it at the document.
+      d?.addEventListener("toggle", () => { resize(); [40, 160, 360].forEach((ms) => setTimeout(resize, ms)); }, true);
     } catch {
       /* ignore */
     }

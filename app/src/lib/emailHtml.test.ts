@@ -36,3 +36,40 @@ describe("processEmail dark-mode colour adaptation", () => {
     expect(html.toLowerCase()).toContain("#0a2540");
   });
 });
+
+describe("processEmail quoted-history collapsing", () => {
+  const opts = { showImages: true, highlight: false };
+
+  it("collapses an Outlook From/Sent/Subject quote, keeping the reply visible", () => {
+    const src =
+      `<div>Hi Kranthi, thanks for the list.</div>` +
+      `<div>________________________________</div>` +
+      `<div>From: Bob &lt;bob@x.com&gt;<br>Sent: Monday<br>To: me<br>Subject: Product List</div>` +
+      `<div>Original message body here.</div>`;
+    const { html } = processEmail(src, opts);
+    const i = html.indexOf("<details");
+    expect(i).toBeGreaterThan(-1);
+    expect(html).toContain('class="bh-quoted"');
+    expect(html.slice(0, i)).toContain("Hi Kranthi"); // reply stays out of the fold
+    expect(html.slice(i)).toContain("Product List"); // quote goes in the fold
+  });
+
+  it("collapses a Gmail 'On … wrote:' quote", () => {
+    const src = `<div dir="ltr">My reply.</div><div class="gmail_quote">On Mon, Bob wrote:<blockquote>old text</blockquote></div>`;
+    const { html } = processEmail(src, opts);
+    const i = html.indexOf("<details");
+    expect(i).toBeGreaterThan(-1);
+    expect(html.slice(0, i)).toContain("My reply");
+    expect(html.slice(i)).toContain("old text");
+  });
+
+  it("does NOT collapse a pure forward (no new content above the quote)", () => {
+    const src = `<div class="gmail_quote">On Mon, Bob wrote:<blockquote>forwarded body</blockquote></div>`;
+    expect(processEmail(src, opts).html).not.toContain("bh-quoted");
+  });
+
+  it("leaves a normal email (no quote) untouched", () => {
+    const src = `<p>Just a normal message with no quoted history at all.</p>`;
+    expect(processEmail(src, opts).html).not.toContain("bh-quoted");
+  });
+});
