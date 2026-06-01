@@ -5,7 +5,7 @@ import { useApp } from "@/store";
 import type { Thread, View, Message } from "@/types";
 import { Tag } from "@/components/ui/Tag";
 import { Icon } from "@/components/icons";
-import { shortTime } from "@/lib/date";
+import { shortTime, whenMs } from "@/lib/date";
 import { avatarColor } from "@/lib/colors";
 import { initials, senderLabel } from "@/lib/avatar";
 import { titlebarDoubleClick } from "@/lib/bridge";
@@ -44,6 +44,10 @@ function dateBucket(when: string, now: dayjs.Dayjs): string {
 
 // One row per message — each email is its own row in the list.
 type Row = { t: Thread; m: Message };
+// `when` arrives as the raw RFC 2822 email Date header (e.g. "Wed, 16 Oct 2024
+// 13:02:49 +0200"), which is NOT lexically sortable — string compare orders by
+// weekday name and day digits, not the actual instant. Always sort on the parsed
+// epoch (whenMs), newest first.
 function sortRows(rows: Row[], mode: SortMode): Row[] {
   const arr = [...rows];
   if (mode === "sender") {
@@ -51,7 +55,7 @@ function sortRows(rows: Row[], mode: SortMode): Row[] {
   } else if (mode === "unread") {
     arr.sort((a, b) => Number(b.t.unread) - Number(a.t.unread));
   } else {
-    arr.sort((a, b) => (a.m.when < b.m.when ? 1 : a.m.when > b.m.when ? -1 : 0));
+    arr.sort((a, b) => whenMs(b.m.when) - whenMs(a.m.when));
   }
   return arr;
 }

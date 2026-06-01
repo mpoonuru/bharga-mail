@@ -14,7 +14,7 @@ import { Attachments, type Attach } from "@/components/ui/Attachments";
 import { SendLater } from "@/components/ui/SendLater";
 import { RecipientChips } from "@/components/ui/RecipientChips";
 import { Modal } from "@/components/ui/Modal";
-import { fullTime } from "@/lib/date";
+import { fullTime, whenMs } from "@/lib/date";
 import { avatarColor } from "@/lib/colors";
 import { initials, senderLabel, showAddressLine, folderLabel } from "@/lib/avatar";
 import { senderTrust } from "@/lib/senderTrust";
@@ -205,7 +205,7 @@ export function Stage() {
   // The conversation root (oldest message) keeps its full content; replies above
   // it have their redundant quoted copy trimmed.
   const oldestMessageId = useMemo(
-    () => thread?.messages.reduce((o, m) => (o && o.when <= m.when ? o : m), thread.messages[0])?.id,
+    () => thread?.messages.reduce((o, m) => (o && whenMs(o.when) <= whenMs(m.when) ? o : m), thread.messages[0])?.id,
     [thread],
   );
   // The mailbox this conversation lives in (account email), for the header chip.
@@ -297,7 +297,7 @@ export function Stage() {
               if (a.id === selectedMessageId) return -1;
               if (b.id === selectedMessageId) return 1;
             }
-            return a.when < b.when ? 1 : a.when > b.when ? -1 : 0;
+            return whenMs(b.when) - whenMs(a.when);
           }).map((m, i) => (
             <motion.div className={`msg${i > 0 ? " reply" : ""}`} key={m.id} style={i > 0 ? { marginLeft: Math.min(i, 5) * 30 } : undefined} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + i * 0.06, ease: [0.2, 0.8, 0.2, 1] }}>
               {i > 0 && <span className="reply-arrow" title="Earlier message"><Icon name="reply" size={13} weight="duotone" /></span>}

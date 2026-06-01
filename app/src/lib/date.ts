@@ -15,6 +15,12 @@ function parse(raw: string) {
   return d.isValid() ? d : null;
 }
 
+/** Epoch milliseconds for sorting. RFC 2822 / ISO are NOT lexically sortable, so
+ *  always sort on this, never on the raw string. Unparseable → 0 (sinks to oldest). */
+export function whenMs(raw: string): number {
+  return parse(raw)?.valueOf() ?? 0;
+}
+
 /** Compact list timestamp: time today, weekday this week, else short date. */
 export function shortTime(raw: string): string {
   const d = parse(raw);
