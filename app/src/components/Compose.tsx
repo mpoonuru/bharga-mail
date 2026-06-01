@@ -8,6 +8,7 @@ import { RichText, type RichTextHandle } from "@/components/ui/RichText";
 import { Attachments, type Attach } from "@/components/ui/Attachments";
 import { SendLater } from "@/components/ui/SendLater";
 import { RecipientChips, type Contact } from "@/components/ui/RecipientChips";
+import { Select } from "@/components/ui/Select";
 
 // Full-screen new-message composer (opened from the sidebar or the "C" hotkey).
 export function Compose() {
@@ -85,11 +86,12 @@ export function Compose() {
           {accounts.length > 0 && (
             <div className="recip-row">
               <span className="recip-lbl">From</span>
-              <select className="from-select" value={from} onChange={(e) => setFrom(e.target.value)}>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.email}</option>
-                ))}
-              </select>
+              <Select
+                value={from}
+                onChange={setFrom}
+                options={accounts.map((a) => ({ value: a.id, label: a.email }))}
+                fullWidth
+              />
             </div>
           )}
           <div className="recip-row">
