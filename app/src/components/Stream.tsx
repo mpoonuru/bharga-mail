@@ -78,8 +78,16 @@ export function Stream() {
   // Smart-chip filters are scoped to the current view — reset the selection (and
   // scroll) whenever the view/folder/account changes.
   const [activeChips, setActiveChips] = useState<Set<string>>(new Set());
-  useEffect(() => { listRef.current?.scrollTo({ top: 0 }); setActiveChips(new Set()); }, [view, selectedFolder, selectedAccountId]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // On any selection change (smart view, folder, or account) reset the per-list
+  // UI state: scroll to top, clear chip filters, and — importantly — un-collapse
+  // date groups. Date-bucket labels ("Last week"…) are shared across folders, so
+  // a group collapsed in one folder would otherwise hide the next folder's rows.
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 0 });
+    setActiveChips(new Set());
+    setCollapsedGroups(new Set());
+  }, [view, selectedFolder, selectedAccountId]);
   const toggleGroup = (label: string) => setCollapsedGroups((s) => { const n = new Set(s); if (n.has(label)) n.delete(label); else n.add(label); return n; });
 
   const doSync = async () => {
