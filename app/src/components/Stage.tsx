@@ -408,15 +408,12 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
   const [showCc, setShowCc] = useState(false);
   const [files, setFiles] = useState<Attach[]>([]);
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [sentLabel, setSentLabel] = useState("Sent");
 
   const last = thread.messages[thread.messages.length - 1];
   const self = account.email.toLowerCase();
 
   const open = (m: Mode, draft = false) => {
     setMode(m);
-    setSent(false);
     const from = last?.from.address ?? "";
     const recips = (last?.to ?? []).map((p) => p.address);
     const origCc = (last?.meta?.cc ?? []).map((p) => p.address);
@@ -482,14 +479,9 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
   async function send(atTs?: number) {
     const html = editorRef.current?.getHtml() ?? "";
     await queueSend({ to, cc, bcc, subject, body: html, threadId: thread.id, sendAt: atTs, attachments: files.map(({ name, mime, dataB64 }) => ({ name, mime, dataB64 })) });
-    setSentLabel(atTs ? "Scheduled" : "Sent");
-    setSent(true);
+    // Collapse straight back to the reply bar — the global bottom toast ("Sending…
+    // / Scheduled · Undo") is the single confirmation, no inline card.
     setMode(null);
-    setTimeout(() => setSent(false), 2200);
-  }
-
-  if (sent) {
-    return <motion.div className="card sent-card" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}><Icon name={sentLabel === "Scheduled" ? "schedule" : "send"} size={14} weight="fill" /> {sentLabel}</motion.div>;
   }
 
   if (!mode) {
