@@ -1357,12 +1357,45 @@ fn unjson_parties(s: String) -> Vec<Party> {
 /// comments and HTML entities are all handled correctly — then collapses
 /// whitespace. (For IMAP we prefer the message's text/plain part upstream; this
 /// is the fallback for HTML-only mail, and the path used for search/AI text.)
-pub fn strip_html(s: &str) -> String {
+/// HTML → plain text, keeping line structure (so quoted-history can be detected).
+pub fn html_to_text(s: &str) -> String {
     use html2text::render::text_renderer::TrivialDecorator;
-    let text = html2text::config::with_decorator(TrivialDecorator::new())
+    html2text::config::with_decorator(TrivialDecorator::new())
         .string_from_read(s.as_bytes(), 10_000)
-        .unwrap_or_default();
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+        .unwrap_or_default()
+}
+
+pub fn strip_html(s: &str) -> String {
+    html_to_text(s).split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Trim quoted reply history off a plain-text body so a preview/snippet shows the
+/// NEW content, not the chain below it. Returns the leading new content, collapsed
+/// to a single line; falls back to the whole text if there's nothing above the
+/// quote (a pure forward).
+pub fn strip_quoted(text: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for line in text.lines() {
+        let l = line.trim();
+        let ll = l.to_lowercase();
+        let is_divider = l.chars().count() >= 8 && l.chars().all(|c| matches!(c, '_' | '-' | '–' | '—' | ' '));
+        if ll.starts_with('>')
+            || ll.starts_with("from:") || ll.starts_with("von:") || ll.starts_with("da:")
+            || ll.starts_with("-----original") || ll.starts_with("________")
+            || (ll.starts_with("on ") && ll.ends_with("wrote:"))
+            || ll.ends_with("schrieb:") || ll.ends_with("ha scritto:") || ll.ends_with("a écrit :")
+            || is_divider
+        {
+            break;
+        }
+        out.push(line);
+    }
+    let collapsed = out.join(" ").split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        text.split_whitespace().collect::<Vec<_>>().join(" ")
+    } else {
+        collapsed
+    }
 }
 
 #[cfg(test)]
@@ -1372,6 +1405,22 @@ mod tests {
     #[test]
     fn strip_html_works() {
         assert_eq!(strip_html("<p>Hello <b>world</b></p>"), "Hello world");
+    }
+
+    #[test]
+    fn strip_quoted_trims_reply_history() {
+        let outlook = "Sounds good, see you then.\n________________________________\nFrom: Bob <b@x.com>\nSent: Monday\nSubject: Hi\nOriginal body.";
+        assert_eq!(strip_quoted(outlook), "Sounds good, see you then.");
+
+        let gmail = "Thanks!\nOn Mon, May 28, 2026 Bob wrote:\n> earlier text";
+        assert_eq!(strip_quoted(gmail), "Thanks!");
+
+        // Pure forward (quote first) → keep the whole thing rather than return empty.
+        let fwd = "From: Bob\nSubject: Hi\nbody";
+        assert!(!strip_quoted(fwd).is_empty());
+
+        // No quote → unchanged (collapsed).
+        assert_eq!(strip_quoted("Just a normal line."), "Just a normal line.");
     }
 
     #[test]

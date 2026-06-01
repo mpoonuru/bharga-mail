@@ -18,6 +18,7 @@ import { fullTime } from "@/lib/date";
 import { avatarColor } from "@/lib/colors";
 import { initials, senderLabel, showAddressLine, folderLabel } from "@/lib/avatar";
 import { senderTrust } from "@/lib/senderTrust";
+import { messageThreat } from "@/lib/threat";
 import { processEmail } from "@/lib/emailHtml";
 
 /**
@@ -321,11 +322,15 @@ export function Stage() {
                   <span className="meta-right">
                     {(() => {
                       const tr = senderTrust(m.meta?.auth);
-                      if (tr.level === "unknown") return null;
+                      const th = messageThreat(m);
+                      const s = th.level === "phishing"
+                        ? { tone: "bad", icon: "shieldWarning" as const, label: "Likely phishing", detail: th.reason, show: true }
+                        : { tone: tr.tone, icon: tr.icon, label: tr.label, detail: tr.detail, show: tr.level !== "unknown" };
+                      if (!s.show) return null;
                       return (
-                        <Tooltip label={`${tr.label} — ${tr.detail}`} side="bottom">
-                          <span className={`trust trust-${tr.tone}`} aria-label={tr.label}>
-                            <Icon name={tr.icon} size={17} weight="duotone" />
+                        <Tooltip label={`${s.label} — ${s.detail}`} side="bottom">
+                          <span className={`trust trust-${s.tone}`} aria-label={s.label}>
+                            <Icon name={s.icon} size={17} weight="duotone" />
                           </span>
                         </Tooltip>
                       );

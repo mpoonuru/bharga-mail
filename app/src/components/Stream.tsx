@@ -13,6 +13,7 @@ import { highlightInline } from "@/lib/highlightInline";
 import { deriveChips } from "@/lib/smartChips";
 import { SmartChips } from "@/components/ui/SmartChips";
 import { senderTrust } from "@/lib/senderTrust";
+import { threadThreat } from "@/lib/threat";
 
 const TITLES: Record<string, string> = {
   priority: "Priority",
@@ -305,6 +306,11 @@ function MailRow({
   const senderSeed = last?.from.address || senderName;
   const avPaint = avatarColor(senderSeed);
   const trust = senderTrust(last?.meta?.auth);
+  // Escalate to red "Likely phishing" when failed auth + a deceptive link coincide.
+  const threat = threadThreat(t);
+  const shield = threat.level === "phishing"
+    ? { show: true, tone: "bad", icon: "shieldWarning" as const, label: "Likely phishing", detail: threat.reason }
+    : { show: trust.level !== "unknown", tone: trust.tone, icon: trust.icon, label: trust.label, detail: trust.detail };
   const hasAttachments = t.messages?.some((m) => m.attachments && m.attachments.length > 0) ?? false;
   return (
     <div className="mail-wrap">
@@ -338,9 +344,9 @@ function MailRow({
             {t.unread && <span className="mail-unread" aria-label="Unread" />}
             <span className="from">{t.participants.map((p) => (p.includes("@") && !p.includes(" ") ? senderLabel(undefined, p) : p)).join(", ")}</span>
             <span className="time">
-              {trust.level !== "unknown" && (
-                <span className={`mail-trust trust-${trust.tone}`} title={`${trust.label} — ${trust.detail}`} aria-label={trust.label}>
-                  <Icon name={trust.icon} size={15} weight="duotone" />
+              {shield.show && (
+                <span className={`mail-trust trust-${shield.tone}`} title={`${shield.label} — ${shield.detail}`} aria-label={shield.label}>
+                  <Icon name={shield.icon} size={15} weight="duotone" />
                 </span>
               )}
               {flagged && <Icon name="priority" size={12} weight="fill" className="mail-flag" aria-label="Flagged" />}

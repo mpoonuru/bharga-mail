@@ -18,6 +18,7 @@
 
 import type { Thread } from "@/types";
 import type { IconName } from "@/components/icons";
+import { threadThreat } from "@/lib/threat";
 
 export interface SmartChip {
   /** stable id within a render (e.g. "urgent", "org:Stripe") */
@@ -89,6 +90,7 @@ export function deriveChips(threads: Thread[], selfDomain?: string): SmartChip[]
   };
 
   // --- signal chips (structural + existing AI labels) ---
+  add("suspicious", "Suspicious", "shieldWarning", "signal", "Possible phishing — failed auth or deceptive links", (t) => threadThreat(t).level !== "none");
   add("urgent", "Urgent", "priority", "signal", "Flagged urgent by AI triage", (t) => t.labels.includes("urgent"));
   add("meetings", "Meetings", "calendar", "signal", "Scheduling / meeting requests", (t) => t.labels.includes("meeting") || t.view.includes("calendar"));
   add("receipts", "Receipts", "receipts", "signal", "Payments, invoices & receipts", (t) => t.labels.includes("receipt") || t.view.includes("receipts"));
@@ -110,7 +112,11 @@ export function deriveChips(threads: Thread[], selfDomain?: string): SmartChip[]
     add(`org:${org}`, org, "folder", "org", `${n} threads from ${org}`, (t) => orgFromAddress(senderAddr(t)) === org);
   }
 
-  // Rank by volume, then unread; on ties, signals lead org clusters.
-  chips.sort((a, b) => b.count - a.count || b.unread - a.unread || (a.kind === b.kind ? 0 : a.kind === "signal" ? -1 : 1));
+  // The security chip always leads; then by volume, then unread; signals before orgs.
+  chips.sort((a, b) => {
+    if (a.id === "suspicious") return -1;
+    if (b.id === "suspicious") return 1;
+    return b.count - a.count || b.unread - a.unread || (a.kind === b.kind ? 0 : a.kind === "signal" ? -1 : 1);
+  });
   return chips;
 }

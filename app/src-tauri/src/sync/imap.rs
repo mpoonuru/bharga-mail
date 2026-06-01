@@ -494,11 +494,12 @@ fn parse_rfc822(account_id: &str, raw: &[u8], unread: bool, group: bool, folder:
     // like Thunderbird/Apple Mail do); only parse the HTML when there's no plain
     // part. Gmail/Graph instead use the provider's server-side snippet.
     let preview = {
-        let text = find_body(&mail, "text/plain")
+        // Keep line structure (text/plain raw, or line-preserving HTML→text), trim
+        // the quoted reply history, then take the snippet of the NEW content.
+        let raw = find_body(&mail, "text/plain")
             .filter(|t| !t.trim().is_empty())
-            .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
-            .unwrap_or_else(|| crate::store::strip_html(&body_html));
-        text.chars().take(140).collect::<String>()
+            .unwrap_or_else(|| crate::store::html_to_text(&body_html));
+        crate::store::strip_quoted(&raw).chars().take(140).collect::<String>()
     };
 
     Some(Thread {

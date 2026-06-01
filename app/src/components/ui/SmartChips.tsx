@@ -30,7 +30,7 @@ export function SmartChips({
         return (
           <Tooltip key={c.id} label={c.why} side="bottom">
             <button
-              className={`chip chip-${c.kind}${on ? " on" : ""}`}
+              className={`chip chip-${c.kind}${c.id === "suspicious" ? " chip-alert" : ""}${on ? " on" : ""}`}
               onClick={() => onToggle(c.id)}
               role="tab"
               aria-selected={on}
