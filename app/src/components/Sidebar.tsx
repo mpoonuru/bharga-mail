@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { motion } from "motion/react";
+import { motion, Reorder, useDragControls } from "motion/react";
 import { useApp } from "@/store";
-import type { View } from "@/types";
+import type { View, Account } from "@/types";
 import { Icon, type IconName } from "@/components/icons";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { accountColor } from "@/lib/colors";
+import { titlebarDoubleClick } from "@/lib/bridge";
 import logo from "@/assets/logo.png";
 
 const NAV: { id: View; icon: IconName; label: string }[] = [
@@ -27,10 +28,70 @@ const FOLDER_ICON: Record<string, IconName> = {
   inbox: "inbox", sent: "send", drafts: "compose", trash: "close", junk: "close", archive: "awaiting",
 };
 
+// Pinned-folder key separator — must match the store's togglePinFolder (U+0001).
+const PIN_SEP = "";
+const pinKey = (accountId: string, folder: string) => `${accountId}${PIN_SEP}${folder}`;
+
+/** A single account row in the expanded sidebar: drag-handle to reorder, the
+ *  account selector, refresh, and (when focused) its folders with pin toggles. */
+function AccountRow({ a }: { a: Account }) {
+  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder } = useApp();
+  const controls = useDragControls();
+  const [busy, setBusy] = useState(false);
+  const isFocused = selectedAccountId === a.id;
+  return (
+    <Reorder.Item value={a.id} as="div" dragListener={false} dragControls={controls} className="acct-reorder">
+      <div className="acct-row">
+        <button className="acct-drag" title="Drag to reorder" aria-label="Drag to reorder" onPointerDown={(e) => controls.start(e)}>
+          <Icon name="grip" size={13} weight="bold" />
+        </button>
+        <button className={`nav-item acct-main${isFocused ? " active" : ""}`} onClick={() => setAccount(a.id)} title={a.email}>
+          <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
+          <span className="acct-email">{a.email}</span>
+          {a.unread ? <span className="count">{a.unread}</span> : null}
+        </button>
+        {a.provider === "imap" && (
+          <button className="acct-refresh" title="Refresh folders" disabled={busy}
+            onClick={async (e) => { e.stopPropagation(); setBusy(true); try { await refreshFolders(a.id); } finally { setBusy(false); } }}>
+            <Icon name="cloud" size={13} weight={busy ? "fill" : "duotone"} />
+          </button>
+        )}
+      </div>
+      {isFocused && (
+        <div className="folder-tree">
+          {(folders.length ? folders : [{ name: "INBOX", role: "inbox", unread: 0, total: 0 }]).map((f) => {
+            const pinned = pinnedFolders.includes(pinKey(a.id, f.name));
+            return (
+              <div className="folder-row" key={f.name}>
+                <button className={`nav-item folder-item${selectedFolder === f.name ? " active" : ""}`} onClick={() => setFolder(f.name)} title={f.name}>
+                  <span className="ic"><Icon name={FOLDER_ICON[f.role ?? ""] ?? "inbox"} size={15} weight="duotone" /></span>
+                  <span className="acct-email">{f.role === "inbox" ? "Inbox" : f.name.replace(/^INBOX[./]/, "")}</span>
+                  {f.unread ? <span className="count">{f.unread}</span> : null}
+                </button>
+                <button className={`folder-pin${pinned ? " pinned" : ""}`} title={pinned ? "Unpin" : "Pin to top"}
+                  onClick={(e) => { e.stopPropagation(); togglePinFolder(a.id, f.name); }}>
+                  <Icon name="pin" size={11} weight={pinned ? "fill" : "regular"} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Reorder.Item>
+  );
+}
+
 export function Sidebar({ rail = false }: { rail?: boolean }) {
-  const { view, setView, setCompose, setModelPicker, threads, tasks, ai, accounts, selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, toggleSidebar } = useApp();
-  const [foldersBusy, setFoldersBusy] = useState(false);
+  const { view, setView, setCompose, setModelPicker, threads, tasks, ai, accounts, selectedAccountId, setAccount, selectedFolder, setFolder, toggleSidebar, accountOrder, setAccountOrder, pinnedFolders, togglePinFolder } = useApp();
   const focused = selectedAccountId ? accounts.find((a) => a.id === selectedAccountId) : null;
+  // Accounts in the user's saved order; any not yet in the order sort to the end.
+  const ordered = [...accounts].sort((x, y) => {
+    const ix = accountOrder.indexOf(x.id), iy = accountOrder.indexOf(y.id);
+    if (ix === -1) return iy === -1 ? 0 : 1;
+    if (iy === -1) return -1;
+    return ix - iy;
+  });
+  const orderedIds = ordered.map((a) => a.id);
   const headerAcct = focused?.email ?? (accounts.length > 1 ? "All accounts" : accounts[0]?.email ?? "No account connected");
   const count = (v: View) => threads.filter((t) => t.view.includes(v) && t.unread).length || undefined;
   const draftModel = ai?.models.find((m) => m.roles.includes("draft"));
@@ -49,11 +110,11 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
 
   return (
     <aside className={`sidebar${rail ? " rail" : ""}`}>
-      <div className="brand" data-tauri-drag-region>
-        <motion.img src={logo} alt="Aether Mail" className="logo" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 300, damping: 18 }} />
+      <div className="brand" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
+        <motion.img src={logo} alt="Bharga Mail" className="logo" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 300, damping: 18 }} />
         {!rail && (
           <div style={{ minWidth: 0, flex: 1 }}>
-            <b>Aether Mail</b>
+            <b>Bharga Mail</b>
             <div className="acct">{headerAcct}</div>
           </div>
         )}
@@ -84,6 +145,34 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
       <div className="sidebar-scroll">
         {NAV.map((n) => <NavButton key={n.id} n={n} badge={count(n.id)} />)}
 
+        {/* Pinned folders — quick jumps, kept at the top. */}
+        {!rail && pinnedFolders.length > 0 && (
+          <>
+            <div className="nav-label">Pinned</div>
+            {pinnedFolders.map((key) => {
+              const [accId, folder] = key.split(PIN_SEP);
+              const acc = accounts.find((a) => a.id === accId);
+              if (!acc || !folder) return null;
+              const active = selectedAccountId === accId && selectedFolder === folder;
+              return (
+                <div className="acct-row" key={key}>
+                  <button
+                    className={`nav-item acct-main folder-item${active ? " active" : ""}`}
+                    onClick={() => { setAccount(accId); void setFolder(folder); }}
+                    title={`${acc.email} · ${folder}`}
+                  >
+                    <span className="ic"><span className="acct-dot" style={{ background: accountColor(accId) }} /></span>
+                    <span className="acct-email">{folder === "INBOX" ? "Inbox" : folder.replace(/^INBOX[./]/, "")}</span>
+                  </button>
+                  <button className="folder-pin pinned" title="Unpin" onClick={(e) => { e.stopPropagation(); togglePinFolder(accId, folder); }}>
+                    <Icon name="pin" size={12} weight="fill" />
+                  </button>
+                </div>
+              );
+            })}
+          </>
+        )}
+
         {accounts.length > 0 && (
           <>
             {!rail && <div className="nav-label">Accounts</div>}
@@ -97,48 +186,22 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                 {!rail && "All accounts"}
               </button>
             )}
-            {accounts.map((a) => (
-              <div key={a.id}>
-                <div className="acct-row">
-                  <button
-                    className={`nav-item acct-main${selectedAccountId === a.id ? " active" : ""}`}
-                    onClick={() => setAccount(a.id)}
-                    title={a.email}
-                  >
-                    <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
-                    {!rail && <span className="acct-email">{a.email}</span>}
-                    {!rail && a.unread ? <span className="count">{a.unread}</span> : null}
-                  </button>
-                  {!rail && a.provider === "imap" && (
-                    <button
-                      className="acct-refresh"
-                      title="Refresh folders"
-                      disabled={foldersBusy}
-                      onClick={async (e) => { e.stopPropagation(); setFoldersBusy(true); try { await refreshFolders(a.id); } finally { setFoldersBusy(false); } }}
-                    >
-                      <Icon name="cloud" size={13} weight={foldersBusy ? "fill" : "duotone"} />
-                    </button>
-                  )}
-                </div>
-                {/* Folders for the focused account (always shows at least Inbox). */}
-                {!rail && selectedAccountId === a.id && (
-                  <div className="folder-tree">
-                    {(folders.length ? folders : [{ name: "INBOX", role: "inbox", unread: 0, total: 0 }]).map((f) => (
-                      <button
-                        key={f.name}
-                        className={`nav-item folder-item${selectedFolder === f.name ? " active" : ""}`}
-                        onClick={() => setFolder(f.name)}
-                        title={f.name}
-                      >
-                        <span className="ic"><Icon name={FOLDER_ICON[f.role ?? ""] ?? "inbox"} size={15} weight="duotone" /></span>
-                        <span className="acct-email">{f.role === "inbox" ? "Inbox" : f.name.replace(/^INBOX[./]/, "")}</span>
-                        {f.unread ? <span className="count">{f.unread}</span> : null}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+            {rail ? (
+              ordered.map((a) => (
+                <button
+                  key={a.id}
+                  className={`nav-item${selectedAccountId === a.id ? " active" : ""}`}
+                  onClick={() => setAccount(a.id)}
+                  title={a.email}
+                >
+                  <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
+                </button>
+              ))
+            ) : (
+              <Reorder.Group axis="y" values={orderedIds} onReorder={setAccountOrder} as="div" className="acct-list">
+                {ordered.map((a) => <AccountRow key={a.id} a={a} />)}
+              </Reorder.Group>
+            )}
           </>
         )}
 

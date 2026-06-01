@@ -1,7 +1,7 @@
-# Aether Mail — Local Store Architecture (v2)
+# Bharga Mail — Local Store Architecture (v2)
 
 The desktop core persists everything in a single bundled SQLite database
-(`aether.db` in the OS app-data dir). The UI reads from this store; the sync
+(`bharga.db` in the OS app-data dir). The UI reads from this store; the sync
 engine reconciles it with remote providers in the background. This document is
 the contract for the schema and how it evolves.
 

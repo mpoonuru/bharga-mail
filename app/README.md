@@ -1,4 +1,4 @@
-# Aether Mail
+# Bharga Mail
 
 AI-native, **model-agnostic**, local-first mail client. Tauri 2 (Rust core) + React 19 (TypeScript).
 Design language: **Calm Command** — calm and content-first at rest, total power one keystroke away.
@@ -93,7 +93,7 @@ Uses OAuth 2.0 with PKCE via a loopback redirect (Google's desktop-app pattern �
 1. In Google Cloud Console, create an **OAuth client ID** of type *Desktop app* and enable the Gmail API.
 2. Run the desktop app with the client id in the environment:
    ```bash
-   AETHER_GMAIL_CLIENT_ID=xxxx.apps.googleusercontent.com npm run tauri:dev
+   BHARGA_GMAIL_CLIENT_ID=xxxx.apps.googleusercontent.com npm run tauri:dev
    ```
 3. Settings → **Connect Gmail** → sign in. Messages sync into the local SQLite store and appear in the inbox.
 
@@ -106,7 +106,7 @@ Same PKCE flow, Microsoft Graph endpoints.
 1. In Azure Portal → App registrations, create an app of type **Mobile & desktop**, add the redirect URI `http://localhost`, and grant delegated scopes `User.Read`, `Mail.Read`, `Mail.Send`, `offline_access`.
 2. Run with the client id:
    ```bash
-   AETHER_MS_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx bun run tauri:dev
+   BHARGA_MS_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx bun run tauri:dev
    ```
 3. Settings → **Microsoft 365** → sign in. Mail syncs via Graph; sending uses `sendMail`.
 

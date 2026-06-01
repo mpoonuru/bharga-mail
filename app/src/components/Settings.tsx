@@ -78,7 +78,7 @@ export function Settings() {
       const id = await connectGmail();
       setAcctStatus(`Connected ${id} — synced.`);
     } catch {
-      setAcctStatus("Connecting accounts requires the desktop app (bun run tauri:dev) with AETHER_GMAIL_CLIENT_ID set.");
+      setAcctStatus("Connecting accounts requires the desktop app (bun run tauri:dev) with BHARGA_GMAIL_CLIENT_ID set.");
     }
   }
 
@@ -88,7 +88,7 @@ export function Settings() {
       const id = await connectMicrosoft();
       setAcctStatus(`Connected ${id} — synced.`);
     } catch {
-      setAcctStatus("Connecting Microsoft 365 requires the desktop app (bun run tauri:dev) with AETHER_MS_CLIENT_ID set.");
+      setAcctStatus("Connecting Microsoft 365 requires the desktop app (bun run tauri:dev) with BHARGA_MS_CLIENT_ID set.");
     }
   }
 
@@ -300,7 +300,7 @@ export function Settings() {
       <p className="sub" style={{ fontWeight: 600, color: "var(--text-2)", marginBottom: 8, marginTop: 18 }}>About</p>
       <div className="card">
         <div className="setting-row">
-          <div className="info"><b>Aether Mail</b><p>AI-native email client — your mail, your model, your machine. Version 0.1.0.</p></div>
+          <div className="info"><b>Bharga Mail</b><p>AI-native email client — your mail, your model, your machine. Version 0.1.0.</p></div>
         </div>
         <div className="setting-row">
           <div className="info"><b>Built by</b><p>Arjun P</p></div>

@@ -271,6 +271,7 @@ impl Store {
             (8, migrate_v8_reset_cache),
             (9, migrate_v9_outbox_cc_bcc),
             (10, migrate_v10_rebuild_previews),
+            (11, migrate_v11_thread_flags),
         ];
         let mut version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         for (v, step) in steps {
@@ -286,9 +287,9 @@ impl Store {
     }
 
     fn seed_if_empty(&self) {
-        // Demo data only when explicitly requested (AETHER_DEMO=1). A real build
+        // Demo data only when explicitly requested (BHARGA_DEMO=1). A real build
         // starts empty and prompts the user to connect an account.
-        if std::env::var("AETHER_DEMO").is_err() {
+        if std::env::var("BHARGA_DEMO").is_err() {
             return;
         }
         let empty = {
@@ -494,6 +495,30 @@ impl Store {
             .filter_map(|m| m.message_id)
             .collect();
         Some((folder, ids))
+    }
+
+    /// Set/clear a thread's flag (star). Local mirror of the IMAP `\Flagged` keyword.
+    pub fn set_thread_flag(&self, thread_id: &str, flagged: bool) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        if flagged {
+            conn.execute("INSERT OR IGNORE INTO thread_flags (thread_id) VALUES (?1)", params![thread_id])?;
+        } else {
+            conn.execute("DELETE FROM thread_flags WHERE thread_id=?1", params![thread_id])?;
+        }
+        Ok(())
+    }
+
+    /// All currently-flagged thread ids (drives the frontend's Flagged view, merged
+    /// with any optimistic local flags).
+    pub fn flagged_thread_ids(&self) -> Vec<String> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = match conn.prepare("SELECT thread_id FROM thread_flags") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        stmt.query_map([], |r| r.get::<_, String>(0))
+            .map(|rows| rows.filter_map(Result::ok).collect())
+            .unwrap_or_default()
     }
 
     /// Total unread (non-deleted) threads across all accounts — a cheap signal the
@@ -775,7 +800,7 @@ impl Store {
 
     pub fn events(&self) -> Vec<CalEvent> {
         // Calendar provider sync is Phase 1; show demo events only in demo mode.
-        if std::env::var("AETHER_DEMO").is_ok() {
+        if std::env::var("BHARGA_DEMO").is_ok() {
             seed::events()
         } else {
             Vec::new()
@@ -1264,6 +1289,14 @@ fn migrate_v10_rebuild_previews(tx: &rusqlite::Transaction) -> rusqlite::Result<
         let preview: String = strip_html(&body).chars().take(140).collect();
         tx.execute("UPDATE threads SET preview = ?1 WHERE id = ?2", params![preview, id])?;
     }
+    Ok(())
+}
+
+/// v11: per-thread flag (star). Stored separately from the thread row so the
+/// existing Thread shape is untouched; presence of the id means flagged. Synced
+/// to/from the IMAP `\Flagged` keyword by the sync layer.
+fn migrate_v11_thread_flags(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    tx.execute("CREATE TABLE IF NOT EXISTS thread_flags (thread_id TEXT PRIMARY KEY)", [])?;
     Ok(())
 }
 

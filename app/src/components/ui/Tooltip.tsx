@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 /** A lightweight custom tooltip (pure CSS hover/focus — no JS state, no portal),
- *  themed to Aether's glass surface. `side` controls placement; `block` makes the
+ *  themed to BHARGATEST glass surface. `side` controls placement; `block` makes the
  *  wrapper full-width (for sidebar nav rows) vs inline (for toolbar buttons). */
 export function Tooltip({
   label,

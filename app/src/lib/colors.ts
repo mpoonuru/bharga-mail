@@ -40,9 +40,12 @@ export function avatarColor(seed: string): AvatarPaint {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   const hue = AVATAR_HUES[h % AVATAR_HUES.length];
+  const hue2 = (hue + 22) % 360; // slight hue rotation between stops for a richer, visible gradient
   return {
-    bg: `linear-gradient(135deg, oklch(0.96 0.035 ${hue}), oklch(0.9 0.072 ${hue}))`,
-    fg: `oklch(0.5 0.14 ${hue})`,
-    ring: `oklch(0.86 0.07 ${hue})`,
+    // Wider lightness/chroma spread + a hue shift so the gradient actually reads
+    // (topup-arena category-tile style) instead of looking like a flat tint.
+    bg: `linear-gradient(140deg, oklch(0.95 0.06 ${hue}), oklch(0.83 0.13 ${hue2}))`,
+    fg: `oklch(0.47 0.16 ${hue})`,
+    ring: `oklch(0.83 0.10 ${hue})`,
   };
 }

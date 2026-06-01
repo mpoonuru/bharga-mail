@@ -1,7 +1,7 @@
 //! Microsoft 365 provider: OAuth (PKCE) + Microsoft Graph sync into the store.
 //!
 //! Reuses the generic PKCE loopback flow (see `oauth.rs`). Set your Azure
-//! "Mobile & desktop" app client id via `AETHER_MS_CLIENT_ID` (public client,
+//! "Mobile & desktop" app client id via `BHARGA_MS_CLIENT_ID` (public client,
 //! no secret with PKCE; register `http://localhost` as a redirect URI).
 
 use serde_json::Value;
@@ -16,7 +16,7 @@ fn config() -> OAuthConfig {
     OAuthConfig {
         auth_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".into(),
         token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token".into(),
-        client_id: std::env::var("AETHER_MS_CLIENT_ID").unwrap_or_default(),
+        client_id: std::env::var("BHARGA_MS_CLIENT_ID").unwrap_or_default(),
         scopes: vec![
             "offline_access".into(),
             "User.Read".into(),
@@ -30,7 +30,7 @@ fn config() -> OAuthConfig {
 pub async fn connect(store: &Store) -> Result<String, SyncError> {
     let cfg = config();
     if cfg.client_id.is_empty() {
-        return Err(SyncError::Transient("AETHER_MS_CLIENT_ID not set".into()));
+        return Err(SyncError::Transient("BHARGA_MS_CLIENT_ID not set".into()));
     }
     let tok = oauth::run_pkce_flow(&cfg).await.map_err(|e| SyncError::Transient(e.to_string()))?;
     let email = fetch_email(&tok.access_token).await.unwrap_or_else(|| "me".into());

@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    aether_mail_lib::run()
+    bharga_mail_lib::run()
 }

@@ -1,4 +1,4 @@
-# Build & run Aether Mail on macOS
+# Build & run Bharga Mail on macOS
 
 This produces a native macOS `.app` (and a `.dmg` installer) you can run and test.
 
@@ -33,14 +33,14 @@ and compiles the release app. First compile takes a few minutes (Rust + SQLite).
 Result:
 
 ```
-app/src-tauri/target/release/bundle/macos/Aether Mail.app   ← double-click to run
-app/src-tauri/target/release/bundle/dmg/Aether Mail_0.1.0_*.dmg ← installer
+app/src-tauri/target/release/bundle/macos/Bharga Mail.app   ← double-click to run
+app/src-tauri/target/release/bundle/dmg/Bharga Mail_0.1.0_*.dmg ← installer
 ```
 
 Open it:
 
 ```bash
-open "src-tauri/target/release/bundle/macos/Aether Mail.app"
+open "src-tauri/target/release/bundle/macos/Bharga Mail.app"
 ```
 
 ## 3. Run in dev mode (hot reload, faster iteration)
@@ -63,13 +63,13 @@ bun run tauri:dev
   endpoint to `http://localhost:11434`, assign it the Draft/Triage/Embeddings
   roles, **Save engine**. Or paste a cloud API key (Claude / any
   OpenAI-compatible). Then drafts, summaries and ⌘K "ask" run for real.
-- **Gmail** — see README "Connect a Gmail account" (needs `AETHER_GMAIL_CLIENT_ID`).
-- **Microsoft 365** — see README "Connect a Microsoft 365 account" (`AETHER_MS_CLIENT_ID`).
+- **Gmail** — see README "Connect a Gmail account" (needs `BHARGA_GMAIL_CLIENT_ID`).
+- **Microsoft 365** — see README "Connect a Microsoft 365 account" (`BHARGA_MS_CLIENT_ID`).
 - **Semantic search** — Settings → "Build index" after assigning an Embeddings model.
 
 ## Gatekeeper note
 
 The app isn't code-signed/notarized yet, so the first open may need:
 **System Settings → Privacy & Security → "Open Anyway"**, or
-`xattr -dr com.apple.quarantine "Aether Mail.app"`.
+`xattr -dr com.apple.quarantine "Bharga Mail.app"`.
 For distribution, add an Apple Developer ID and notarization (see ARCHITECTURE.md §9).

@@ -1,5 +1,5 @@
 [package]
-name = "aether-mail"
+name = "bharga-mail"
 version = "0.1.0"
 description = "AI-native, model-agnostic, local-first mail client"
 authors = ["PJ Telesoft"]
@@ -7,7 +7,7 @@ edition = "2021"
 rust-version = "1.77"
 
 [lib]
-name = "aether_mail_lib"
+name = "bharga_mail_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -32,6 +32,9 @@ tiny_http = "0.12"
 sha2 = "0.10"
 base64 = "0.22"
 rand = "0.8"
+# Authenticated encryption (AES-256-GCM) for secrets at rest in the DB fallback;
+# the 32-byte master key lives in the OS keychain (see sync/tokens.rs).
+aes-gcm = "0.10"
 urlencoding = "2"
 # keyring v3 needs an explicit platform backend feature (mock elsewhere, e.g. Linux CI)
 keyring = { version = "3", features = ["apple-native", "windows-native"] }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-command macOS build for Aether Mail.
+# One-command macOS build for Bharga Mail.
 # Run on a Mac:  bash scripts/build-macos.sh
 set -euo pipefail
 
@@ -37,8 +37,8 @@ $RUN tauri build
 
 echo
 echo "✓ Done. Your app bundle is here:"
-echo "   app/src-tauri/target/release/bundle/macos/Aether Mail.app"
+echo "   app/src-tauri/target/release/bundle/macos/Bharga Mail.app"
 echo "   app/src-tauri/target/release/bundle/dmg/    (installer .dmg)"
 echo
-echo "Open it with:  open 'src-tauri/target/release/bundle/macos/Aether Mail.app'"
+echo "Open it with:  open 'src-tauri/target/release/bundle/macos/Bharga Mail.app'"
 echo "(First open: if macOS blocks it, right-click the app → Open → Open.)"

@@ -1,10 +1,10 @@
-# Aether Mail — Competitive Gap Analysis
+# Bharga Mail — Competitive Gap Analysis
 
 _Last updated: 2026-05-31. Grounded in the actual codebase (35 Tauri commands, all components, AI prompts) vs. current feature sets of the leading clients._
 
 ## TL;DR — the gaps that matter most
 
-Aether already has a strong **foundation** that most clients took years to build: BYO-AI engine, RAG "ask my inbox," semantic + full-text search, AI triage, multi-account (Gmail/Graph/IMAP), sanitized iframe rendering, undo-send, signatures, attachments, conversation grouping, keyboard nav, command bar, local-first SQLite.
+Bharga already has a strong **foundation** that most clients took years to build: BYO-AI engine, RAG "ask my inbox," semantic + full-text search, AI triage, multi-account (Gmail/Graph/IMAP), sanitized iframe rendering, undo-send, signatures, attachments, conversation grouping, keyboard nav, command bar, local-first SQLite.
 
 What separates us from the **AI-email leaders** (Superhuman, Shortwave, Notion Mail) and the **table-stakes** set (Gmail/Outlook/Apple/Proton) falls into three buckets:
 
@@ -18,7 +18,7 @@ What separates us from the **AI-email leaders** (Superhuman, Shortwave, Notion M
 
 Legend: ✅ have · 🟡 partial · ❌ missing
 
-| Capability | Aether | Superhuman | Shortwave | Gmail | Outlook | Apple Mail | Proton | Notion Mail |
+| Capability | Bharga | Superhuman | Shortwave | Gmail | Outlook | Apple Mail | Proton | Notion Mail |
 |---|---|---|---|---|---|---|---|---|
 | **AI-native** |
 | BYO model (OpenAI/Anthropic/local) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -137,7 +137,7 @@ Legend: ✅ have · 🟡 partial · ❌ missing
 
 ---
 
-## Where Aether already leads
+## Where Bharga already leads
 
 Worth protecting, because no mainstream competitor has all of these together: **bring-your-own-model** (privacy + cost control), **local-first SQLite** (offline, ownership), **semantic + full-text search**, **RAG ask-my-inbox**, and a **keyboard-first command-bar UX** — paired with cross-platform Tauri. The strategy isn't to copy Superhuman feature-for-feature; it's to reach table-stakes parity on sending/calendar/plumbing, then push the AI-native automation (splits, voice drafting, agentic actions) _on the user's own model_, which the cloud-only incumbents structurally can't match.
 

@@ -119,7 +119,7 @@ fn capture_code(server: &tiny_http::Server, expected_state: &str) -> Result<Stri
         let url = request.url().to_string();
         let (code, state) = parse_query(&url);
         let body = "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>\
-                    <h2>Aether Mail</h2><p>You can close this tab and return to the app.</p></body></html>";
+                    <h2>Bharga Mail</h2><p>You can close this tab and return to the app.</p></body></html>";
         let _ = request.respond(
             tiny_http::Response::from_string(body)
                 .with_header("Content-Type: text/html".parse::<tiny_http::Header>().unwrap()),

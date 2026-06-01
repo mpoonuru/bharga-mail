@@ -46,12 +46,22 @@
   --border: rgba(255,255,255,0.07); --border-2: rgba(255,255,255,0.12);
   --text: #eef0f5; --text-2: #a6abbd; --text-3: #6c7187;
   --shadow: 0 20px 60px rgba(0,0,0,0.55); --glass: rgba(22,24,31,0.72);
+  /* Soft "itopup"-style ambient: a cool glow top-left + indigo glow bottom-right.
+     Defined once and layered onto every surface (panels, modal, selected row). */
+  --ambient:
+    radial-gradient(78% 62% at -6% -10%, oklch(0.44 0.075 255 / 0.22), transparent 72%),
+    radial-gradient(72% 60% at 106% 110%, oklch(0.42 0.085 292 / 0.18), transparent 72%);
 }
 [data-theme="light"] {
   --bg: #eef1f6; --bg-2: #f7f9fc; --surface: #ffffff; --surface-2: #eef1f6;
   --border: rgba(18,22,40,0.09); --border-2: rgba(18,22,40,0.16);
   --text: #161922; --text-2: #4c5263; --text-3: #828896;
   --shadow: 0 20px 60px rgba(30,40,70,0.16); --glass: rgba(255,255,255,0.85);
+  /* Sampled from the itopup logo background: a near-white base with very pale
+     cool-blue soft shapes top-left + bottom-right. OKLCH, subtle. */
+  --ambient:
+    radial-gradient(82% 66% at -6% -10%, oklch(0.965 0.018 251 / 0.9), transparent 72%),
+    radial-gradient(76% 64% at 106% 110%, oklch(0.958 0.02 251 / 0.75), transparent 72%);
 }
 [data-density="compact"] { --row-pad: 8px 12px; --gap: 2px; }
 [data-density="cozy"]    { --row-pad: 12px 13px; --gap: 4px; }
@@ -98,7 +108,7 @@
 
   /* ---- Sidebar ---- */
   /* pt clears the macOS traffic-light controls in the overlay titlebar. */
-  .sidebar { @apply flex flex-col gap-[2px] min-w-0 h-full border-r border-border bg-bg-2 px-3 pt-[34px] pb-[14px]; }
+  .sidebar { @apply flex flex-col gap-[2px] min-w-0 h-full border-r border-border bg-bg-2 px-3 pt-[34px] pb-[14px]; background-image: var(--ambient); }
   .sidebar.rail { @apply px-2 pt-[34px] pb-[14px] items-stretch; }
   .sidebar.rail .brand { @apply justify-center pt-2 pb-[14px] px-0; }
   .sidebar.rail .nav-item { @apply justify-center py-[9px] px-0; }
@@ -109,7 +119,10 @@
   .sidebar.rail .compose-btn { @apply w-[40px] h-[40px] p-0 mx-auto mt-1 mb-2.5 rounded-[12px]; }
   .sidebar.rail .model-chip { @apply py-[10px] px-0; }
   .brand { @apply flex items-center gap-2.5 pt-2 px-2.5 pb-[14px]; }
-  .logo { @apply w-[28px] h-[28px] shrink-0 object-contain rounded-lg p-[2px]; background: linear-gradient(135deg, #0c1a33, #163966); box-shadow: 0 4px 12px oklch(0.30 0.08 250 / 0.35); }
+  /* The logo art already carries its own dark rounded-square background, so the
+     image fills the box edge-to-edge — no wrapper background or padding (that was
+     the mismatched grey box). Just round the corners to match the app icon. */
+  .logo { @apply w-[34px] h-[34px] shrink-0 object-cover rounded-[10px]; box-shadow: 0 4px 12px oklch(0.30 0.08 250 / 0.35); }
   .brand b { @apply text-[14px]; font-weight: 650; }
   .brand .acct { @apply text-[11px] text-text-3 overflow-hidden text-ellipsis whitespace-nowrap max-w-[150px]; }
   .compose-btn { @apply mt-1 mx-0.5 mb-2.5 p-2.5 rounded-[11px] border-none bg-accent text-white text-[13px] font-semibold flex items-center justify-center gap-2; transition: .15s var(--ease); }
@@ -125,15 +138,28 @@
   .sidebar-scroll { @apply flex-1 min-h-0 overflow-y-auto flex flex-col gap-[2px] -mx-1 px-1; scrollbar-width: none; }
   .sidebar-scroll::-webkit-scrollbar { display: none; }
   /* Account row = clickable account + an inline folder-refresh icon. */
-  .acct-row { @apply relative; }
-  .acct-row .acct-main { @apply pr-8; }
-  .acct-refresh { @apply absolute right-1.5 top-1/2 z-10 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 cursor-pointer; transform: translateY(-50%); background: transparent; border: none; transition: .14s var(--ease); }
+  .acct-reorder { @apply relative; }
+  .acct-row { @apply relative flex items-center; }
+  .acct-row .acct-main { @apply flex-1 min-w-0; }
+  /* Drag handle — appears on hover, only it starts a reorder (dragListener off). */
+  .acct-drag { @apply shrink-0 inline-flex items-center justify-center w-[15px] self-stretch text-text-3 opacity-0 cursor-grab bg-transparent border-none; touch-action: none; transition: .14s var(--ease); }
+  .acct-row:hover .acct-drag { @apply opacity-50; }
+  .acct-drag:hover { @apply opacity-100 text-text; }
+  .acct-drag:active { @apply cursor-grabbing; }
+  .acct-refresh { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 cursor-pointer bg-transparent border-none; transition: .14s var(--ease); }
   .acct-refresh:hover:not(:disabled) { @apply text-text bg-surface; }
   .acct-refresh:disabled { @apply opacity-50 cursor-default; }
   /* Folder list nested under an account, with a tree connector line. */
   .folder-tree { @apply ml-[15px] pl-2.5 flex flex-col gap-[1px] mt-0.5 mb-1.5; border-left: 1px solid var(--border-2); }
+  .folder-row { @apply relative flex items-center; }
+  .folder-row .folder-item { @apply flex-1 min-w-0; }
   .folder-item { @apply py-[7px] text-[12.5px]; }
   .folder-item .ic { @apply w-[15px]; }
+  /* Pin toggle on folders + pinned-section rows. */
+  .folder-pin { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] rounded-md text-text-3 opacity-0 bg-transparent border-none cursor-pointer; transition: .14s var(--ease); }
+  .folder-row:hover .folder-pin { @apply opacity-60; }
+  .folder-pin:hover { @apply opacity-100 text-text bg-surface; }
+  .folder-pin.pinned { @apply opacity-100; color: var(--accent); }
   .nav-label { @apply text-[10.5px] uppercase text-text-3 pt-4 px-[11px] pb-1.5 font-semibold; letter-spacing: .09em; }
   .sidebar .spacer { @apply flex-1; }
   .model-chip { @apply mt-2 px-[11px] py-2.5 border border-border rounded-xl bg-surface cursor-pointer text-left; transition: .15s var(--ease); }
@@ -144,7 +170,9 @@
   .model-chip b { @apply text-[12px] font-semibold; }
 
   /* ---- Stream (list) ---- */
-  .stream { @apply bg-bg border-r border-border overflow-hidden flex flex-col min-w-0; }
+  /* Soft ambient field — faint accent "blobs" over the base bg (like the itopup
+     backdrop). Painted on the panel box, so it stays put as the list scrolls. */
+  .stream { @apply bg-bg border-r border-border overflow-hidden flex flex-col min-w-0; background-image: var(--ambient); }
   .stream-head { @apply px-[18px] pt-[18px] pb-2.5 flex items-center justify-between gap-2; }
   .stream-head h2 { @apply text-[16px] truncate min-w-0; font-weight: 650; }
   .head-actions { @apply flex items-center gap-1.5 shrink-0; }
@@ -158,9 +186,10 @@
   .search-clear:hover { @apply text-text; }
   .list { @apply flex-1 min-h-0 overflow-y-auto px-2.5 pt-1 pb-4 flex flex-col; gap: var(--gap); scroll-behavior: smooth; }
   /* Mail row — Design B: squircle avatar + sender/time, subject, AI summary line. */
-  .mail { @apply flex gap-3 rounded-xl cursor-pointer border border-transparent; padding: var(--row-pad); transition: .14s var(--ease); background: var(--bg); }
+  .mail { @apply flex gap-3 rounded-xl cursor-pointer border border-transparent; padding: var(--row-pad); transition: .14s var(--ease); background: transparent; }
   .mail:hover { @apply bg-surface; }
-  .mail.sel { @apply bg-surface border-border-2; }
+  /* Selected row carries the ambient "itopup" design over its surface. */
+  .mail.sel { @apply border-border-2; background-color: var(--surface); background-image: var(--ambient); }
   .mail-av { @apply shrink-0 w-[38px] h-[38px] flex items-center justify-center text-[14px] font-semibold select-none; border-radius: 13px; }
   .mail-main { @apply min-w-0 flex-1; }
   .mail-l1 { @apply flex items-center gap-2 mb-[2px]; }
@@ -207,13 +236,20 @@
   .swipe-right { @apply inline-flex items-center gap-1.5; color: #fff; }
 
   /* ---- Stage (reading pane) ---- */
-  .stage { @apply overflow-y-auto overflow-x-hidden bg-bg min-w-0; }
+  .stage { @apply overflow-y-auto overflow-x-hidden bg-bg min-w-0; background-image: var(--ambient); }
   /* Wider, fluid reading pane so emails have room to render properly. */
   .stage-inner { @apply w-full max-w-[920px] mx-auto pt-[14px] px-6 pb-[120px] min-w-0; }
   .stage-bar { @apply sticky top-0 flex items-center gap-2 pt-[14px] pb-2.5 z-[5]; background: linear-gradient(var(--bg), var(--bg) 70%, transparent); }
   .stage-bar .spacer { @apply flex-1; }
   .iconbtn { @apply min-w-[32px] h-8 px-[9px] rounded-[9px] border border-border bg-surface text-text-2 inline-flex items-center justify-center gap-1.5 text-[14px]; transition: .15s var(--ease); }
   .iconbtn:hover { @apply text-text border-border-2; transform: translateY(-1px); }
+  .iconbtn:disabled { @apply opacity-40 cursor-default; transform: none; }
+  /* Text-size stepper (A− A A+) — joined segmented control. */
+  .font-step { @apply inline-flex items-center; }
+  .font-step .iconbtn { @apply rounded-none border-l-0 text-[12.5px] font-semibold px-2.5; }
+  .font-step > :first-child .iconbtn { @apply rounded-l-[9px] border-l; }
+  .font-step > :last-child .iconbtn { @apply rounded-r-[9px]; }
+  .font-step .font-reset { @apply text-[13.5px]; }
   h1.subject { @apply text-[23px] tracking-[-0.025em] leading-[1.2] mt-1.5 mb-[14px]; font-weight: 680; }
 
   .ai-summary { @apply border border-border rounded-card px-4 py-[14px] mb-[22px]; background: var(--accent-soft); }
@@ -262,6 +298,12 @@
      solid bottom edge and curves into each child — the approved staircase look. */
   .msg.reply { @apply relative rounded-2xl py-3 pl-3.5 pr-3.5; background: var(--bg-2); border: 1px solid var(--border); }
   .msg.reply::before { content: ""; @apply absolute left-[-16px] top-[-22px] w-[16px] h-[40px] rounded-bl-[14px]; border-left: 1.5px solid var(--border-2); border-bottom: 1.5px solid var(--border-2); }
+  /* The root message isn't a card, so the first reply's elbow has no edge above it
+     to attach to and looks like it floats. When the root has replies, run a spine
+     down its left gutter — from below its avatar to the first elbow (x:14 = the
+     reply elbow's column) — so root → first reply reads as connected like the rest. */
+  .msg:not(.reply):has(+ .msg.reply) { position: relative; }
+  .msg:not(.reply):has(+ .msg.reply)::after { content: ""; @apply absolute left-[15px] top-[44px] bottom-[-1px] w-0; border-left: 1.5px solid var(--border-2); }
   .msg .reply-arrow { @apply hidden; }
   .avatar { @apply w-[38px] h-[38px] shrink-0 flex items-center justify-center text-[14px] font-semibold; border-radius: 13px; }
   .msg .meta-sub { @apply flex items-center gap-2 mt-1 mb-1 text-[12px] text-text-3; min-width: 0; }
@@ -454,6 +496,8 @@
   /* ---- Modal dialog (ported from iTopup Dialog) ---- */
   .modal-overlay { @apply fixed inset-0 z-50 flex items-start justify-center p-6 pt-[10vh]; background: rgba(0,0,0,0.45); backdrop-filter: blur(6px); }
   .modal-panel { @apply w-full p-0 overflow-hidden; max-height: 85vh; display: flex; flex-direction: column; }
+  /* Solid surface + ambient design (not the muddy translucent glass). */
+  .modal-panel.glass-card { background-color: var(--surface); background-image: var(--ambient); backdrop-filter: none; -webkit-backdrop-filter: none; }
   .modal-head { @apply flex items-center justify-between px-5 py-3.5 border-b border-border; }
   .modal-head b { @apply text-[15px]; }
   .modal-body { @apply p-5 overflow-y-auto; }

@@ -16,7 +16,7 @@ function notifyNewMail(count: number): void {
   try {
     if (typeof Notification === "undefined" || !document.hidden) return;
     const title = count === 1 ? "New message" : `${count} new messages`;
-    const show = () => new Notification(title, { body: "Aether Mail", tag: "aether-new-mail" });
+    const show = () => new Notification(title, { body: "Bharga Mail", tag: "bharga-new-mail" });
     if (Notification.permission === "granted") show();
     else if (Notification.permission !== "denied") {
       void Notification.requestPermission().then((p) => { if (p === "granted" && document.hidden) show(); });
@@ -130,6 +130,9 @@ interface AppState {
   // AI-inbox smart highlights (dates, %, money, urgency/sentiment) in email bodies.
   highlights: boolean;
   setHighlights: (v: boolean) => void;
+  // Reading-pane content font size (px). User-adjustable A−/A+. Persisted.
+  contentPx: number;
+  setContentPx: (v: number) => void;
   // Auto-organize new mail with AI on arrival (summarize + triage). No-op without a model.
   autoOrganize: boolean;
   setAutoOrganize: (v: boolean) => void;
@@ -153,6 +156,12 @@ interface AppState {
   /** Flagged (starred) thread ids — persisted locally, drives the Flagged view. */
   flaggedIds: string[];
   toggleFlag: (id: string) => void;
+  /** User-defined account order (account ids). Drives the sidebar; persisted to DB. */
+  accountOrder: string[];
+  setAccountOrder: (ids: string[]) => void;
+  /** Pinned folders, keyed `${accountId}${folder}`. Shown at the top; persisted to DB. */
+  pinnedFolders: string[];
+  togglePinFolder: (accountId: string, folder: string) => void;
   triageInbox: () => Promise<number>;
 }
 
@@ -162,9 +171,9 @@ export interface Signature {
   html: string;
 }
 
-const SIG_KEY = "aether.signature"; // legacy plain-text key (migrated)
-const SIGS_KEY = "aether.signatures";
-const SIG_DEFAULT_KEY = "aether.signature.default";
+const SIG_KEY = "bharga.signature"; // legacy plain-text key (migrated)
+const SIGS_KEY = "bharga.signatures";
+const SIG_DEFAULT_KEY = "bharga.signature.default";
 
 function loadSignatures(): { signatures: Signature[]; defaultId: string | null } {
   try {
@@ -202,18 +211,18 @@ function applyDoc(theme: Theme, density: Density) {
 
 // Persisted appearance prefs (theme + density) — survive refresh/restart.
 function loadTheme(): Theme {
-  try { return localStorage.getItem("aether.theme") === "light" ? "light" : "dark"; } catch { return "dark"; }
+  try { return localStorage.getItem("bharga.theme") === "light" ? "light" : "dark"; } catch { return "dark"; }
 }
 function loadDensity(): Density {
   try {
-    const v = localStorage.getItem("aether.density");
+    const v = localStorage.getItem("bharga.density");
     return v === "compact" || v === "comfy" ? v : "cozy";
   } catch { return "cozy"; }
 }
 // Persist a UI pref to both the instant localStorage cache and the durable core
 // settings store (so it lives in the app's data model, not just the webview).
 function persistPref(name: string, value: string) {
-  try { localStorage.setItem(`aether.${name}`, value); } catch { /* ignore */ }
+  try { localStorage.setItem(`bharga.${name}`, value); } catch { /* ignore */ }
   void api.setSetting(name, value);
 }
 
@@ -349,7 +358,7 @@ export const useApp = create<AppState>((set, get) => ({
     // to the localStorage cache, then apply + mirror back so both stay in sync.
     try {
       const remote = await api.getSettings();
-      const pick = (k: string) => remote[k] ?? (() => { try { return localStorage.getItem(`aether.${k}`) ?? undefined; } catch { return undefined; } })();
+      const pick = (k: string) => remote[k] ?? (() => { try { return localStorage.getItem(`bharga.${k}`) ?? undefined; } catch { return undefined; } })();
       const theme: Theme = pick("theme") === "light" ? "light" : "dark";
       const dRaw = pick("density");
       const density: Density = dRaw === "compact" || dRaw === "comfy" ? dRaw : "cozy";
@@ -379,7 +388,13 @@ export const useApp = create<AppState>((set, get) => ({
       persistPref("panelStreamW", String(panelStreamW));
       const sidebarCollapsed = (pick("sidebarCollapsed") ?? "0") === "1";
       persistPref("sidebarCollapsed", sidebarCollapsed ? "1" : "0");
-      set({ theme, density, font, locale, groupConversations, highlights, autoOrganize, flaggedIds, panelSidebarW, panelStreamW, sidebarCollapsed });
+      let accountOrder: string[] = get().accountOrder;
+      try { accountOrder = JSON.parse(pick("accountOrder") || "[]"); } catch { /* keep */ }
+      persistPref("accountOrder", JSON.stringify(accountOrder));
+      let pinnedFolders: string[] = get().pinnedFolders;
+      try { pinnedFolders = JSON.parse(pick("pinnedFolders") || "[]"); } catch { /* keep */ }
+      persistPref("pinnedFolders", JSON.stringify(pinnedFolders));
+      set({ theme, density, font, locale, groupConversations, highlights, autoOrganize, flaggedIds, panelSidebarW, panelStreamW, sidebarCollapsed, accountOrder, pinnedFolders });
 
       // Signatures: DB is the source of truth; fall back to the local cache.
       if (remote["signatures"]) {
@@ -397,13 +412,17 @@ export const useApp = create<AppState>((set, get) => ({
       /* keep module-load defaults */
     }
 
-    const [threads, tasks, ai, accounts] = await Promise.all([
+    const [threads, tasks, ai, accounts, serverFlagged] = await Promise.all([
       api.listThreads(),
       api.listTasks(),
       api.getAiProfile(),
       api.listAccounts(),
+      api.flaggedIds(),
     ]);
-    set({ threads, tasks, ai, accounts, loaded: true });
+    // Union server-synced flags (\Flagged) with any optimistic local flags.
+    const mergedFlags = Array.from(new Set([...get().flaggedIds, ...serverFlagged]));
+    persistPref("flaggedIds", JSON.stringify(mergedFlags));
+    set({ threads, tasks, ai, accounts, flaggedIds: mergedFlags, loaded: true });
     // Organize anything that arrived while away (no-op without a model configured).
     if (get().autoOrganize) void get().triageInbox();
   },
@@ -506,29 +525,45 @@ export const useApp = create<AppState>((set, get) => ({
   locale: loadLocale(),
   setFont: (font) => { applyFont(font); persistPref("font", font); set({ font }); },
   setLocale: (locale) => { applyLocale(locale); persistPref("locale", locale); set({ locale }); },
-  groupConversations: (() => { try { return localStorage.getItem("aether.group") !== "0"; } catch { return true; } })(),
+  groupConversations: (() => { try { return localStorage.getItem("bharga.group") !== "0"; } catch { return true; } })(),
   setGroupConversations: (v) => { persistPref("group", v ? "1" : "0"); set({ groupConversations: v }); },
-  highlights: (() => { try { return localStorage.getItem("aether.highlights") !== "0"; } catch { return true; } })(),
+  highlights: (() => { try { return localStorage.getItem("bharga.highlights") !== "0"; } catch { return true; } })(),
   setHighlights: (v) => { persistPref("highlights", v ? "1" : "0"); set({ highlights: v }); },
-  autoOrganize: (() => { try { return localStorage.getItem("aether.autoOrganize") !== "0"; } catch { return true; } })(),
+  contentPx: (() => { try { const n = parseFloat(localStorage.getItem("bharga.contentPx") ?? ""); return Number.isFinite(n) && n >= 12 && n <= 22 ? n : 14.5; } catch { return 14.5; } })(),
+  setContentPx: (v) => { const px = Math.min(22, Math.max(12, v)); persistPref("contentPx", String(px)); set({ contentPx: px }); },
+  autoOrganize: (() => { try { return localStorage.getItem("bharga.autoOrganize") !== "0"; } catch { return true; } })(),
   setAutoOrganize: (v) => { persistPref("autoOrganize", v ? "1" : "0"); set({ autoOrganize: v }); },
-  panelSidebarW: (() => { try { const v = parseInt(localStorage.getItem("aether.panelSidebarW") || "", 10); return Number.isFinite(v) ? v : 234; } catch { return 234; } })(),
-  panelStreamW: (() => { try { const v = parseInt(localStorage.getItem("aether.panelStreamW") || "", 10); return Number.isFinite(v) ? v : 360; } catch { return 360; } })(),
+  panelSidebarW: (() => { try { const v = parseInt(localStorage.getItem("bharga.panelSidebarW") || "", 10); return Number.isFinite(v) ? v : 234; } catch { return 234; } })(),
+  panelStreamW: (() => { try { const v = parseInt(localStorage.getItem("bharga.panelStreamW") || "", 10); return Number.isFinite(v) ? v : 360; } catch { return 360; } })(),
   setPanelWidths: (sidebar, stream, persist = false) => {
     const s = Math.max(180, Math.min(380, Math.round(sidebar)));
     const st = Math.max(280, Math.min(640, Math.round(stream)));
     set({ panelSidebarW: s, panelStreamW: st });
     if (persist) { persistPref("panelSidebarW", String(s)); persistPref("panelStreamW", String(st)); }
   },
-  sidebarCollapsed: (() => { try { return localStorage.getItem("aether.sidebarCollapsed") === "1"; } catch { return false; } })(),
+  sidebarCollapsed: (() => { try { return localStorage.getItem("bharga.sidebarCollapsed") === "1"; } catch { return false; } })(),
   toggleSidebar: () => { const v = !get().sidebarCollapsed; persistPref("sidebarCollapsed", v ? "1" : "0"); set({ sidebarCollapsed: v }); },
   triaging: false,
-  flaggedIds: (() => { try { return JSON.parse(localStorage.getItem("aether.flaggedIds") || "[]") as string[]; } catch { return []; } })(),
+  flaggedIds: (() => { try { return JSON.parse(localStorage.getItem("bharga.flaggedIds") || "[]") as string[]; } catch { return []; } })(),
   toggleFlag: (id) => {
     const cur = get().flaggedIds;
-    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    const flagged = !cur.includes(id);
+    const next = flagged ? [...cur, id] : cur.filter((x) => x !== id);
     persistPref("flaggedIds", JSON.stringify(next));
     set({ flaggedIds: next });
+    // Push to the server (best-effort) so the star round-trips with other clients.
+    const accountId = get().threads.find((t) => t.id === id)?.accountId;
+    if (accountId) void api.flagThread(id, accountId, flagged);
+  },
+  accountOrder: (() => { try { return JSON.parse(localStorage.getItem("bharga.accountOrder") || "[]") as string[]; } catch { return []; } })(),
+  setAccountOrder: (ids) => { persistPref("accountOrder", JSON.stringify(ids)); set({ accountOrder: ids }); },
+  pinnedFolders: (() => { try { return JSON.parse(localStorage.getItem("bharga.pinnedFolders") || "[]") as string[]; } catch { return []; } })(),
+  togglePinFolder: (accountId, folder) => {
+    const key = `${accountId}${folder}`;
+    const cur = get().pinnedFolders;
+    const next = cur.includes(key) ? cur.filter((x) => x !== key) : [...cur, key];
+    persistPref("pinnedFolders", JSON.stringify(next));
+    set({ pinnedFolders: next });
   },
   snoozeThread: (id) => {
     set({

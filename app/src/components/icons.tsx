@@ -43,6 +43,8 @@ import {
   CaretLeftIcon,
   CaretRightIcon,
   CaretDownIcon,
+  PushPinIcon,
+  DotsSixVerticalIcon,
   type Icon as PhosphorIcon,
   type IconWeight,
 } from "@phosphor-icons/react";
@@ -63,6 +65,8 @@ export const Icons = {
   attach: PaperclipIcon,
   focus: ArrowsOutIcon,
   more: DotsThreeIcon,
+  pin: PushPinIcon,
+  grip: DotsSixVerticalIcon,
   reply: ArrowBendUpLeftIcon,
   replyAll: ArrowBendDoubleUpLeftIcon,
   forward: ArrowBendUpRightIcon,

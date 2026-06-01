@@ -17,7 +17,7 @@ pub fn build_raw(from: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_
             "From: {from}\r\nTo: {to}\r\n{cc_hdr}{bcc_hdr}Subject: {subject}\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n{body_html}"
         )
     } else {
-        let boundary = "aether_boundary_b7f3c2";
+        let boundary = "bharga_boundary_b7f3c2";
         let mut s = format!(
             "From: {from}\r\nTo: {to}\r\n{cc_hdr}{bcc_hdr}Subject: {subject}\r\nMIME-Version: 1.0\r\n\
              Content-Type: multipart/mixed; boundary=\"{boundary}\"\r\n\r\n"

@@ -57,7 +57,7 @@ export function SendLater({ onSchedule, disabled }: { onSchedule: (epochSeconds:
             >
               <Icon name="schedule" size={13} weight="duotone" /> Schedule
             </button>
-            <p className="sendlater-note">Sends while Aether is running on this device.</p>
+            <p className="sendlater-note">Sends while Bharga is running on this device.</p>
           </div>
         </>
       )}

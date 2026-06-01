@@ -99,11 +99,89 @@ function blockRemoteInDoc(doc: Document): number {
   return blocked;
 }
 
+// ---- Dark-mode colour adaptation -------------------------------------------
+// Emails ship their own colours assuming a white background, so a fixed light
+// default isn't enough: an email that hardcodes dark text (color:#333) becomes
+// dark-on-dark in dark mode. We luminance-map the email's OWN colours instead —
+// lighten dark text, neutralise near-white backgrounds — so any email is legible
+// in dark mode while emails that already use light-on-dark are left untouched.
+
+const NAMED: Record<string, [number, number, number]> = {
+  black: [0, 0, 0], white: [255, 255, 255], red: [255, 0, 0], green: [0, 128, 0],
+  blue: [0, 0, 255], gray: [128, 128, 128], grey: [128, 128, 128], silver: [192, 192, 192],
+  navy: [0, 0, 128], maroon: [128, 0, 0], dimgray: [105, 105, 105], dimgrey: [105, 105, 105],
+};
+
+function parseColor(raw: string): [number, number, number, number] | null {
+  const v = raw.trim().toLowerCase();
+  if (v === "transparent") return [0, 0, 0, 0];
+  if (NAMED[v]) { const [r, g, b] = NAMED[v]; return [r, g, b, 1]; }
+  let m = /^#([0-9a-f]{3,8})$/i.exec(v);
+  if (m) {
+    let h = m[1];
+    if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+    if (h.length === 6 || h.length === 8) {
+      const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+      const a = h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
+      return [r, g, b, a];
+    }
+  }
+  m = /^rgba?\(([^)]+)\)$/i.exec(v);
+  if (m) {
+    const p = m[1].split(",").map((x) => x.trim());
+    if (p.length >= 3) {
+      const r = parseFloat(p[0]), g = parseFloat(p[1]), b = parseFloat(p[2]);
+      const a = p.length >= 4 ? parseFloat(p[3]) : 1;
+      if ([r, g, b].every((n) => !Number.isNaN(n))) return [r, g, b, a];
+    }
+  }
+  return null;
+}
+
+function relLum([r, g, b]: [number, number, number, number]): number {
+  const f = (c: number) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+
+/** Rewrite the colour declarations in a chunk of CSS text (inline style attr or a
+ *  <style> block) for dark mode. */
+function adaptCssText(css: string): string {
+  css = css.replace(/(^|[;{}\s])color\s*:\s*([^;}!]+)/gi, (full, pre, val) => {
+    const c = parseColor(val);
+    return c && c[3] !== 0 && relLum(c) < 0.5 ? `${pre}color: #e7e8ec` : full;
+  });
+  css = css.replace(/(^|[;{}\s])background(-color)?\s*:\s*([^;}!]+)/gi, (full, pre, _bc, val) => {
+    const c = parseColor(val);
+    return c && c[3] !== 0 && relLum(c) > 0.7 ? `${pre}background-color: transparent` : full;
+  });
+  return css;
+}
+
+function adaptForDark(doc: Document): void {
+  doc.querySelectorAll("style").forEach((s) => { if (s.textContent) s.textContent = adaptCssText(s.textContent); });
+  doc.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
+    const st = el.getAttribute("style");
+    if (st) el.setAttribute("style", adaptCssText(st));
+  });
+  // Legacy presentational attributes.
+  doc.querySelectorAll<HTMLElement>("[color],[bgcolor],[text]").forEach((el) => {
+    for (const attr of ["color", "text"]) {
+      const c = parseColor(el.getAttribute(attr) ?? "");
+      if (c && c[3] !== 0 && relLum(c) < 0.5) el.setAttribute(attr, "#e7e8ec");
+    }
+    const bg = parseColor(el.getAttribute("bgcolor") ?? "");
+    if (bg && bg[3] !== 0 && relLum(bg) > 0.7) el.removeAttribute("bgcolor");
+  });
+}
+
 export function processEmail(
   html: string,
-  opts: { showImages: boolean; highlight: boolean },
+  opts: { showImages: boolean; highlight: boolean; dark?: boolean },
 ): { html: string; blocked: number } {
   const doc = new DOMParser().parseFromString(sanitizeEmail(html), "text/html");
+  if (opts.dark) {
+    try { adaptForDark(doc); } catch { /* never let adaptation break rendering */ }
+  }
   if (opts.highlight) {
     try { highlightEntities(doc); } catch { /* never let highlighting break rendering */ }
   }

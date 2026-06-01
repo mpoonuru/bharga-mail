@@ -109,7 +109,7 @@ export const threads: Thread[] = [
     accountId: "acc1",
     subject: "Weekly digest — product & engineering",
     preview: "This week: 3 releases shipped, 12 issues closed, roadmap updated…",
-    participants: ["Aether Digest"],
+    participants: ["Bharga Digest"],
     lastTime: "Mon",
     unread: false,
     labels: ["newsletter"],
@@ -117,7 +117,7 @@ export const threads: Thread[] = [
     messages: [
       {
         id: "m5",
-        from: { name: "Aether Digest", address: "digest@aether.app" },
+        from: { name: "Bharga Digest", address: "digest@bharga.app" },
         to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
         when: "2026-05-25T06:00:00Z",
         bodyHtml: "<p>This week: 3 releases shipped, 12 issues closed, roadmap updated for Q3.</p>",

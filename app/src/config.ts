@@ -2,7 +2,7 @@
 // codebase — change behaviour here, not in component bodies.
 
 export const APP = {
-  name: "Aether Mail",
+  name: "Bharga Mail",
   tagline: "Your mail. Your model. Your machine.",
 } as const;
 

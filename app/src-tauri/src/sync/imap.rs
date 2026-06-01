@@ -80,12 +80,17 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
     let mut errors = 0;
     for f in fetches.iter() {
         let unread = !f.flags().iter().any(|fl| matches!(fl, imap::types::Flag::Seen));
+        let flagged = f.flags().iter().any(|fl| matches!(fl, imap::types::Flag::Flagged));
         if let Some(raw) = f.body() {
             if let Some(thread) = parse_rfc822(account_id, raw, unread, group, folder) {
                 // Count only messages that actually persisted, and surface failures
                 // (a silently-swallowed upsert error was hiding emails before).
                 match store.upsert_thread(&thread) {
-                    Ok(()) => n += 1,
+                    Ok(()) => {
+                        n += 1;
+                        // Mirror the server's \Flagged keyword into the local flag set.
+                        if flagged { let _ = store.set_thread_flag(&thread.id, true); }
+                    }
                     Err(e) => {
                         errors += 1;
                         log::error!("imap: failed to store message: {e}");
@@ -277,6 +282,68 @@ pub fn move_thread(store: &Store, account_id: &str, thread_id: &str, to_folder: 
 
 pub async fn move_thread_async(store: std::sync::Arc<Store>, account_id: String, thread_id: String, to_folder: String) -> Result<(), SyncError> {
     tokio::task::spawn_blocking(move || move_thread(&store, &account_id, &thread_id, &to_folder))
+        .await
+        .map_err(|e| SyncError::Transient(e.to_string()))?
+}
+
+/// Set or clear the IMAP `\Flagged` keyword on every message in a thread, then
+/// mirror the result into the local flag set. Mirrors `move_thread`'s shape:
+/// resolve the thread's source folder + Message-IDs, SEARCH each to its UID(s),
+/// and UID STORE the flag. Best-effort — the local flag is updated regardless so
+/// the star works offline; a server failure surfaces as a transient error.
+pub fn flag_thread(store: &Store, account_id: &str, thread_id: &str, flagged: bool) -> Result<(), SyncError> {
+    // Local mirror first so the UI is correct even if the server is unreachable.
+    let _ = store.set_thread_flag(thread_id, flagged);
+
+    let (source, msg_ids) = match store.thread_move_refs(thread_id) {
+        Some(v) => v,
+        None => return Ok(()),
+    };
+    if msg_ids.is_empty() {
+        return Ok(());
+    }
+    let acct = store
+        .imap_account(account_id)
+        .ok_or_else(|| SyncError::Transient(format!("no saved IMAP settings for {account_id}")))?;
+    let password = tokens::secret(account_id, "imap-pass")
+        .filter(|p| !p.is_empty())
+        .ok_or_else(|| SyncError::Transient(format!("no saved password for {}", acct.email)))?;
+    let mode = match acct.imap_security {
+        Security::Ssl => ConnectionMode::Tls,
+        Security::Starttls => ConnectionMode::StartTls,
+        Security::None => ConnectionMode::Plaintext,
+    };
+    let client = ClientBuilder::new(acct.imap_host.clone(), acct.imap_port)
+        .tls_kind(TlsKind::Rust)
+        .mode(mode)
+        .connect()
+        .map_err(|e| SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port)))?;
+    let mut session = client
+        .login(&acct.imap_username, &password)
+        .map_err(|(e, _)| SyncError::Transient(format!("login failed — {e}")))?;
+    session
+        .select(&source)
+        .map_err(|e| SyncError::Transient(format!("couldn't open {source} — {e}")))?;
+
+    let query = if flagged { "+FLAGS (\\Flagged)" } else { "-FLAGS (\\Flagged)" };
+    for mid in &msg_ids {
+        let search = format!("HEADER MESSAGE-ID \"{}\"", mid.replace('"', ""));
+        let uids = session.uid_search(&search).unwrap_or_default();
+        if uids.is_empty() {
+            continue;
+        }
+        let set = uids.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
+        session
+            .uid_store(&set, query)
+            .map_err(|e| SyncError::Transient(format!("server flag update failed — {e}")))?;
+    }
+    let _ = session.logout();
+    log::info!("imap: {} thread {thread_id} for {}", if flagged { "flagged" } else { "unflagged" }, acct.email);
+    Ok(())
+}
+
+pub async fn flag_thread_async(store: std::sync::Arc<Store>, account_id: String, thread_id: String, flagged: bool) -> Result<(), SyncError> {
+    tokio::task::spawn_blocking(move || flag_thread(&store, &account_id, &thread_id, flagged))
         .await
         .map_err(|e| SyncError::Transient(e.to_string()))?
 }

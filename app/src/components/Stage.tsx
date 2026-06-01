@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useApp } from "@/store";
-import { api } from "@/lib/bridge";
+import { api, titlebarDoubleClick } from "@/lib/bridge";
 import { account } from "@/data/mock";
 import type { Thread } from "@/types";
 import { Icon } from "@/components/icons";
 import { IconButton } from "@/components/ui/IconButton";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
 import { RichText, type RichTextHandle } from "@/components/ui/RichText";
@@ -28,11 +29,12 @@ function EmailBody({ html }: { html: string }) {
   const [showImages, setShowImages] = useState(false);
   const highlights = useApp((s) => s.highlights);
   const theme = useApp((s) => s.theme);
+  const contentPx = useApp((s) => s.contentPx);
   const dark = theme === "dark";
 
   const processed = useMemo(
-    () => processEmail(html, { showImages, highlight: highlights }),
-    [html, showImages, highlights],
+    () => processEmail(html, { showImages, highlight: highlights, dark }),
+    [html, showImages, highlights, dark],
   );
   const body = processed.html;
   // Defense in depth: the sandbox already blocks scripts (no allow-scripts); this
@@ -51,13 +53,19 @@ function EmailBody({ html }: { html: string }) {
 <base target="_blank">
 <style>
   html,body{margin:0;background:${surface};color:${ink};color-scheme:${dark ? "dark" : "light"};
-    font:14.5px/1.7 -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
+    font:${contentPx}px/1.7 -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
     word-break:break-word;overflow-wrap:anywhere;}
   body{padding:20px 24px;}
   img{max-width:100%;height:auto;}
   table{max-width:100%;}
   a{color:${link};}
   *{max-width:100%;box-sizing:border-box;}
+  /* Tame quoted history: browsers default blockquotes to margin:0 40px (both
+     sides, per nesting level), which collapses deeply-nested "On … wrote:"
+     replies into a one-word-per-line sliver. Replace with a small left-only
+     indent + guide bar so quotes stay readable at any depth. */
+  blockquote{margin:8px 0;padding:2px 0 2px 12px;border-left:2px solid ${dark ? "rgba(255,255,255,.16)" : "rgba(0,0,0,.14)"};border-inline-end:0;}
+  blockquote blockquote{margin-left:2px;}
   /* AI-inbox smart highlights */
   mark{border-radius:4px;padding:0 3px;color:inherit;background:none;animation:hlin .45s ease both;}
   mark[data-kind=date]{background:linear-gradient(120deg,rgba(37,99,235,.16),rgba(37,99,235,.06));box-shadow:inset 0 -2px rgba(37,99,235,.22);}
@@ -110,7 +118,7 @@ function EmailBody({ html }: { html: string }) {
       )}
       <iframe
         ref={ref}
-        key={`${showImages ? "i" : "n"}${highlights ? "h" : ""}${dark ? "d" : "l"}`}
+        key={`${showImages ? "i" : "n"}${highlights ? "h" : ""}${dark ? "d" : "l"}${contentPx}`}
         className="email-frame"
         aria-label="Message body"
         sandbox="allow-same-origin allow-popups"
@@ -124,7 +132,7 @@ function EmailBody({ html }: { html: string }) {
 type Mode = "reply" | "replyAll" | "forward";
 
 export function Stage() {
-  const { threads, accounts, selectedThreadId, toggleFocus, createTask, snoozeThread, archiveThread, toggleRead, deleteThread, setView } = useApp();
+  const { threads, accounts, selectedThreadId, toggleFocus, createTask, snoozeThread, archiveThread, toggleRead, deleteThread, setView, contentPx, setContentPx } = useApp();
   const thread = useMemo(() => threads.find((t) => t.id === selectedThreadId) ?? null, [threads, selectedThreadId]);
   // The mailbox this conversation lives in (account email), for the header chip.
   const mailboxLabel = accounts.find((a) => a.id === thread?.accountId)?.email ?? "";
@@ -168,7 +176,7 @@ export function Stage() {
     <section className="stage">
       <AnimatePresence mode="wait">
         <motion.div className="stage-inner" key={thread.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}>
-          <div className="stage-bar">
+          <div className="stage-bar" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
             <IconButton icon="focus" title="Focus mode (F)" onClick={toggleFocus} />
             <IconButton icon="reply" title="Reply" onClick={() => composerRef.current?.open("reply")} />
             <IconButton icon="replyAll" title="Reply all" onClick={() => composerRef.current?.open("replyAll")} />
@@ -176,6 +184,11 @@ export function Stage() {
             <IconButton icon="snoozed" title="Snooze" onClick={() => snoozeThread(thread.id)} />
             <IconButton icon="tasks" title="Turn into task" onClick={makeTask} />
             <div className="spacer" />
+            <div className="font-step" role="group" aria-label="Text size">
+              <Tooltip label="Smaller text" side="bottom"><button className="iconbtn" aria-label="Smaller text" onClick={() => setContentPx(contentPx - 1)} disabled={contentPx <= 12}>A−</button></Tooltip>
+              <Tooltip label="Reset text size" side="bottom"><button className="iconbtn font-reset" aria-label="Reset text size" onClick={() => setContentPx(14.5)}>A</button></Tooltip>
+              <Tooltip label="Larger text" side="bottom"><button className="iconbtn" aria-label="Larger text" onClick={() => setContentPx(contentPx + 1)} disabled={contentPx >= 22}>A+</button></Tooltip>
+            </div>
             <div style={{ position: "relative" }}>
               <IconButton icon="more" title="More" onClick={() => setMoreOpen((v) => !v)} />
               {moreOpen && (

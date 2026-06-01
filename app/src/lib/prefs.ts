@@ -21,8 +21,8 @@ export const LOCALES: { value: string; label: string }[] = [
   { value: "it", label: "Italiano" },
 ];
 
-const FONT_KEY = "aether.font";
-const LOCALE_KEY = "aether.locale";
+const FONT_KEY = "bharga.font";
+const LOCALE_KEY = "bharga.locale";
 
 export function loadFont(): string {
   try { return localStorage.getItem(FONT_KEY) ?? "inter"; } catch { return "inter"; }

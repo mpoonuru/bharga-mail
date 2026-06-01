@@ -1,4 +1,4 @@
-//! Aether Mail — Rust core.
+//! Bharga Mail — Rust core.
 //! Exposes typed Tauri commands the React UI calls via IPC. The UI only ever
 //! talks to the local store; the sync engine reconciles it with providers.
 
@@ -494,6 +494,28 @@ async fn mark_spam(thread_id: String, account_id: String, state: State<'_, AppSt
     Ok(())
 }
 
+/// Flag / unflag a thread: update the local flag mirror and, for IMAP accounts,
+/// push the `\Flagged` keyword to the server so the star round-trips with other
+/// mail clients. The local flag is always set first, so it works offline.
+#[tauri::command]
+async fn flag_thread(thread_id: String, account_id: String, flagged: bool, state: State<'_, AppState>) -> Result<(), String> {
+    if account_id.starts_with("imap:") {
+        sync::imap::flag_thread_async(state.store.clone(), account_id, thread_id, flagged)
+            .await
+            .map_err(|e| e.to_string())?;
+    } else {
+        state.store.set_thread_flag(&thread_id, flagged).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// All flagged thread ids (local mirror, which the IMAP sync keeps in step with
+/// the server's `\Flagged` keyword). The frontend merges these into its view.
+#[tauri::command]
+fn flagged_ids(state: State<'_, AppState>) -> Vec<String> {
+    state.store.flagged_thread_ids()
+}
+
 /// Fetch an attachment and return it as a data: URL for inline preview
 /// (images/PDF rendered in a modal without writing to disk).
 #[tauri::command]
@@ -549,7 +571,7 @@ async fn download_attachment(
 /// error, an incompatible legacy schema), we move the old DB aside and start
 /// fresh — the cache re-syncs from the server, and the app stays open.
 fn open_store_resilient(dir: &std::path::Path) -> Store {
-    let db = dir.join("aether.db");
+    let db = dir.join("bharga.db");
     match Store::open(db.clone()) {
         Ok(s) => return s,
         Err(e) => log::error!("store open failed ({e}); moving DB aside and recreating"),
@@ -557,9 +579,9 @@ fn open_store_resilient(dir: &std::path::Path) -> Store {
     // Move the unreadable DB (and its WAL/SHM sidecars) out of the way.
     let stamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
     for suffix in ["", "-wal", "-shm"] {
-        let from = dir.join(format!("aether.db{suffix}"));
+        let from = dir.join(format!("bharga.db{suffix}"));
         if from.exists() {
-            let _ = std::fs::rename(&from, dir.join(format!("aether.corrupt-{stamp}.db{suffix}")));
+            let _ = std::fs::rename(&from, dir.join(format!("bharga.corrupt-{stamp}.db{suffix}")));
         }
     }
     Store::open(db).expect("failed to create a fresh local database")
@@ -574,7 +596,7 @@ pub fn run() {
                 .level(log::LevelFilter::Info)
                 .targets([
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: Some("aether".into()) }),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: Some("bharga".into()) }),
                 ])
                 .build(),
         )
@@ -648,9 +670,11 @@ pub fn run() {
             delete_thread,
             move_thread,
             mark_spam,
+            flag_thread,
+            flagged_ids,
             download_attachment,
             preview_attachment,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Aether Mail");
+        .expect("error while running Bharga Mail");
 }

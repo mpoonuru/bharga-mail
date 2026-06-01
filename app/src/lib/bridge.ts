@@ -33,6 +33,15 @@ export async function toggleMaximizeWindow(): Promise<void> {
   }
 }
 
+/** Double-click handler for title-bar / drag-region strips: zoom (maximize) the
+ *  window like a native macOS title bar — but ignore double-clicks that land on
+ *  interactive controls (buttons, inputs, links) inside the strip. */
+export function titlebarDoubleClick(e: { target: EventTarget | null }): void {
+  const el = e.target as HTMLElement | null;
+  if (el && el.closest('button, input, textarea, a, [role="button"], [contenteditable="true"]')) return;
+  void toggleMaximizeWindow();
+}
+
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!inTauri) throw new Error("not-in-tauri");
   const { invoke } = await import("@tauri-apps/api/core");
@@ -351,6 +360,27 @@ export const api = {
       await invoke<void>("mark_spam", { threadId, accountId });
     } catch {
       /* preview: state-only */
+    }
+  },
+
+  /** Flag / unflag a thread. Updates the local mirror and pushes the IMAP
+   *  \Flagged keyword so the star round-trips with other mail clients. */
+  async flagThread(threadId: string, accountId: string, flagged: boolean): Promise<void> {
+    try {
+      await invoke<void>("flag_thread", { threadId, accountId, flagged });
+    } catch (e) {
+      // Local flag already applied; surface only the server-side reason.
+      console.warn("flag_thread:", e);
+    }
+  },
+
+  /** All flagged thread ids (local mirror, kept in step with the server's
+   *  \Flagged keyword by the IMAP sync). Returns [] if the call fails. */
+  async flaggedIds(): Promise<string[]> {
+    try {
+      return await invoke<string[]>("flagged_ids");
+    } catch {
+      return [];
     }
   },
 

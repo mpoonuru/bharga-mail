@@ -1,0 +1,38 @@
+import { describe, it, expect } from "vitest";
+import { processEmail } from "./emailHtml";
+
+describe("processEmail dark-mode colour adaptation", () => {
+  it("lightens hardcoded dark text in dark mode", () => {
+    const { html } = processEmail(`<div style="color:#333333">Dear Prasanga,</div>`, { showImages: true, highlight: false, dark: true });
+    expect(html).toContain("#e7e8ec");
+    expect(html.toLowerCase()).not.toContain("#333333");
+  });
+
+  it("neutralises near-white backgrounds in dark mode", () => {
+    const { html } = processEmail(`<div style="background-color:#ffffff;color:#000">Hi</div>`, { showImages: true, highlight: false, dark: true });
+    expect(html).toContain("background-color: transparent");
+    expect(html).toContain("#e7e8ec"); // black text lightened too
+  });
+
+  it("handles legacy bgcolor / font color attributes", () => {
+    const { html } = processEmail(`<table bgcolor="#FFFFFF"><tr><td><font color="#222">x</font></td></tr></table>`, { showImages: true, highlight: false, dark: true });
+    expect(html).not.toContain("FFFFFF");
+    expect(html).toContain("#e7e8ec");
+  });
+
+  it("leaves already-light text untouched", () => {
+    const { html } = processEmail(`<div style="color:#eeeeee">bright</div>`, { showImages: true, highlight: false, dark: true });
+    expect(html.toLowerCase()).toContain("#eeeeee");
+  });
+
+  it("does NOT recolour anything in light mode", () => {
+    const { html } = processEmail(`<div style="color:#333333">x</div>`, { showImages: true, highlight: false, dark: false });
+    expect(html.toLowerCase()).toContain("#333333");
+    expect(html).not.toContain("#e7e8ec");
+  });
+
+  it("leaves dark (brand) backgrounds alone", () => {
+    const { html } = processEmail(`<div style="background-color:#0a2540;color:#fff">brand</div>`, { showImages: true, highlight: false, dark: true });
+    expect(html.toLowerCase()).toContain("#0a2540");
+  });
+});

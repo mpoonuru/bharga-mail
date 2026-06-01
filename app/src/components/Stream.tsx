@@ -8,6 +8,7 @@ import { Icon } from "@/components/icons";
 import { shortTime } from "@/lib/date";
 import { avatarColor } from "@/lib/colors";
 import { initials, senderLabel } from "@/lib/avatar";
+import { titlebarDoubleClick } from "@/lib/bridge";
 import { highlightInline } from "@/lib/highlightInline";
 
 const TITLES: Record<string, string> = {
@@ -144,7 +145,7 @@ export function Stream() {
 
   return (
     <section className="stream">
-      <div className="stream-head" data-tauri-drag-region>
+      <div className="stream-head" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
         <h2>{TITLES[view] ?? "Inbox"}</h2>
         <div className="head-actions">
           <button className="filter" onClick={doSync} disabled={syncing} title="Sync all accounts" style={{ opacity: syncing ? 0.7 : 1 }}>
