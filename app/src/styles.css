@@ -82,7 +82,25 @@
 
 @layer components {
   /* ---- App shell ---- */
-  .app { @apply grid h-screen; grid-template-columns: 234px 366px 1fr; grid-template-rows: minmax(0, 1fr); transition: grid-template-columns .4s var(--ease); }
+  /* Window shell: a full-width title bar on top, the column grid filling the rest. */
+  .shell { @apply flex flex-col h-screen min-h-0; }
+  .app { @apply grid flex-1 min-h-0; grid-template-columns: 234px 366px 1fr; grid-template-rows: minmax(0, 1fr); transition: grid-template-columns .4s var(--ease); }
+  /* The solid top bar — whole strip drags the window; left padding clears the
+     macOS traffic-light controls in the overlay title bar. */
+  .topbar { @apply flex items-center justify-between gap-3 h-[44px] shrink-0 border-b border-border bg-bg-2 pr-3 select-none; padding-left: 80px; background-image: var(--ambient); }
+  .topbar-brand { @apply flex items-center gap-2 min-w-0; }
+  .topbar-logo { @apply w-[22px] h-[22px] rounded-[7px] shrink-0 object-cover; }
+  .topbar-brand b { @apply text-[13.5px] shrink-0; font-weight: 650; }
+  .topbar-ctx { @apply text-[12px] text-text-3 truncate pl-1; }
+  .topbar-ctx::before { content: "·"; @apply pr-1.5; }
+  .topbar-right { @apply flex items-center gap-1.5 shrink-0; }
+  .topbar-msg { @apply text-[12px] text-text-3 truncate max-w-[160px]; }
+  .topbar-btn { @apply inline-flex items-center gap-1.5 rounded-lg border border-border-2 px-2.5 py-1 text-[12px] text-text-2 bg-transparent cursor-pointer; transition: .14s var(--ease); }
+  .topbar-btn:hover:not(:disabled) { @apply text-text bg-surface; }
+  .topbar-btn:disabled { @apply opacity-60 cursor-default; }
+  /* Slim sidebar top: just the collapse/expand toggle (identity moved to top bar). */
+  .sidebar-top { @apply flex items-center h-[30px] shrink-0 mb-1; }
+  .sidebar-top.rail { @apply justify-center; }
   .app.focus { grid-template-columns: 234px 0 1fr; }
   .app.compose-only .stage { @apply hidden; }
   /* Draggable column dividers between sidebar | list | reading pane. */
@@ -108,8 +126,8 @@
 
   /* ---- Sidebar ---- */
   /* pt clears the macOS traffic-light controls in the overlay titlebar. */
-  .sidebar { @apply flex flex-col gap-[2px] min-w-0 h-full border-r border-border bg-bg-2 px-3 pt-[34px] pb-[14px]; background-image: var(--ambient); }
-  .sidebar.rail { @apply px-2 pt-[34px] pb-[14px] items-stretch; }
+  .sidebar { @apply flex flex-col gap-[2px] min-w-0 h-full border-r border-border bg-bg-2 px-3 pt-3 pb-[14px]; background-image: var(--ambient); }
+  .sidebar.rail { @apply px-2 pt-3 pb-[14px] items-stretch; }
   .sidebar.rail .brand { @apply justify-center pt-2 pb-[14px] px-0; }
   .sidebar.rail .nav-item { @apply justify-center py-[9px] px-0; }
   /* Account rows drop their refresh-button padding in the rail so the dot centers

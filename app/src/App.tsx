@@ -15,7 +15,8 @@ import { Icon } from "@/components/icons";
 import { useHotkeys } from "@/lib/useHotkeys";
 import { useViewport } from "@/lib/useViewport";
 import { applyFont, applyLocale } from "@/lib/prefs";
-import { toggleMaximizeWindow, startWindowDrag } from "@/lib/bridge";
+import { toggleMaximizeWindow, startWindowDrag, titlebarDoubleClick } from "@/lib/bridge";
+import logo from "@/assets/logo.png";
 
 export function App() {
   const { view, load, focusMode, composeOpen, theme, density } = useApp();
@@ -77,7 +78,6 @@ export function App() {
       <CommandBar />
       <ModelPicker />
       <UndoToast />
-      {layout !== "narrow" && <FloatingUtils />}
     </>
   );
 }
@@ -123,7 +123,9 @@ function WideLayout({ rail, focusMode, composeOpen, view }: { rail: boolean; foc
   const showStreamSplitter = !rail && !focusMode && !isFull(view);
 
   return (
-    <div className="app" style={{ gridTemplateColumns: cols, position: "relative", transition: resizing ? "none" : undefined }}>
+    <div className="shell">
+      <TopBar />
+      <div className="app" style={{ gridTemplateColumns: cols, position: "relative", transition: resizing ? "none" : undefined }}>
       <Sidebar rail={railEffective} />
       {isFull(view) ? (
         <FullPage />
@@ -143,6 +145,41 @@ function WideLayout({ rail, focusMode, composeOpen, view }: { rail: boolean; foc
           onChange={(v) => { setResizing(true); setPanelWidths(panelSidebarW, v); }}
           onCommit={(v) => { setPanelWidths(panelSidebarW, v, true); setResizing(false); }} />
       )}
+      </div>
+    </div>
+  );
+}
+
+// Full-width window title bar (wide/medium layouts): app identity, sync status,
+// and theme/command. The whole strip drags the window (and double-click zooms),
+// so you can grab anywhere along the top — not just a column header.
+function TopBar() {
+  const { accounts, selectedAccountId, syncing, syncAll } = useApp();
+  const [msg, setMsg] = useState("");
+  const acctLabel = selectedAccountId
+    ? accounts.find((a) => a.id === selectedAccountId)?.email
+    : accounts.length > 1 ? "All accounts" : accounts[0]?.email;
+  const doSync = async () => {
+    setMsg("");
+    const { total, errors } = await syncAll();
+    setMsg(errors.length ? "Sync failed" : total ? `Synced ${total}` : "Up to date");
+    setTimeout(() => setMsg(""), 4000);
+  };
+  return (
+    <div className="topbar" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
+      <div className="topbar-brand">
+        <img src={logo} className="topbar-logo" alt="" aria-hidden />
+        <b>Bharga Mail</b>
+        {acctLabel && <span className="topbar-ctx" title={acctLabel}>{acctLabel}</span>}
+      </div>
+      <div className="topbar-right">
+        {msg && <span className="topbar-msg">{msg}</span>}
+        <button className="topbar-btn" onClick={doSync} disabled={syncing} title="Sync all accounts">
+          <Icon name="cloud" size={13} weight="duotone" /> {syncing ? "Syncing…" : "Sync"}
+        </button>
+        <ThemeButton />
+        <CommandButton />
+      </div>
     </div>
   );
 }
@@ -215,16 +252,3 @@ function CommandButton() {
   return <button className="iconbtn" title="Command (⌘K)" onClick={() => setCmd(true)}><Icon name="command" size={14} /></button>;
 }
 
-function FloatingUtils() {
-  const { toggleTheme, setCmd, theme } = useApp();
-  return (
-    <div className="util">
-      <button onClick={toggleTheme} className="inline-flex items-center gap-1.5">
-        <Icon name={theme === "dark" ? "sun" : "moon"} size={14} /> {theme === "dark" ? "Light" : "Dark"}
-      </button>
-      <button onClick={() => setCmd(true)} className="inline-flex items-center gap-1.5">
-        <Icon name="command" size={14} /> Command
-      </button>
-    </div>
-  );
-}

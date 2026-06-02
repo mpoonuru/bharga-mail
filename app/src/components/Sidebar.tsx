@@ -6,7 +6,6 @@ import { Icon, type IconName } from "@/components/icons";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { accountColor } from "@/lib/colors";
 import { titlebarDoubleClick } from "@/lib/bridge";
-import logo from "@/assets/logo.png";
 
 const NAV: { id: View; icon: IconName; label: string }[] = [
   { id: "priority", icon: "priority", label: "Priority" },
@@ -87,7 +86,6 @@ function AccountRow({ a }: { a: Account }) {
 
 export function Sidebar({ rail = false }: { rail?: boolean }) {
   const { view, setView, setCompose, setModelPicker, threads, tasks, ai, accounts, selectedAccountId, setAccount, selectedFolder, setFolder, toggleSidebar, accountOrder, setAccountOrder, pinnedFolders, togglePinFolder } = useApp();
-  const focused = selectedAccountId ? accounts.find((a) => a.id === selectedAccountId) : null;
   // Accounts in the user's saved order; any not yet in the order sort to the end.
   const ordered = [...accounts].sort((x, y) => {
     const ix = accountOrder.indexOf(x.id), iy = accountOrder.indexOf(y.id);
@@ -96,7 +94,6 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
     return ix - iy;
   });
   const orderedIds = ordered.map((a) => a.id);
-  const headerAcct = focused?.email ?? (accounts.length > 1 ? "All accounts" : accounts[0]?.email ?? "No account connected");
   const count = (v: View) => threads.filter((t) => t.view.includes(v) && t.unread).length || undefined;
   const draftModel = ai?.models.find((m) => m.roles.includes("draft"));
   const triageModel = ai?.models.find((m) => m.roles.includes("triage"));
@@ -114,25 +111,11 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
 
   return (
     <aside className={`sidebar${rail ? " rail" : ""}`}>
-      <div className="brand" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
-        <motion.img src={logo} alt="Bharga Mail" className="logo" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 300, damping: 18 }} />
-        {!rail && (
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <b>Bharga Mail</b>
-            <div className="acct">{headerAcct}</div>
-          </div>
-        )}
-        {!rail && (
-          <button className="rail-toggle" onClick={toggleSidebar} title="Collapse sidebar" aria-label="Collapse sidebar">
-            <Icon name="caretLeft" size={14} weight="bold" />
-          </button>
-        )}
-      </div>
-      {rail && (
-        <button className="rail-toggle rail-expand" onClick={toggleSidebar} title="Expand sidebar" aria-label="Expand sidebar">
-          <Icon name="caretRight" size={15} weight="bold" />
+      <div className={`sidebar-top${rail ? " rail" : ""}`} data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
+        <button className="rail-toggle" onClick={toggleSidebar} title={rail ? "Expand sidebar" : "Collapse sidebar"} aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}>
+          <Icon name={rail ? "caretRight" : "caretLeft"} size={15} weight="bold" />
         </button>
-      )}
+      </div>
 
       {rail ? (
         <Tooltip label="Compose" block>
