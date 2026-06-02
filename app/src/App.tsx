@@ -15,7 +15,7 @@ import { Icon } from "@/components/icons";
 import { useHotkeys } from "@/lib/useHotkeys";
 import { useViewport } from "@/lib/useViewport";
 import { applyFont, applyLocale } from "@/lib/prefs";
-import { toggleMaximizeWindow, startWindowDrag, titlebarDoubleClick } from "@/lib/bridge";
+import { startWindowDrag, titlebarDoubleClick } from "@/lib/bridge";
 import logo from "@/assets/logo.png";
 
 export function App() {
@@ -49,11 +49,9 @@ export function App() {
       // and move the window — Tauri's native attribute alone barely grabs anything.
       if (t.closest("[data-tauri-drag-region]")) void startWindowDrag();
     };
-    const onDblClick = (e: MouseEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (!t || t.closest("button, input, textarea, a, [role='button'], .ProseMirror")) return;
-      if (t.closest("[data-tauri-drag-region]")) void toggleMaximizeWindow();
-    };
+    // NOTE: double-click-to-zoom is handled per-region via onDoubleClick=
+    // {titlebarDoubleClick} on each drag bar. A document-level dblclick handler
+    // here too would fire BOTH -> the window zoomed and immediately un-zoomed.
     const onContextMenu = (e: MouseEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && t.closest("input, textarea, [contenteditable='true'], .ProseMirror")) return;
@@ -63,11 +61,9 @@ export function App() {
     // stopPropagation on mousedown in the bubble phase, swallowing the drag in the
     // left column. Capture fires at document first, before any child handler.
     document.addEventListener("mousedown", onMouseDown, true);
-    document.addEventListener("dblclick", onDblClick);
     document.addEventListener("contextmenu", onContextMenu);
     return () => {
       document.removeEventListener("mousedown", onMouseDown, true);
-      document.removeEventListener("dblclick", onDblClick);
       document.removeEventListener("contextmenu", onContextMenu);
     };
   }, []);
