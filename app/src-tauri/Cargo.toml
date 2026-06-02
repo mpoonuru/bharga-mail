@@ -1,8 +1,9 @@
 [package]
 name = "bharga-mail"
 version = "0.1.0"
+license = "AGPL-3.0-only"
 description = "AI-native, model-agnostic, local-first mail client"
-authors = ["PJ Telesoft"]
+authors = ["Bharga Mail"]
 edition = "2021"
 rust-version = "1.77"
 

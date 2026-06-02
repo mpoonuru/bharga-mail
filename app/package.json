@@ -1,6 +1,7 @@
 {
   "name": "bharga-mail",
   "version": "0.1.0",
+  "license": "AGPL-3.0-only",
   "private": true,
   "description": "AI-native, model-agnostic, local-first mail client — Calm Command",
   "type": "module",
