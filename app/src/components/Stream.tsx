@@ -84,6 +84,21 @@ const plainPreview = (html: string) =>
     .replace(/&[a-z]+;/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+// True when a preview string still looks like leaked CSS/markup (Outlook <style>
+// resets, mso- hacks, VML behaviors, @media, comment openers).
+const looksCss = (s: string) => /[{}]|mso-[a-z]|behavior:url|@media|#outlook|\/\*/i.test(s);
+
+// The single source of truth for a row's preview text — guaranteed CSS-free.
+//   1. prefer the backend's clean, quote-trimmed thread preview (header rows);
+//   2. if that (or the per-message path) looks like CSS, re-derive from raw HTML
+//      with the block-stripper; 3. last-ditch, delete any `selector { … }` rules.
+function previewText(t: Thread, m?: Message, useThreadPreview = false): string {
+  let p = (useThreadPreview ? (t.preview || "").trim() : "") || plainPreview(m?.bodyHtml ?? "");
+  if (looksCss(p)) p = plainPreview(m?.bodyHtml ?? "");
+  if (looksCss(p)) p = p.replace(/[^{}]*\{[^}]*\}/g, " ").replace(/\s+/g, " ").trim();
+  return p || (t.preview || "").trim();
+}
 // `when` arrives as the raw RFC 2822 email Date header (e.g. "Wed, 16 Oct 2024
 // 13:02:49 +0200"), which is NOT lexically sortable — string compare orders by
 // weekday name and day digits, not the actual instant. Always sort on the parsed
@@ -422,9 +437,9 @@ function MailRow({
     : msg ? senderLabel(msg.from.name, msg.from.address)
     : t.participants.map((p) => (p.includes("@") && !p.includes(" ") ? senderLabel(undefined, p) : p)).join(", ");
   const rowTime = m?.when ?? t.lastTime;
-  // Conversation header → the backend's clean, quote-trimmed thread preview. Only
-  // per-message rows fall back to deriving from raw HTML (now style-stripped).
-  const rowPreview = convo ? (t.preview || plainPreview(m?.bodyHtml ?? "")) : (plainPreview(m?.bodyHtml ?? "") || t.preview);
+  // Always CSS-free: header rows prefer the clean backend preview; everything is
+  // re-derived from HTML the moment it smells like leaked Outlook <style>.
+  const rowPreview = previewText(t, m, !!convo);
   return (
     <div className="mail-wrap">
       {/* swipe-action background — only rendered while actually dragging */}
@@ -530,7 +545,7 @@ function ChildRow({ t, m, selected, onOpen, onContext }: {
             {shortTime(m.when)}
           </span>
         </div>
-        <div className="ck-prev">{plainPreview(m.bodyHtml)}</div>
+        <div className="ck-prev">{previewText(t, m)}</div>
       </div>
     </div>
   );
