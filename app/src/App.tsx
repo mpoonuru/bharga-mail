@@ -58,11 +58,14 @@ export function App() {
       if (t && t.closest("input, textarea, [contenteditable='true'], .ProseMirror")) return;
       e.preventDefault();
     };
-    document.addEventListener("mousedown", onMouseDown);
+    // Capture phase: the sidebar uses Framer Motion (Reorder/motion) which can
+    // stopPropagation on mousedown in the bubble phase, swallowing the drag in the
+    // left column. Capture fires at document first, before any child handler.
+    document.addEventListener("mousedown", onMouseDown, true);
     document.addEventListener("dblclick", onDblClick);
     document.addEventListener("contextmenu", onContextMenu);
     return () => {
-      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("mousedown", onMouseDown, true);
       document.removeEventListener("dblclick", onDblClick);
       document.removeEventListener("contextmenu", onContextMenu);
     };

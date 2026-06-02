@@ -242,7 +242,7 @@ export function Stage() {
   }
 
   if (!thread) {
-    return <section className="stage"><div className="empty" style={{ marginTop: 80 }}>Select a conversation</div></section>;
+    return <section className="stage" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}><div className="empty" style={{ marginTop: 80 }}>Select a conversation</div></section>;
   }
   const makeTask = () => void createTask(`Follow up: ${thread.subject}`, thread.id);
 
