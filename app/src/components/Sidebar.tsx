@@ -35,10 +35,14 @@ const pinKey = (accountId: string, folder: string) => `${accountId}${PIN_SEP}${f
 /** A single account row in the expanded sidebar: drag-handle to reorder, the
  *  account selector, refresh, and (when focused) its folders with pin toggles. */
 function AccountRow({ a }: { a: Account }) {
-  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder } = useApp();
+  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads } = useApp();
   const controls = useDragControls();
   const [busy, setBusy] = useState(false);
   const isFocused = selectedAccountId === a.id;
+  // Live unread counts derived from threads (the cached AccountInfo/FolderInfo
+  // counts are a sync-time snapshot and don't react to marking a mail read).
+  const acctUnread = threads.filter((t) => t.accountId === a.id && t.unread).length;
+  const folderUnread = (name: string) => threads.filter((t) => t.accountId === a.id && t.folder === name && t.unread).length;
   return (
     <Reorder.Item value={a.id} as="div" dragListener={false} dragControls={controls} layout="position" className="acct-reorder">
       <div className="acct-row">
@@ -48,7 +52,7 @@ function AccountRow({ a }: { a: Account }) {
         <button className={`nav-item acct-main${isFocused ? " active" : ""}`} onClick={() => setAccount(a.id)} title={a.email}>
           <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
           <span className="acct-email">{a.email}</span>
-          {a.unread ? <span className="count">{a.unread}</span> : null}
+          {acctUnread ? <span className="count">{acctUnread}</span> : null}
         </button>
         {a.provider === "imap" && (
           <button className="acct-refresh" title="Refresh folders" disabled={busy}
@@ -66,7 +70,7 @@ function AccountRow({ a }: { a: Account }) {
                 <button className={`nav-item folder-item${selectedFolder === f.name ? " active" : ""}`} onClick={() => setFolder(f.name)} title={f.name}>
                   <span className="ic"><Icon name={FOLDER_ICON[f.role ?? ""] ?? "inbox"} size={15} weight="duotone" /></span>
                   <span className="acct-email">{f.role === "inbox" ? "Inbox" : f.name.replace(/^INBOX[./]/, "")}</span>
-                  {f.unread ? <span className="count">{f.unread}</span> : null}
+                  {(() => { const u = folderUnread(f.name); return u ? <span className="count">{u}</span> : null; })()}
                 </button>
                 <button className={`folder-pin${pinned ? " pinned" : ""}`} title={pinned ? "Unpin" : "Pin to top"}
                   onClick={(e) => { e.stopPropagation(); togglePinFolder(a.id, f.name); }}>
