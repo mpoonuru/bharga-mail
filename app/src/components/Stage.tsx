@@ -255,6 +255,11 @@ export function Stage() {
             <IconButton icon="reply" title="Reply" onClick={() => composerRef.current?.open("reply")} />
             <IconButton icon="replyAll" title="Reply all" onClick={() => composerRef.current?.open("replyAll")} />
             <IconButton icon="forward" title="Forward" onClick={() => composerRef.current?.open("forward")} />
+            <IconButton
+              icon={thread.unread ? "envelopeOpen" : "envelope"}
+              title={thread.unread ? "Mark as read (U)" : "Mark as unread (U)"}
+              onClick={() => toggleRead(thread.id)}
+            />
             <IconButton icon="snoozed" title="Snooze" onClick={() => snoozeThread(thread.id)} />
             <IconButton icon="tasks" title="Turn into task" onClick={makeTask} />
             <div className="spacer" />
@@ -268,7 +273,6 @@ export function Stage() {
               {moreOpen && (
                 <div className="menu" onMouseLeave={() => setMoreOpen(false)}>
                   <button onClick={() => { archiveThread(thread.id); setMoreOpen(false); }}>Archive</button>
-                  <button onClick={() => { toggleRead(thread.id); setMoreOpen(false); }}>{thread.unread ? "Mark as read" : "Mark as unread"}</button>
                   <button onClick={() => { snoozeThread(thread.id); setMoreOpen(false); }}>Snooze</button>
                   <button className="danger" onClick={() => { deleteThread(thread.id); setMoreOpen(false); }}>Delete</button>
                 </div>
