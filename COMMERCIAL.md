@@ -24,7 +24,7 @@ Bharga Mail is local‑first: mail and credentials stay on the device, not on a 
 
 ## Contact
 
-📧 **licensing@bharga.app** — commercial licensing, support, and public‑sector enquiries.
-🔒 **security@bharga.app** — security reports.
+📧 **intrusiondetective@gmail.com** — commercial licensing, support, and public‑sector enquiries.
+🔒 **intrusiondetective@gmail.com** — security reports.
 
 > *This document is a summary, not the contract. Commercial terms are agreed in writing per engagement.*

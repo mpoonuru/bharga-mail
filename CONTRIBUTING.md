@@ -26,7 +26,7 @@ cd src-tauri && cargo check   # Rust core
 ## Reporting bugs & security
 
 - **Bugs / features:** open a GitHub issue with steps to reproduce.
-- **Security vulnerabilities:** please **do not** open a public issue — email **security@bharga.app**.
+- **Security vulnerabilities:** please **do not** open a public issue — email **intrusiondetective@gmail.com**.
 
 ## Conduct
 
