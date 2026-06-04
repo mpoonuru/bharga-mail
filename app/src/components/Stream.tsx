@@ -8,7 +8,7 @@ import { Icon } from "@/components/icons";
 import { shortTime, whenMs } from "@/lib/date";
 import { avatarColor } from "@/lib/colors";
 import { initials, senderLabel } from "@/lib/avatar";
-import { titlebarDoubleClick } from "@/lib/bridge";
+import { titlebarDoubleClick, api } from "@/lib/bridge";
 import { highlightInline } from "@/lib/highlightInline";
 import { deriveChips } from "@/lib/smartChips";
 import { SmartChips } from "@/components/ui/SmartChips";
@@ -162,6 +162,19 @@ export function Stream() {
   };
   const [sortMode, setSortMode] = useState<SortMode>("newest");
   const [q, setQ] = useState("");
+  // Full-text search hits from the core (FTS5 over the whole email body), debounced.
+  // A `seq` ref discards out-of-order responses so the list never flickers stale.
+  const [searchHits, setSearchHits] = useState<Thread[]>([]);
+  const searchSeq = useRef(0);
+  useEffect(() => {
+    const term = q.trim();
+    if (!term) { setSearchHits([]); return; }
+    const seq = ++searchSeq.current;
+    const id = setTimeout(() => {
+      void api.searchMail(term).then((r) => { if (seq === searchSeq.current) setSearchHits(r); });
+    }, 160);
+    return () => clearTimeout(id);
+  }, [q]);
 
   // Scope to the focused account, then to the chosen folder (if any), then view.
   const scoped = threads
@@ -197,8 +210,13 @@ export function Stream() {
   const toggleChip = (id: string) => setActiveChips((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const query = q.trim().toLowerCase();
+  // When searching, show the core's full-text results (whole body). While the
+  // debounced query is in flight, fall back to a quick local subject/preview filter
+  // so the list responds instantly to keystrokes.
   const filtered = query
-    ? scoped.filter((t) => [t.subject, t.preview, t.participants.join(" ")].join(" ").toLowerCase().includes(query))
+    ? (searchHits.length
+        ? searchHits
+        : scoped.filter((t) => [t.subject, t.preview, t.participants.join(" ")].join(" ").toLowerCase().includes(query)))
     : chipScoped;
   // One row per CONVERSATION (Apple-Mail style): the thread, keyed/sorted/bucketed
   // by its NEWEST message. Multi-message threads carry a count badge + a disclosure

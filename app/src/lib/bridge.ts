@@ -86,6 +86,21 @@ export const api = {
     }
   },
 
+  /** Full-text search over the WHOLE email content (FTS5), not just the preview. */
+  async searchMail(query: string): Promise<Thread[]> {
+    const q = query.trim();
+    if (!q) return [];
+    try {
+      return await invoke<Thread[]>("search_mail", { query: q });
+    } catch {
+      // Browser/preview fallback — search subject + preview + body across the mock.
+      const lc = q.toLowerCase();
+      return mock.threads.filter((t) =>
+        [t.subject, t.preview, t.participants.join(" "), ...t.messages.map((m) => m.bodyHtml)]
+          .join(" ").toLowerCase().includes(lc));
+    }
+  },
+
   /** Durable user settings (theme, density, font, locale, …) from the core. */
   async getSettings(): Promise<Record<string, string>> {
     try {

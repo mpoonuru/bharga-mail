@@ -802,14 +802,68 @@ impl Store {
 
     /// Keyword search via FTS5; returns matching thread ids.
     pub fn search(&self, query: &str) -> Vec<String> {
+        // Build a forgiving FTS5 query: every alphanumeric run becomes a PREFIX
+        // term ("lyca*"), so search-as-you-type works and stray punctuation
+        // (@ . / etc.) can never break the FTS5 parser. Ranked by relevance.
+        let fts: String = query
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(|w| format!("{w}*"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        if fts.is_empty() {
+            return Vec::new();
+        }
         let conn = self.conn.lock().unwrap();
-        let mut stmt = match conn.prepare("SELECT thread_id FROM search WHERE search MATCH ?1 LIMIT 25") {
+        let mut stmt = match conn.prepare("SELECT thread_id FROM search WHERE search MATCH ?1 ORDER BY rank LIMIT 50") {
             Ok(s) => s,
             Err(_) => return Vec::new(),
         };
-        stmt.query_map([query], |r| r.get::<_, String>(0))
+        stmt.query_map([fts.as_str()], |r| r.get::<_, String>(0))
             .map(|it| it.filter_map(Result::ok).collect())
             .unwrap_or_default()
+    }
+
+    /// Full-text search over subject + body (the FTS5 index holds the whole
+    /// message text), hydrated into ranked Threads with their messages. This is
+    /// what the search box should call — a client-side subject/preview filter
+    /// can't see the body.
+    pub fn search_threads(&self, query: &str) -> Vec<Thread> {
+        let ids = self.search(query);
+        if ids.is_empty() {
+            return Vec::new();
+        }
+        let conn = self.conn.lock().unwrap();
+        ids.iter()
+            .filter_map(|id| {
+                let mut t = conn
+                    .query_row(
+                        "SELECT id, account_id, subject, preview, participants, last_time, unread, labels, views, ai_summary, ai_draft, folder
+                         FROM threads WHERE id=?1 AND deleted=0",
+                        params![id],
+                        |r| {
+                            Ok(Thread {
+                                id: r.get(0)?,
+                                account_id: r.get(1)?,
+                                subject: r.get(2)?,
+                                preview: r.get(3)?,
+                                participants: unjson(r.get::<_, String>(4).unwrap_or_default()),
+                                last_time: r.get(5)?,
+                                unread: r.get::<_, i64>(6)? != 0,
+                                labels: unjson(r.get::<_, String>(7).unwrap_or_default()),
+                                view: unjson(r.get::<_, String>(8).unwrap_or_default()),
+                                ai_summary: r.get(9)?,
+                                ai_draft: r.get(10)?,
+                                folder: r.get::<_, String>(11).unwrap_or_else(|_| "INBOX".into()),
+                                messages: Vec::new(),
+                            })
+                        },
+                    )
+                    .ok()?;
+                t.messages = self.messages_for(&conn, &t.id);
+                Some(t)
+            })
+            .collect()
     }
 
     pub fn events(&self) -> Vec<CalEvent> {

@@ -171,6 +171,17 @@ fn list_threads(state: State<'_, AppState>) -> Vec<Thread> {
     state.store.threads()
 }
 
+/// Full-text search over subject + body (FTS5). Returns ranked threads with
+/// their messages — searches the whole email content, not just the preview.
+#[tauri::command]
+fn search_mail(query: String, state: State<'_, AppState>) -> Vec<Thread> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    state.store.search_threads(q)
+}
+
 /// All connected accounts (for the sidebar account switcher).
 #[tauri::command]
 fn list_accounts(state: State<'_, AppState>) -> Vec<store::AccountInfo> {
@@ -701,6 +712,7 @@ pub fn run() {
             ai_triage_inbox,
             reindex_embeddings,
             list_threads,
+            search_mail,
             list_accounts,
             get_settings,
             set_setting,
