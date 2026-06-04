@@ -34,13 +34,14 @@ const pinKey = (accountId: string, folder: string) => `${accountId}${PIN_SEP}${f
 /** A single account row in the expanded sidebar: drag-handle to reorder, the
  *  account selector, refresh, and (when focused) its folders with pin toggles. */
 function AccountRow({ a }: { a: Account }) {
-  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads, createFolder, renameFolder, deleteFolder, removeAccount, renameAccount } = useApp();
+  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads, createFolder, renameFolder, deleteFolder, removeAccount, renameAccount, syncOneFolder, markFolderRead } = useApp();
   const controls = useDragControls();
   const [busy, setBusy] = useState(false);
   const isFocused = selectedAccountId === a.id;
   const isImap = a.provider === "imap";
   // Folder-management UI state.
   const [newName, setNewName] = useState<string | null>(null); // null = closed; "" = input open
+  const [newParent, setNewParent] = useState<string | null>(null); // parent folder for a subfolder, else null = top level
   const [edit, setEdit] = useState<{ name: string; val: string } | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
   const [folderErr, setFolderErr] = useState("");
@@ -112,16 +113,16 @@ function AccountRow({ a }: { a: Account }) {
         <div className="folder-tree">
           {(folders.length ? folders : [{ name: "INBOX", role: "inbox", unread: 0, total: 0 }]).map((f) => {
             const pinned = pinnedFolders.includes(pinKey(a.id, f.name));
-            // Every folder except the Inbox gets a right-click menu. Rename is always
-            // offered; Delete only for CUSTOM folders (so Sent/Drafts/Trash/Junk —
-            // the special ones — can't be deleted by accident).
+            // Every IMAP folder gets a full options menu (Open / Sync / Mark all
+            // read / New subfolder / Pin). Rename is offered for non-Inbox folders;
+            // Delete only for CUSTOM ones (Inbox + Sent/Drafts/Trash/Junk protected).
             const manageable = isImap && f.role !== "inbox";
             const canDelete = isImap && !f.role;
             const editing = edit?.name === f.name;
             const [, leaf] = splitName(f.name);
             return (
               <div className="folder-row" key={f.name}
-                onContextMenu={(e) => { if (manageable) { e.preventDefault(); setMenu(menu === f.name ? null : f.name); } }}>
+                onContextMenu={(e) => { if (isImap) { e.preventDefault(); setMenu(menu === f.name ? null : f.name); } }}>
                 {editing ? (
                   <input className="folder-edit" autoFocus value={edit!.val}
                     onChange={(e) => setEdit({ name: f.name, val: e.target.value })}
@@ -139,8 +140,8 @@ function AccountRow({ a }: { a: Account }) {
                 )}
                 {/* Visible affordance — a hover "⋯" button so folder management
                     doesn't depend on a (non-obvious, WebView-flaky) right-click. */}
-                {!editing && manageable && (
-                  <button className={`folder-more${menu === f.name ? " open" : ""}`} title="Manage folder"
+                {!editing && isImap && (
+                  <button className={`folder-more${menu === f.name ? " open" : ""}`} title="Folder options"
                     aria-haspopup="menu" aria-expanded={menu === f.name}
                     onClick={(e) => { e.stopPropagation(); setMenu(menu === f.name ? null : f.name); }}>
                     <Icon name="more" size={15} weight="bold" />
@@ -152,11 +153,17 @@ function AccountRow({ a }: { a: Account }) {
                     <Icon name="pin" size={11} weight={pinned ? "fill" : "regular"} />
                   </button>
                 )}
-                {menu === f.name && manageable && (
+                {menu === f.name && isImap && (
                   <>
                     <div className="folder-menu-backdrop" onClick={() => setMenu(null)} aria-hidden="true" />
                     <div className="folder-menu" role="menu">
-                      <button role="menuitem" onClick={() => { setEdit({ name: f.name, val: leaf }); setMenu(null); }}><Icon name="reply" size={12} /> Rename</button>
+                      <button role="menuitem" onClick={() => { setMenu(null); void setFolder(f.name); }}><Icon name="inbox" size={12} /> Open</button>
+                      <button role="menuitem" onClick={() => { setMenu(null); void syncOneFolder(a.id, f.name); }}><Icon name="cloud" size={12} /> Sync now</button>
+                      <button role="menuitem" onClick={() => { setMenu(null); void markFolderRead(a.id, f.name); }}><Icon name="envelopeOpen" size={12} /> Mark all as read</button>
+                      <button role="menuitem" onClick={() => { setMenu(null); setNewParent(f.name); setNewName(""); }}><Icon name="compose" size={12} /> New subfolder</button>
+                      <button role="menuitem" onClick={() => { setMenu(null); togglePinFolder(a.id, f.name); }}><Icon name="pin" size={12} /> {pinned ? "Unpin from top" : "Pin to top"}</button>
+                      {manageable && <div className="folder-menu-sep" aria-hidden="true" />}
+                      {manageable && <button role="menuitem" onClick={() => { setEdit({ name: f.name, val: leaf }); setMenu(null); }}><Icon name="reply" size={12} /> Rename</button>}
                       {canDelete && (
                         <button role="menuitem" className="danger" onClick={() => { setMenu(null); if (window.confirm(`Delete folder “${leaf}” and the mail in it? This can't be undone.`)) void run(() => deleteFolder(a.id, f.name)); }}><Icon name="trash" size={12} /> Delete</button>
                       )}
@@ -167,17 +174,24 @@ function AccountRow({ a }: { a: Account }) {
             );
           })}
           {isImap && (newName === null ? (
-            <button className="folder-new" onClick={() => setNewName("")} title="Create a new folder">
+            <button className="folder-new" onClick={() => { setNewParent(null); setNewName(""); }} title="Create a new folder">
               <span className="ic"><Icon name="compose" size={13} weight="duotone" /></span> New folder
             </button>
           ) : (
-            <input className="folder-edit" autoFocus placeholder="Folder name…" value={newName}
+            <input className="folder-edit" autoFocus value={newName}
+              placeholder={newParent ? `New folder inside ${splitName(newParent)[1]}…` : "Folder name…"}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") { const nm = newName.trim(); setNewName(null); if (nm) void run(() => createFolder(a.id, newPrefix + nm)); }
-                else if (e.key === "Escape") setNewName(null);
+                if (e.key === "Enter") {
+                  const nm = newName.trim();
+                  const parent = newParent;
+                  setNewName(null); setNewParent(null);
+                  // Nest under the chosen parent (using the account's hierarchy
+                  // delimiter), else create at the account's top level.
+                  if (nm) void run(() => createFolder(a.id, (parent ? `${parent}${sep ?? "."}` : newPrefix) + nm));
+                } else if (e.key === "Escape") { setNewName(null); setNewParent(null); }
               }}
-              onBlur={() => setNewName(null)} />
+              onBlur={() => { setNewName(null); setNewParent(null); }} />
           ))}
           {folderErr && <div className="folder-err" title={folderErr}>{folderErr}</div>}
         </div>

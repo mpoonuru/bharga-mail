@@ -82,6 +82,8 @@ interface AppState {
   createFolder: (accountId: string, name: string) => Promise<void>;
   renameFolder: (accountId: string, from: string, to: string) => Promise<void>;
   deleteFolder: (accountId: string, name: string) => Promise<void>;
+  syncOneFolder: (accountId: string, folder: string) => Promise<void>;
+  markFolderRead: (accountId: string, folder: string) => Promise<void>;
   setFolder: (name: string | null) => Promise<void>;
   /** Subscribe to the core's background live-sync (auto-refresh + notify). */
   liveSyncStarted: boolean;
@@ -351,6 +353,20 @@ export const useApp = create<AppState>((set, get) => ({
     });
   },
   // Enumerate folders from the server (IMAP LIST), then refresh counts.
+  // Sync a single folder on demand (without changing the current selection).
+  syncOneFolder: async (accountId, folder) => {
+    try { await api.syncFolder(accountId, folder, get().groupConversations); } catch { /* surfaced via counts */ }
+    set({ threads: await api.listThreads() });
+    if (get().selectedAccountId === accountId) await get().loadFolders(accountId);
+  },
+  // Mark every loaded thread in a folder as read (local now + best-effort \Seen).
+  markFolderRead: async (accountId, folder) => {
+    const targets = get().threads.filter((t) => t.accountId === accountId && t.folder === folder && t.unread);
+    if (!targets.length) return;
+    set({ threads: get().threads.map((t) => (t.accountId === accountId && t.folder === folder && t.unread ? { ...t, unread: false } : t)) });
+    await Promise.all(targets.map((t) => api.setThreadRead(t.id, t.accountId, false).catch(() => {})));
+    if (get().selectedAccountId === accountId) await get().loadFolders(accountId);
+  },
   refreshFolders: async (accountId) => {
     await api.listFolders(accountId);
     await get().loadFolders(accountId);

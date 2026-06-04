@@ -196,6 +196,7 @@
   .folder-menu button { @apply flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-text-2 bg-transparent border-none cursor-pointer text-left w-full; }
   .folder-menu button:hover { @apply bg-surface text-text; }
   .folder-menu button.danger { color: var(--danger); }
+  .folder-menu-sep { @apply my-1 mx-2 border-t border-border-2; }
   .folder-err { @apply text-[11px] px-2 py-1 truncate; color: var(--danger); }
   .nav-label { @apply text-[10.5px] uppercase text-text-3 pt-4 px-[11px] pb-1.5 font-semibold; letter-spacing: .09em; }
   .sidebar .spacer { @apply flex-1; }
