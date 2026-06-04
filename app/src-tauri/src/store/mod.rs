@@ -669,6 +669,19 @@ impl Store {
             .ok()
     }
 
+    /// The IMAP folder a message lives in — so an attachment fetch SELECTs the
+    /// right mailbox instead of assuming INBOX (Sent/Archive attachments were
+    /// otherwise undownloadable).
+    pub fn message_folder(&self, message_id: &str) -> Option<String> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT t.folder FROM messages m JOIN threads t ON m.thread_id = t.id WHERE m.id=?1",
+            params![message_id],
+            |r| r.get(0),
+        )
+        .ok()
+    }
+
     /// How many messages we've already cached for an account's folder — used to
     /// compute the next OLDER chunk to backfill (we always hold the most-recent
     /// contiguous block, so `total - count` is the boundary below which is unsynced).

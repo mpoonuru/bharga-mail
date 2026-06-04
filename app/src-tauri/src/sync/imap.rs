@@ -462,7 +462,11 @@ pub fn fetch_attachment(store: &Store, account_id: &str, message_id: &str, filen
     let mut session = client
         .login(&acct.imap_username, &password)
         .map_err(|(e, _)| SyncError::Transient(e.to_string()))?;
-    session.select("INBOX").map_err(|e| SyncError::Transient(e.to_string()))?;
+    // SELECT the message's actual mailbox (Sent/Archive/custom), not a hardcoded
+    // INBOX — otherwise the Message-ID search runs in the wrong folder and the
+    // attachment "isn't found" even though it's right there.
+    let folder = store.message_folder(message_id).unwrap_or_else(|| "INBOX".to_string());
+    session.select(&folder).map_err(|e| SyncError::Transient(e.to_string()))?;
 
     // Stored message ids are account-scoped ("account\u{1}<real-message-id>"); the
     // server only knows the real Message-ID, so strip the prefix before searching.
