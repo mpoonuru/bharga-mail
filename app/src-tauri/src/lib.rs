@@ -423,6 +423,47 @@ async fn list_folders(account_id: String, state: State<'_, AppState>) -> Result<
     }
 }
 
+/// Create a new IMAP mailbox (folder).
+#[tauri::command]
+async fn create_folder(account_id: String, name: String, state: State<'_, AppState>) -> Result<(), String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("Folder name can't be empty.".into());
+    }
+    if !account_id.starts_with("imap:") {
+        return Err("Folder management is currently available for IMAP accounts.".into());
+    }
+    sync::imap::manage_folder_async(state.store.clone(), account_id, sync::imap::FolderAction::Create(name))
+        .await.map_err(|e| e.to_string())
+}
+
+/// Rename an IMAP mailbox (folder).
+#[tauri::command]
+async fn rename_folder(account_id: String, from: String, to: String, state: State<'_, AppState>) -> Result<(), String> {
+    let to = to.trim().to_string();
+    if to.is_empty() {
+        return Err("Folder name can't be empty.".into());
+    }
+    if !account_id.starts_with("imap:") {
+        return Err("Folder management is currently available for IMAP accounts.".into());
+    }
+    sync::imap::manage_folder_async(state.store.clone(), account_id, sync::imap::FolderAction::Rename(from, to))
+        .await.map_err(|e| e.to_string())
+}
+
+/// Delete an IMAP mailbox (folder). The server removes the mailbox and its mail.
+#[tauri::command]
+async fn delete_folder(account_id: String, name: String, state: State<'_, AppState>) -> Result<(), String> {
+    if name.eq_ignore_ascii_case("INBOX") {
+        return Err("The Inbox can't be deleted.".into());
+    }
+    if !account_id.starts_with("imap:") {
+        return Err("Folder management is currently available for IMAP accounts.".into());
+    }
+    sync::imap::manage_folder_async(state.store.clone(), account_id, sync::imap::FolderAction::Delete(name))
+        .await.map_err(|e| e.to_string())
+}
+
 /// Sync a specific folder for an IMAP account. Returns messages stored.
 #[tauri::command]
 async fn sync_folder(account_id: String, folder: String, group: Option<bool>, state: State<'_, AppState>) -> Result<usize, String> {
@@ -733,6 +774,9 @@ pub fn run() {
             sync_now,
             load_older,
             list_folders,
+            create_folder,
+            rename_folder,
+            delete_folder,
             sync_folder,
             folders,
             set_thread_read,

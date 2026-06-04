@@ -34,10 +34,27 @@ const pinKey = (accountId: string, folder: string) => `${accountId}${PIN_SEP}${f
 /** A single account row in the expanded sidebar: drag-handle to reorder, the
  *  account selector, refresh, and (when focused) its folders with pin toggles. */
 function AccountRow({ a }: { a: Account }) {
-  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads } = useApp();
+  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads, createFolder, renameFolder, deleteFolder } = useApp();
   const controls = useDragControls();
   const [busy, setBusy] = useState(false);
   const isFocused = selectedAccountId === a.id;
+  const isImap = a.provider === "imap";
+  // Folder-management UI state.
+  const [newName, setNewName] = useState<string | null>(null); // null = closed; "" = input open
+  const [edit, setEdit] = useState<{ name: string; val: string } | null>(null);
+  const [menu, setMenu] = useState<string | null>(null);
+  const [folderErr, setFolderErr] = useState("");
+  const run = async (fn: () => Promise<void>) => {
+    setFolderErr("");
+    try { await fn(); } catch (e) { setFolderErr(String(e).replace(/^Error:\s*/, "")); }
+  };
+  // New folders nest like the account's existing ones ("INBOX." / "INBOX/" prefix).
+  const sep = folders.find((f) => /^INBOX[./]/.test(f.name))?.name.match(/^INBOX([./])/)?.[1];
+  const newPrefix = sep ? `INBOX${sep}` : "";
+  const splitName = (full: string): [string, string] => {
+    const m = full.match(/^(.*[./])([^./]+)$/);
+    return m ? [m[1], m[2]] : ["", full];
+  };
   // Live unread counts derived from threads (the cached AccountInfo/FolderInfo
   // counts are a sync-time snapshot and don't react to marking a mail read).
   const acctUnread = threads.filter((t) => t.accountId === a.id && t.unread).length;
@@ -64,20 +81,56 @@ function AccountRow({ a }: { a: Account }) {
         <div className="folder-tree">
           {(folders.length ? folders : [{ name: "INBOX", role: "inbox", unread: 0, total: 0 }]).map((f) => {
             const pinned = pinnedFolders.includes(pinKey(a.id, f.name));
+            const custom = isImap && !f.role; // only user folders can be renamed/deleted
+            const editing = edit?.name === f.name;
+            const [, leaf] = splitName(f.name);
             return (
-              <div className="folder-row" key={f.name}>
-                <button className={`nav-item folder-item${selectedFolder === f.name ? " active" : ""}`} onClick={() => setFolder(f.name)} title={f.name}>
-                  <span className="ic"><Icon name={FOLDER_ICON[f.role ?? ""] ?? "inbox"} size={15} weight="duotone" /></span>
-                  <span className="acct-email">{f.role === "inbox" ? "Inbox" : f.name.replace(/^INBOX[./]/, "")}</span>
-                  {(() => { const u = folderUnread(f.name); return u ? <span className="count">{u}</span> : null; })()}
-                </button>
-                <button className={`folder-pin${pinned ? " pinned" : ""}`} title={pinned ? "Unpin" : "Pin to top"}
-                  onClick={(e) => { e.stopPropagation(); togglePinFolder(a.id, f.name); }}>
-                  <Icon name="pin" size={11} weight={pinned ? "fill" : "regular"} />
-                </button>
+              <div className="folder-row" key={f.name}
+                onContextMenu={(e) => { if (custom) { e.preventDefault(); setMenu(menu === f.name ? null : f.name); } }}>
+                {editing ? (
+                  <input className="folder-edit" autoFocus value={edit!.val}
+                    onChange={(e) => setEdit({ name: f.name, val: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { const [pre] = splitName(f.name); const to = pre + edit!.val.trim(); const ok = edit!.val.trim() && to !== f.name; setEdit(null); if (ok) void run(() => renameFolder(a.id, f.name, to)); }
+                      else if (e.key === "Escape") setEdit(null);
+                    }}
+                    onBlur={() => setEdit(null)} />
+                ) : (
+                  <button className={`nav-item folder-item${selectedFolder === f.name ? " active" : ""}`} onClick={() => setFolder(f.name)} title={f.name}>
+                    <span className="ic"><Icon name={FOLDER_ICON[f.role ?? ""] ?? "inbox"} size={15} weight="duotone" /></span>
+                    <span className="acct-email">{f.role === "inbox" ? "Inbox" : leaf}</span>
+                    {(() => { const u = folderUnread(f.name); return u ? <span className="count">{u}</span> : null; })()}
+                  </button>
+                )}
+                {!editing && (
+                  <button className={`folder-pin${pinned ? " pinned" : ""}`} title={pinned ? "Unpin" : "Pin to top"}
+                    onClick={(e) => { e.stopPropagation(); togglePinFolder(a.id, f.name); }}>
+                    <Icon name="pin" size={11} weight={pinned ? "fill" : "regular"} />
+                  </button>
+                )}
+                {menu === f.name && custom && (
+                  <div className="folder-menu" onMouseLeave={() => setMenu(null)} role="menu">
+                    <button role="menuitem" onClick={() => { setEdit({ name: f.name, val: leaf }); setMenu(null); }}><Icon name="reply" size={12} /> Rename</button>
+                    <button role="menuitem" className="danger" onClick={() => { setMenu(null); if (window.confirm(`Delete folder “${leaf}” and the mail in it? This can't be undone.`)) void run(() => deleteFolder(a.id, f.name)); }}><Icon name="trash" size={12} /> Delete</button>
+                  </div>
+                )}
               </div>
             );
           })}
+          {isImap && (newName === null ? (
+            <button className="folder-new" onClick={() => setNewName("")} title="Create a new folder">
+              <span className="ic"><Icon name="compose" size={13} weight="duotone" /></span> New folder
+            </button>
+          ) : (
+            <input className="folder-edit" autoFocus placeholder="Folder name…" value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { const nm = newName.trim(); setNewName(null); if (nm) void run(() => createFolder(a.id, newPrefix + nm)); }
+                else if (e.key === "Escape") setNewName(null);
+              }}
+              onBlur={() => setNewName(null)} />
+          ))}
+          {folderErr && <div className="folder-err" title={folderErr}>{folderErr}</div>}
         </div>
       )}
     </Reorder.Item>

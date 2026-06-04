@@ -79,6 +79,9 @@ interface AppState {
   selectedFolder: string | null;
   loadFolders: (accountId: string) => Promise<void>;
   refreshFolders: (accountId: string) => Promise<void>;
+  createFolder: (accountId: string, name: string) => Promise<void>;
+  renameFolder: (accountId: string, from: string, to: string) => Promise<void>;
+  deleteFolder: (accountId: string, name: string) => Promise<void>;
   setFolder: (name: string | null) => Promise<void>;
   /** Subscribe to the core's background live-sync (auto-refresh + notify). */
   liveSyncStarted: boolean;
@@ -306,6 +309,24 @@ export const useApp = create<AppState>((set, get) => ({
   loadFolders: async (accountId) => {
     const folders = await api.folders(accountId);
     if (get().selectedAccountId === accountId) set({ folders });
+  },
+  // Folder management (IMAP). Each mirrors the change locally then refreshes the
+  // sidebar; rename/delete also reload the thread list (their mail moved/vanished).
+  createFolder: async (accountId, name) => {
+    await api.createFolder(accountId, name);
+    await get().loadFolders(accountId);
+  },
+  renameFolder: async (accountId, from, to) => {
+    await api.renameFolder(accountId, from, to);
+    if (get().selectedFolder === from) set({ selectedFolder: to });
+    await get().loadFolders(accountId);
+    set({ threads: await api.listThreads() });
+  },
+  deleteFolder: async (accountId, name) => {
+    await api.deleteFolder(accountId, name);
+    if (get().selectedFolder === name) set({ selectedFolder: null });
+    await get().loadFolders(accountId);
+    set({ threads: await api.listThreads() });
   },
   liveSyncStarted: false,
   startLiveSync: async () => {

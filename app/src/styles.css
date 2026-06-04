@@ -178,6 +178,16 @@
   .folder-row:hover .folder-pin { @apply opacity-60; }
   .folder-pin:hover { @apply opacity-100 text-text bg-surface; }
   .folder-pin.pinned { @apply opacity-100; color: var(--accent); }
+  /* Folder management: create / rename inline input, per-folder menu. */
+  .folder-edit { @apply flex-1 min-w-0 bg-surface border border-accent rounded-md px-2 py-[5px] text-[12.5px] text-text outline-none; font-family: var(--font); }
+  .folder-new { @apply flex items-center gap-[11px] px-[11px] py-[6px] mt-0.5 rounded-[9px] text-text-3 text-[12px] bg-transparent border-none cursor-pointer w-full text-left; transition: .14s var(--ease); }
+  .folder-new:hover { @apply text-text bg-surface; }
+  .folder-new .ic { @apply w-[15px] inline-flex justify-center; }
+  .folder-menu { @apply absolute right-1 top-full z-[70] mt-0.5 min-w-[140px] rounded-lg border border-border-2 py-1 flex flex-col; background: var(--bg-2); box-shadow: var(--shadow); }
+  .folder-menu button { @apply flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-text-2 bg-transparent border-none cursor-pointer text-left w-full; }
+  .folder-menu button:hover { @apply bg-surface text-text; }
+  .folder-menu button.danger { color: var(--danger); }
+  .folder-err { @apply text-[11px] px-2 py-1 truncate; color: var(--danger); }
   .nav-label { @apply text-[10.5px] uppercase text-text-3 pt-4 px-[11px] pb-1.5 font-semibold; letter-spacing: .09em; }
   .sidebar .spacer { @apply flex-1; }
   .model-chip { @apply mt-2 px-[11px] py-2.5 border border-border rounded-xl bg-surface cursor-pointer text-left; transition: .15s var(--ease); }

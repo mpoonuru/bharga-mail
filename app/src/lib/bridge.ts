@@ -336,6 +336,20 @@ export const api = {
     }
   },
 
+  /** Create / rename / delete an IMAP mailbox on the server (throws on failure). */
+  async createFolder(accountId: string, name: string): Promise<void> {
+    if (!inTauri) return;
+    await invoke("create_folder", { accountId, name });
+  },
+  async renameFolder(accountId: string, from: string, to: string): Promise<void> {
+    if (!inTauri) return;
+    await invoke("rename_folder", { accountId, from, to });
+  },
+  async deleteFolder(accountId: string, name: string): Promise<void> {
+    if (!inTauri) return;
+    await invoke("delete_folder", { accountId, name });
+  },
+
   /** Enumerate folders from the server (IMAP LIST), persist + return their names. */
   async listFolders(accountId: string): Promise<string[]> {
     try {

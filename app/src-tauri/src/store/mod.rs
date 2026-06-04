@@ -617,6 +617,29 @@ impl Store {
         Ok(())
     }
 
+    /// After an IMAP RENAME: move every thread from the old folder name to the new
+    /// one and drop the stale folder row (the new row is re-added by upsert_folder).
+    pub fn rename_folder_local(&self, account_id: &str, from: &str, to: &str) {
+        let conn = self.conn.lock().unwrap();
+        let _ = conn.execute(
+            "UPDATE threads SET folder=?3 WHERE account_id=?1 AND folder=?2",
+            params![account_id, from, to],
+        );
+        let _ = conn.execute("DELETE FROM folders WHERE id=?1", params![format!("{account_id}:{from}")]);
+    }
+
+    /// After an IMAP DELETE: the mailbox and its mail are gone on the server, so
+    /// remove the folder row and every thread it held (with messages/FTS/embeddings).
+    pub fn delete_folder_local(&self, account_id: &str, name: &str) {
+        let conn = self.conn.lock().unwrap();
+        let in_folder = "(SELECT id FROM threads WHERE account_id=?1 AND folder=?2)";
+        let _ = conn.execute(&format!("DELETE FROM search WHERE thread_id IN {in_folder}"), params![account_id, name]);
+        let _ = conn.execute(&format!("DELETE FROM embeddings WHERE thread_id IN {in_folder}"), params![account_id, name]);
+        let _ = conn.execute(&format!("DELETE FROM messages WHERE thread_id IN {in_folder}"), params![account_id, name]);
+        let _ = conn.execute("DELETE FROM threads WHERE account_id=?1 AND folder=?2", params![account_id, name]);
+        let _ = conn.execute("DELETE FROM folders WHERE id=?1", params![format!("{account_id}:{name}")]);
+    }
+
     /// IMAP per-folder incremental cursor: the (UIDVALIDITY, UIDNEXT) observed at
     /// the last sync. `None` until the folder has been synced once, or if the
     /// server didn't report them. Used to fetch only UIDs that arrived since.

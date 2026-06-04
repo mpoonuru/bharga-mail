@@ -245,6 +245,63 @@ fn folder_role(name: &str) -> Option<String> {
     None
 }
 
+/// IMAP mailbox management — create / rename / delete a folder on the server,
+/// then mirror the change locally.
+pub enum FolderAction {
+    Create(String),
+    Rename(String, String),
+    Delete(String),
+}
+
+pub fn manage_folder(store: &Store, account_id: &str, action: FolderAction) -> Result<(), SyncError> {
+    let acct = store
+        .imap_account(account_id)
+        .ok_or_else(|| SyncError::Transient(format!("no saved IMAP settings for {account_id}")))?;
+    let password = tokens::secret(account_id, "imap-pass")
+        .filter(|p| !p.is_empty())
+        .ok_or_else(|| SyncError::Transient(format!("no saved password for {}", acct.email)))?;
+    let mode = match acct.imap_security {
+        Security::Ssl => ConnectionMode::Tls,
+        Security::Starttls => ConnectionMode::StartTls,
+        Security::None => ConnectionMode::Plaintext,
+    };
+    let client = ClientBuilder::new(acct.imap_host.clone(), acct.imap_port)
+        .tls_kind(TlsKind::Rust)
+        .mode(mode)
+        .connect()
+        .map_err(|e| SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port)))?;
+    let mut session = client
+        .login(&acct.imap_username, &password)
+        .map_err(|(e, _)| SyncError::Transient(format!("login failed — {e}")))?;
+
+    let res = match &action {
+        FolderAction::Create(name) => session.create(name),
+        FolderAction::Rename(from, to) => session.rename(from, to),
+        FolderAction::Delete(name) => session.delete(name),
+    };
+    let _ = session.logout();
+    res.map_err(|e| SyncError::Transient(format!("folder operation failed — {e}")))?;
+
+    // Mirror the change in the local store so the sidebar updates immediately.
+    match action {
+        FolderAction::Create(name) => {
+            let _ = store.upsert_folder(account_id, &name, folder_role(&name).as_deref());
+        }
+        FolderAction::Rename(from, to) => {
+            store.rename_folder_local(account_id, &from, &to);
+            let _ = store.upsert_folder(account_id, &to, folder_role(&to).as_deref());
+        }
+        FolderAction::Delete(name) => store.delete_folder_local(account_id, &name),
+    }
+    Ok(())
+}
+
+pub async fn manage_folder_async(store: std::sync::Arc<Store>, account_id: String, action: FolderAction) -> Result<(), SyncError> {
+    tokio::task::spawn_blocking(move || manage_folder(&store, &account_id, action))
+        .await
+        .map_err(|e| SyncError::Transient(e.to_string()))?
+}
+
 pub async fn list_folders_async(store: std::sync::Arc<Store>, account_id: String) -> Result<Vec<String>, SyncError> {
     tokio::task::spawn_blocking(move || list_folders(&store, &account_id))
         .await
