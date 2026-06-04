@@ -106,6 +106,15 @@ function AccountRow({ a }: { a: Account }) {
                     {(() => { const u = folderUnread(f.name); return u ? <span className="count">{u}</span> : null; })()}
                   </button>
                 )}
+                {/* Visible affordance — a hover "⋯" button so folder management
+                    doesn't depend on a (non-obvious, WebView-flaky) right-click. */}
+                {!editing && manageable && (
+                  <button className={`folder-more${menu === f.name ? " open" : ""}`} title="Manage folder"
+                    aria-haspopup="menu" aria-expanded={menu === f.name}
+                    onClick={(e) => { e.stopPropagation(); setMenu(menu === f.name ? null : f.name); }}>
+                    <Icon name="more" size={15} weight="bold" />
+                  </button>
+                )}
                 {!editing && (
                   <button className={`folder-pin${pinned ? " pinned" : ""}`} title={pinned ? "Unpin" : "Pin to top"}
                     onClick={(e) => { e.stopPropagation(); togglePinFolder(a.id, f.name); }}>
@@ -113,12 +122,15 @@ function AccountRow({ a }: { a: Account }) {
                   </button>
                 )}
                 {menu === f.name && manageable && (
-                  <div className="folder-menu" onMouseLeave={() => setMenu(null)} role="menu">
-                    <button role="menuitem" onClick={() => { setEdit({ name: f.name, val: leaf }); setMenu(null); }}><Icon name="reply" size={12} /> Rename</button>
-                    {canDelete && (
-                      <button role="menuitem" className="danger" onClick={() => { setMenu(null); if (window.confirm(`Delete folder “${leaf}” and the mail in it? This can't be undone.`)) void run(() => deleteFolder(a.id, f.name)); }}><Icon name="trash" size={12} /> Delete</button>
-                    )}
-                  </div>
+                  <>
+                    <div className="folder-menu-backdrop" onClick={() => setMenu(null)} aria-hidden="true" />
+                    <div className="folder-menu" role="menu">
+                      <button role="menuitem" onClick={() => { setEdit({ name: f.name, val: leaf }); setMenu(null); }}><Icon name="reply" size={12} /> Rename</button>
+                      {canDelete && (
+                        <button role="menuitem" className="danger" onClick={() => { setMenu(null); if (window.confirm(`Delete folder “${leaf}” and the mail in it? This can't be undone.`)) void run(() => deleteFolder(a.id, f.name)); }}><Icon name="trash" size={12} /> Delete</button>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             );

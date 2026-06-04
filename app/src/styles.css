@@ -178,6 +178,12 @@
   .folder-row:hover .folder-pin { @apply opacity-60; }
   .folder-pin:hover { @apply opacity-100 text-text bg-surface; }
   .folder-pin.pinned { @apply opacity-100; color: var(--accent); }
+  /* Hover "⋯" button — the visible entry point to folder management. */
+  .folder-more { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] rounded-md text-text-3 opacity-0 bg-transparent border-none cursor-pointer; transition: .14s var(--ease); }
+  .folder-row:hover .folder-more { @apply opacity-70; }
+  .folder-more:hover, .folder-more.open { @apply opacity-100 text-text bg-surface; }
+  /* Full-viewport transparent catcher so any click outside closes the menu. */
+  .folder-menu-backdrop { @apply fixed inset-0 z-[69]; }
   /* Folder management: create / rename inline input, per-folder menu. */
   .folder-edit { @apply flex-1 min-w-0 bg-surface border border-accent rounded-md px-2 py-[5px] text-[12.5px] text-text outline-none; font-family: var(--font); }
   .folder-new { @apply flex items-center gap-[11px] px-[11px] py-[6px] mt-0.5 rounded-[9px] text-text-3 text-[12px] bg-transparent border-none cursor-pointer w-full text-left; transition: .14s var(--ease); }
