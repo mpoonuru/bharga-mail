@@ -272,6 +272,8 @@ impl Store {
             (9, migrate_v9_outbox_cc_bcc),
             (10, migrate_v10_rebuild_previews),
             (11, migrate_v11_thread_flags),
+            (12, migrate_v12_backfill_inline_attachments),
+            (13, migrate_v13_rededup_inline_attachments),
         ];
         let mut version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         for (v, step) in steps {
@@ -656,6 +658,15 @@ impl Store {
             Some((Some(v), Some(n))) => Some((v as u32, n as u32)),
             _ => None,
         }
+    }
+
+    /// The stored HTML body for a message id — used to serve inline (`data:`-URI)
+    /// attachments straight from the cache, with no IMAP round-trip and regardless
+    /// of which folder the message lives in.
+    pub fn message_body_html(&self, message_id: &str) -> Option<String> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row("SELECT body_html FROM messages WHERE id=?1", params![message_id], |r| r.get(0))
+            .ok()
     }
 
     /// How many messages we've already cached for an account's folder — used to
@@ -1381,6 +1392,139 @@ fn migrate_v10_rebuild_previews(tx: &rusqlite::Transaction) -> rusqlite::Result<
         tx.execute("UPDATE threads SET preview = ?1 WHERE id = ?2", params![preview, id])?;
     }
     Ok(())
+}
+
+/// v12 — backfill attachments that were embedded INLINE in the HTML body as
+/// `data:` URIs (iOS photos, scanned documents) but never listed as downloadable
+/// files by the old parser. Self-heals existing mail on launch so the user never
+/// has to re-sync a folder to see an attachment that was always there.
+fn migrate_v12_backfill_inline_attachments(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    let rows: Vec<(String, String)> = {
+        let mut stmt = tx.prepare(
+            "SELECT id, body_html FROM messages WHERE attachments = '[]' AND body_html LIKE '%;base64,%'",
+        )?;
+        let mapped = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        mapped.filter_map(Result::ok).collect()
+    };
+    for (id, body) in rows {
+        let metas: Vec<AttachmentMeta> = inline_data_attachments(&body)
+            .into_iter()
+            .map(|(name, mime, bytes)| AttachmentMeta { name, mime, size: bytes.len() as u64 })
+            .collect();
+        if metas.is_empty() {
+            continue;
+        }
+        let json = serde_json::to_string(&metas).unwrap_or_else(|_| "[]".to_string());
+        tx.execute("UPDATE messages SET attachments = ?1 WHERE id = ?2", params![json, id])?;
+    }
+    Ok(())
+}
+
+/// v13 — re-derive inline attachments with de-duplication. v12 listed an image
+/// once per appearance, so a photo quoted in a reply showed up twice. Re-process
+/// the messages v12 touched (and any still-empty ones) now that the extractor
+/// collapses identical blobs.
+fn migrate_v13_rededup_inline_attachments(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    let rows: Vec<(String, String)> = {
+        let mut stmt = tx.prepare(
+            "SELECT id, body_html FROM messages \
+             WHERE (attachments = '[]' OR attachments LIKE '%inline-%') AND body_html LIKE '%;base64,%'",
+        )?;
+        let mapped = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        mapped.filter_map(Result::ok).collect()
+    };
+    for (id, body) in rows {
+        let metas: Vec<AttachmentMeta> = inline_data_attachments(&body)
+            .into_iter()
+            .map(|(name, mime, bytes)| AttachmentMeta { name, mime, size: bytes.len() as u64 })
+            .collect();
+        if metas.is_empty() {
+            continue;
+        }
+        let json = serde_json::to_string(&metas).unwrap_or_else(|_| "[]".to_string());
+        tx.execute("UPDATE messages SET attachments = ?1 WHERE id = ?2", params![json, id])?;
+    }
+    Ok(())
+}
+
+/// Extract attachments embedded inline in HTML as `data:<mime>;base64,…` URIs
+/// (e.g. an iOS photo or a scanned document the sender pasted into the body).
+/// Returns `(filename, mime, decoded-bytes)` for each sizeable image/binary blob.
+///
+/// Naming is deterministic and index-based (`inline-1.jpg`, `inline-2.png`, …) so
+/// the same HTML always yields the same names — the migration lists them and the
+/// download path (which re-runs this on the stored body) resolves them to bytes
+/// with no network round-trip. Tiny blobs (<8 KB: tracking pixels, signature
+/// logos, spacer GIFs) are skipped so they don't pollute the attachment list.
+pub(crate) fn inline_data_attachments(html: &str) -> Vec<(String, String, Vec<u8>)> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use std::collections::HashSet;
+    use std::hash::{Hash, Hasher};
+    let bytes = html.as_bytes();
+    let mut out = Vec::new();
+    // De-duplicate by content: a reply embeds the same photo in both the new body
+    // and the quoted history, which would otherwise list it twice.
+    let mut seen: HashSet<u64> = HashSet::new();
+    let mut idx = 0usize;
+    let mut i = 0usize;
+    while let Some(rel) = find_subslice(&bytes[i..], b"data:") {
+        let mime_start = i + rel + 5; // just past "data:"
+        // The mime type runs up to ";base64,"; cap the look-ahead so a stray
+        // "data:" in unrelated markup can't trigger a huge scan.
+        let window_end = (mime_start + 96).min(html.len());
+        let window = &html[mime_start..window_end];
+        let Some(mpos) = window.find(";base64,") else {
+            i = mime_start;
+            continue;
+        };
+        let mime = &window[..mpos];
+        let data_start = mime_start + mpos + ";base64,".len();
+        let mut end = data_start;
+        while end < bytes.len() && is_base64_byte(bytes[end]) {
+            end += 1;
+        }
+        let is_file_mime = !mime.is_empty()
+            && (mime.starts_with("image/")
+                || mime.starts_with("application/")
+                || mime.starts_with("audio/")
+                || mime.starts_with("video/"));
+        if is_file_mime {
+            if let Ok(decoded) = STANDARD.decode(html[data_start..end].as_bytes()) {
+                if decoded.len() >= 8_000 {
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    decoded.hash(&mut h);
+                    if seen.insert(h.finish()) {
+                        idx += 1;
+                        out.push((format!("inline-{idx}.{}", mime_extension(mime)), mime.to_string(), decoded));
+                    }
+                }
+            }
+        }
+        i = end.max(mime_start + 1);
+    }
+    out
+}
+
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+fn is_base64_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'='
+}
+
+fn mime_extension(mime: &str) -> &'static str {
+    match mime {
+        "image/jpeg" => "jpg",
+        "image/png" => "png",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        "image/heic" => "heic",
+        "image/svg+xml" => "svg",
+        "application/pdf" => "pdf",
+        "application/zip" => "zip",
+        _ => "bin",
+    }
 }
 
 /// v11: per-thread flag (star). Stored separately from the thread row so the

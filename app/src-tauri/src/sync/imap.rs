@@ -434,6 +434,19 @@ pub async fn flag_thread_async(store: std::sync::Arc<Store>, account_id: String,
 /// no stored UID yet, so we SEARCH the INBOX by the Message-ID header, re-fetch
 /// the full message, and extract the named part.
 pub fn fetch_attachment(store: &Store, account_id: &str, message_id: &str, filename: &str) -> Result<Vec<u8>, SyncError> {
+    // Inline attachments (data: URIs embedded in the body — iOS photos, scans)
+    // are served straight from the stored HTML: no network, works offline, and
+    // works for ANY folder (the IMAP path below only searches INBOX).
+    if filename.starts_with("inline-") {
+        if let Some(html) = store.message_body_html(message_id) {
+            if let Some((_, _, bytes)) = crate::store::inline_data_attachments(&html)
+                .into_iter()
+                .find(|(name, _, _)| name == filename)
+            {
+                return Ok(bytes);
+            }
+        }
+    }
     let acct = store.imap_account(account_id).ok_or(SyncError::AuthRequired)?;
     let password = tokens::secret(account_id, "imap-pass").ok_or(SyncError::AuthRequired)?;
     let mode = match acct.imap_security {
