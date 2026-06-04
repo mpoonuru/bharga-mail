@@ -92,6 +92,7 @@ interface AppState {
   reachedEnd: boolean;
   loadOlder: () => Promise<number>;
   removeAccount: (id: string) => Promise<void>;
+  renameAccount: (id: string, name: string) => Promise<void>;
   load: () => Promise<void>;
   toggleTask: (id: string) => void;
   assignRole: (modelId: string, role: AiRole) => void;
@@ -413,6 +414,10 @@ export const useApp = create<AppState>((set, get) => ({
       accounts,
       selectedAccountId: get().selectedAccountId === id ? null : get().selectedAccountId,
     });
+  },
+  renameAccount: async (id, name) => {
+    await api.renameAccount(id, name);
+    set({ accounts: await api.listAccounts() });
   },
   load: async () => {
     // Hydrate durable UI settings from the core (source of truth), falling back

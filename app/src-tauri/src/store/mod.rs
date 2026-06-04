@@ -562,6 +562,14 @@ impl Store {
         Ok(())
     }
 
+    /// Set an account's display name (the friendly label shown in the sidebar in
+    /// place of the raw email address).
+    pub fn set_account_name(&self, account_id: &str, name: &str) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("UPDATE accounts SET display_name=?2 WHERE id=?1", params![account_id, name])?;
+        Ok(())
+    }
+
     // ---- durable user settings (key/value) ----
 
     pub fn set_setting(&self, key: &str, value: &str) -> rusqlite::Result<()> {

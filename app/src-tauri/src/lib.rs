@@ -379,6 +379,15 @@ fn get_imap_account(account_id: String, state: State<'_, AppState>) -> Option<Im
 /// Remove an account and all of its data (threads, messages, embeddings, config),
 /// and clear its stored credentials.
 #[tauri::command]
+fn rename_account(account_id: String, name: String, state: State<'_, AppState>) -> Result<(), String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("Account name can't be empty.".into());
+    }
+    state.store.set_account_name(&account_id, &name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn remove_account(account_id: String, state: State<'_, AppState>) -> Result<(), String> {
     state.store.delete_account(&account_id).map_err(|e| e.to_string())?;
     sync::tokens::clear(&account_id);
@@ -792,6 +801,7 @@ pub fn run() {
             save_imap_account,
             get_imap_account,
             remove_account,
+            rename_account,
             sync_now,
             load_older,
             list_folders,

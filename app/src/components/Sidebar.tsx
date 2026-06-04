@@ -34,7 +34,7 @@ const pinKey = (accountId: string, folder: string) => `${accountId}${PIN_SEP}${f
 /** A single account row in the expanded sidebar: drag-handle to reorder, the
  *  account selector, refresh, and (when focused) its folders with pin toggles. */
 function AccountRow({ a }: { a: Account }) {
-  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads, createFolder, renameFolder, deleteFolder } = useApp();
+  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads, createFolder, renameFolder, deleteFolder, removeAccount, renameAccount } = useApp();
   const controls = useDragControls();
   const [busy, setBusy] = useState(false);
   const isFocused = selectedAccountId === a.id;
@@ -44,6 +44,9 @@ function AccountRow({ a }: { a: Account }) {
   const [edit, setEdit] = useState<{ name: string; val: string } | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
   const [folderErr, setFolderErr] = useState("");
+  // Account-level "⋯" menu + inline rename.
+  const [acctMenu, setAcctMenu] = useState(false);
+  const [acctRename, setAcctRename] = useState<string | null>(null);
   const run = async (fn: () => Promise<void>) => {
     setFolderErr("");
     try { await fn(); } catch (e) { setFolderErr(String(e).replace(/^Error:\s*/, "")); }
@@ -65,16 +68,44 @@ function AccountRow({ a }: { a: Account }) {
         <button className="acct-drag" title="Drag to reorder" aria-label="Drag to reorder" onPointerDown={(e) => controls.start(e)}>
           <Icon name="grip" size={13} weight="bold" />
         </button>
-        <button className={`nav-item acct-main${isFocused ? " active" : ""}`} onClick={() => setAccount(a.id)} title={a.email}>
-          <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
-          <span className="acct-email">{a.email}</span>
-          {acctUnread ? <span className="count">{acctUnread}</span> : null}
-        </button>
-        {a.provider === "imap" && (
+        {acctRename !== null ? (
+          <input className="folder-edit" autoFocus value={acctRename} placeholder={a.email}
+            onChange={(e) => setAcctRename(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { const nm = acctRename.trim(); setAcctRename(null); if (nm) void run(() => renameAccount(a.id, nm)); }
+              else if (e.key === "Escape") setAcctRename(null);
+            }}
+            onBlur={() => setAcctRename(null)} />
+        ) : (
+          <button className={`nav-item acct-main${isFocused ? " active" : ""}`} onClick={() => setAccount(a.id)} title={a.email}>
+            <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
+            <span className="acct-email">{a.displayName?.trim() || a.email}</span>
+            {acctUnread ? <span className="count">{acctUnread}</span> : null}
+          </button>
+        )}
+        {a.provider === "imap" && acctRename === null && (
           <button className="acct-refresh" title="Refresh folders" disabled={busy}
             onClick={async (e) => { e.stopPropagation(); setBusy(true); try { await refreshFolders(a.id); } finally { setBusy(false); } }}>
             <Icon name="cloud" size={13} weight={busy ? "fill" : "duotone"} />
           </button>
+        )}
+        {acctRename === null && (
+          <button className={`acct-more${acctMenu ? " open" : ""}`} title="Account options"
+            aria-haspopup="menu" aria-expanded={acctMenu}
+            onClick={(e) => { e.stopPropagation(); setAcctMenu((o) => !o); }}>
+            <Icon name="more" size={15} weight="bold" />
+          </button>
+        )}
+        {acctMenu && (
+          <>
+            <div className="folder-menu-backdrop" onClick={() => setAcctMenu(false)} aria-hidden="true" />
+            <div className="folder-menu acct-menu" role="menu">
+              {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); setAccount(a.id); setNewName(""); }}><Icon name="compose" size={12} /> New folder</button>}
+              {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); void refreshFolders(a.id); }}><Icon name="cloud" size={12} /> Refresh folders</button>}
+              <button role="menuitem" onClick={() => { setAcctMenu(false); setAcctRename(a.displayName?.trim() || ""); }}><Icon name="reply" size={12} /> Rename</button>
+              <button role="menuitem" className="danger" onClick={() => { setAcctMenu(false); if (window.confirm(`Remove ${a.email} from Bharga? Its locally-cached mail will be deleted — your mail stays on the server.`)) void run(() => removeAccount(a.id)); }}><Icon name="trash" size={12} /> Remove account</button>
+            </div>
+          </>
         )}
       </div>
       {isFocused && (

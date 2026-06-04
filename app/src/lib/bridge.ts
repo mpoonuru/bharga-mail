@@ -339,6 +339,12 @@ export const api = {
     }
   },
 
+  /** Set an account's friendly display name (shown instead of the raw address). */
+  async renameAccount(accountId: string, name: string): Promise<void> {
+    if (!inTauri) return;
+    await invoke<void>("rename_account", { accountId, name });
+  },
+
   /** Cached folders (with counts) for an account's sidebar list. */
   async folders(accountId: string): Promise<FolderInfo[]> {
     try {

@@ -167,6 +167,9 @@
   .acct-refresh { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 cursor-pointer bg-transparent border-none; transition: .14s var(--ease); }
   .acct-refresh:hover:not(:disabled) { @apply text-text bg-surface; }
   .acct-refresh:disabled { @apply opacity-50 cursor-default; }
+  .acct-more { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 cursor-pointer bg-transparent border-none opacity-0; transition: .14s var(--ease); }
+  .acct-row:hover .acct-more { @apply opacity-60; }
+  .acct-more:hover, .acct-more.open { @apply opacity-100 text-text bg-surface; }
   /* Folder list nested under an account, with a tree connector line. */
   .folder-tree { @apply ml-[15px] pl-2.5 flex flex-col gap-[1px] mt-0.5 mb-1.5; border-left: 1px solid var(--border-2); }
   .folder-row { @apply relative flex items-center; }
