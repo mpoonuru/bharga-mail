@@ -247,7 +247,10 @@ export const useApp = create<AppState>((set, get) => ({
   // A smart view (Priority / All Inbox / Flagged…) spans folders, so leaving a
   // specific mailbox: clear selectedFolder. Otherwise the view and a folder would
   // both read as selected, and the list would still be folder-filtered.
-  setView: (v) => set({ view: v, selectedFolder: null, composeOpen: false, drawerOpen: false, mobileStage: false }),
+  // Changing what list you're looking at also resets the reading pane — otherwise
+  // the Stage keeps showing the previously-opened email (it resolves the thread
+  // from the GLOBAL thread list, which still contains the old folder's mail).
+  setView: (v) => set({ view: v, selectedFolder: null, selectedThreadId: null, selectedMessageId: null, composeOpen: false, drawerOpen: false, mobileStage: false }),
   selectThread: (id, messageId) => {
     set({ selectedThreadId: id, selectedMessageId: messageId ?? null, mobileStage: true });
     // Opening a conversation marks it read — locally now, and \Seen on the server
@@ -300,7 +303,7 @@ export const useApp = create<AppState>((set, get) => ({
   folders: [],
   selectedFolder: null,
   setAccount: (selectedAccountId) => {
-    set({ selectedAccountId, selectedFolder: null, folders: [], view: "inbox", mobileStage: false, reachedEnd: false });
+    set({ selectedAccountId, selectedFolder: null, selectedThreadId: null, selectedMessageId: null, folders: [], view: "inbox", mobileStage: false, reachedEnd: false });
     if (selectedAccountId) {
       void get().loadFolders(selectedAccountId);
       void get().refreshFolders(selectedAccountId);
@@ -353,7 +356,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setFolder: async (name) => {
     const acct = get().selectedAccountId;
-    set({ selectedFolder: name, view: "inbox", mobileStage: false, reachedEnd: false });
+    set({ selectedFolder: name, selectedThreadId: null, selectedMessageId: null, view: "inbox", mobileStage: false, reachedEnd: false });
     if (acct && name) {
       try {
         await api.syncFolder(acct, name, get().groupConversations);
