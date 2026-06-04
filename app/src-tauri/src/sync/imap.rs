@@ -474,13 +474,11 @@ pub fn fetch_attachment(store: &Store, account_id: &str, message_id: &str, filen
 }
 
 /// Find a named attachment in the MIME tree and return its transfer-decoded bytes.
+/// Uses the SAME detection + naming as `imap_attachments` so a chip the user sees
+/// always resolves back to a downloadable part — including inline photos.
 fn extract_attachment_bytes(mail: &mailparse::ParsedMail, filename: &str) -> Option<Vec<u8>> {
-    let cd = mail.get_content_disposition();
-    if matches!(cd.disposition, mailparse::DispositionType::Attachment) {
-        let name = cd.params.get("filename").map(String::as_str).unwrap_or("attachment");
-        if name == filename {
-            return mail.get_body_raw().ok();
-        }
+    if is_real_attachment(mail) && attachment_name(mail) == filename {
+        return mail.get_body_raw().ok();
     }
     for p in &mail.subparts {
         if let Some(b) = extract_attachment_bytes(p, filename) {
@@ -734,15 +732,79 @@ fn find_body(mail: &mailparse::ParsedMail, mime: &str) -> Option<String> {
     None
 }
 
-/// Collect attachment metadata from MIME parts marked `Content-Disposition: attachment`.
+/// The user-facing filename for a part: the Content-Disposition `filename`, else
+/// the legacy Content-Type `name=` param (older mailers / inline photos put it
+/// there). Empty/absent → None.
+fn part_filename(part: &mailparse::ParsedMail) -> Option<String> {
+    let cd = part.get_content_disposition();
+    if let Some(f) = cd.params.get("filename").filter(|s| !s.is_empty()) {
+        return Some(f.clone());
+    }
+    part.ctype.params.get("name").filter(|s| !s.is_empty()).cloned()
+}
+
+/// A displayable name for an attachment chip — the real filename when present,
+/// otherwise a stable mime-derived fallback (so unnamed inline photos still get a
+/// sensible name AND resolve back on download).
+fn attachment_name(part: &mailparse::ParsedMail) -> String {
+    if let Some(f) = part_filename(part) {
+        return f;
+    }
+    let mime = part.ctype.mimetype.to_lowercase();
+    let ext = match mime.as_str() {
+        "image/jpeg" => "jpg",
+        "image/png" => "png",
+        "image/gif" => "gif",
+        "image/heic" => "heic",
+        "image/webp" => "webp",
+        "application/pdf" => "pdf",
+        other => other.rsplit('/').next().unwrap_or("bin"),
+    };
+    format!("attachment.{ext}")
+}
+
+/// Whether a MIME part is a real, user-facing attachment (Apple-Mail semantics):
+/// explicit `Content-Disposition: attachment`, OR any named file, OR a sizeable
+/// inline binary (e.g. an iOS photo / scanned doc embedded with a Content-ID).
+/// Deliberately EXCLUDES the text body, MIME containers, crypto signatures, and
+/// tiny unnamed images (tracking pixels / spacers / signature decorations).
+fn is_real_attachment(part: &mailparse::ParsedMail) -> bool {
+    if !part.subparts.is_empty() {
+        return false; // multipart container, not a leaf file
+    }
+    let mime = part.ctype.mimetype.to_lowercase();
+    if matches!(
+        mime.as_str(),
+        "application/pkcs7-signature" | "application/x-pkcs7-signature" | "application/pgp-signature"
+    ) {
+        return false; // S/MIME or PGP signature — not a user attachment
+    }
+    if matches!(part.get_content_disposition().disposition, mailparse::DispositionType::Attachment) {
+        return true;
+    }
+    if part_filename(part).is_some() {
+        return true; // named inline file (iOS photo, forwarded doc, …)
+    }
+    // Unnamed inline part: only count sizeable binaries so tracking pixels and
+    // tiny signature images don't pollute the attachment list.
+    let big = part.get_body_raw().map(|b| b.len()).unwrap_or(0) >= 8_000;
+    big && (mime.starts_with("image/")
+        || mime.starts_with("application/")
+        || mime.starts_with("audio/")
+        || mime.starts_with("video/"))
+}
+
+/// Collect attachment metadata from the MIME tree — every real file part, inline
+/// or not (so inline photos/scans appear as downloadable chips, like Apple Mail).
 fn imap_attachments(mail: &mailparse::ParsedMail) -> Vec<crate::store::AttachmentMeta> {
     let mut out = Vec::new();
     fn walk(part: &mailparse::ParsedMail, out: &mut Vec<crate::store::AttachmentMeta>) {
-        let cd = part.get_content_disposition();
-        if matches!(cd.disposition, mailparse::DispositionType::Attachment) {
-            let name = cd.params.get("filename").cloned().unwrap_or_else(|| "attachment".to_string());
-            let size = part.get_body_raw().map(|b| b.len() as u64).unwrap_or(0);
-            out.push(crate::store::AttachmentMeta { name, mime: part.ctype.mimetype.clone(), size });
+        if is_real_attachment(part) {
+            out.push(crate::store::AttachmentMeta {
+                name: attachment_name(part),
+                mime: part.ctype.mimetype.clone(),
+                size: part.get_body_raw().map(|b| b.len() as u64).unwrap_or(0),
+            });
         }
         for p in &part.subparts {
             walk(p, out);
