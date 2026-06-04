@@ -595,6 +595,26 @@ fn flagged_ids(state: State<'_, AppState>) -> Vec<String> {
     state.store.flagged_thread_ids()
 }
 
+/// The build id baked into the CURRENT binary's embedded `index.html`. The loaded
+/// frontend compares this with its own compiled-in `__BUILD_ID__`; a mismatch
+/// means the WebView replayed a stale cached shell, so the frontend triggers one
+/// cache-busting reload. Returns None in dev (assets are served by the vite dev
+/// server, not embedded), where the check is intentionally skipped.
+#[tauri::command]
+fn expected_build_id(app: tauri::AppHandle) -> Option<String> {
+    let asset = app
+        .asset_resolver()
+        .get("index.html".to_string())
+        .or_else(|| app.asset_resolver().get("/index.html".to_string()))?;
+    let html = String::from_utf8_lossy(&asset.bytes);
+    let anchor = html.find("name=\"bharga-build\"")?;
+    let after = &html[anchor..];
+    let start = after.find("content=\"")? + "content=\"".len();
+    let rest = &after[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
 /// Fetch an attachment and return it as a data: URL for inline preview
 /// (images/PDF rendered in a modal without writing to disk).
 #[tauri::command]
@@ -754,6 +774,7 @@ pub fn run() {
             reindex_embeddings,
             list_threads,
             search_mail,
+            expected_build_id,
             list_accounts,
             get_settings,
             set_setting,

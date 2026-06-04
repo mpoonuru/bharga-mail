@@ -63,6 +63,18 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
   return invoke<T>(cmd, args);
 }
 
+/** The build id the CURRENT core expects its frontend to be. Compared against the
+ *  loaded frontend's compiled-in `__BUILD_ID__` to detect a stale WebView-cached
+ *  shell. Null outside the desktop app (browser preview / dev). */
+export async function expectedBuildId(): Promise<string | null> {
+  if (!inTauri) return null;
+  try {
+    return await invoke<string | null>("expected_build_id");
+  } catch {
+    return null;
+  }
+}
+
 /** Subscribe to background live-sync events from the core. Returns an unsubscribe
  *  function. No-ops outside the desktop app (browser preview). */
 export async function listenMail(handlers: { onSync?: () => void; onNew?: (count: number) => void }): Promise<() => void> {

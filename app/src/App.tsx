@@ -15,13 +15,32 @@ import { Icon } from "@/components/icons";
 import { useHotkeys } from "@/lib/useHotkeys";
 import { useViewport } from "@/lib/useViewport";
 import { applyFont, applyLocale } from "@/lib/prefs";
-import { startWindowDrag, titlebarDoubleClick } from "@/lib/bridge";
+import { startWindowDrag, titlebarDoubleClick, expectedBuildId } from "@/lib/bridge";
 import logo from "@/assets/logo.png";
 
 export function App() {
   const { view, load, focusMode, composeOpen, theme, density } = useApp();
   const layout = useViewport();
   useHotkeys();
+
+  // Stale-shell guard: if the WebView replayed a cached frontend from an older
+  // build (its compiled-in __BUILD_ID__ differs from what the current core
+  // embeds), force exactly one cache-busting reload so the user is never stuck on
+  // an outdated UI. Production only — dev is served fresh by the vite dev server.
+  useEffect(() => {
+    if (!import.meta.env.PROD) return;
+    let cancelled = false;
+    void (async () => {
+      const expected = await expectedBuildId();
+      if (cancelled || !expected || expected === __BUILD_ID__) return;
+      if (sessionStorage.getItem("bharga.stale-reload") === expected) return; // already attempted
+      sessionStorage.setItem("bharga.stale-reload", expected);
+      const url = new URL(window.location.href);
+      url.searchParams.set("b", expected); // new URL key → bypasses the cached shell
+      window.location.replace(url.toString());
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
