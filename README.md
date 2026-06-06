@@ -16,6 +16,30 @@
 
 ---
 
+## Download
+
+Free, no app store, no account — grab the latest build for **macOS (Apple Silicon & Intel), Windows, or Linux** from **[Releases](https://github.com/mpoonuru/bharga-mail/releases/latest)**.
+
+### macOS — one line
+```bash
+curl -fsSL https://raw.githubusercontent.com/mpoonuru/bharga-mail/main/scripts/install.sh | bash
+```
+Downloads the right build for your Mac, installs it to **Applications**, and clears the Gatekeeper quarantine so it opens normally.
+
+**By hand instead?** Download the `.dmg`, drag **Bharga Mail** to Applications, then run once:
+```bash
+xattr -dr com.apple.quarantine "/Applications/Bharga Mail.app"
+```
+The build is **ad‑hoc signed, not Apple‑notarized** — that's what keeps it free. The quarantine step is only needed the first time.
+
+### Windows
+Download the `.msi` and run it. On the **"Windows protected your PC"** screen, click **More info → Run anyway** (not paid‑code‑signed yet).
+
+### Linux
+Download the `.AppImage` (`chmod +x` and run) or the `.deb` / `.rpm`.
+
+---
+
 ## Why Bharga Mail
 
 Most "AI email" lives in someone else's cloud — your messages and login tokens flow through their servers so the magic can happen. We do the opposite. Bharga Mail is a **local‑first desktop app**: it talks to your mail servers directly, keeps everything on your machine, and can run its AI **on‑device**. The code is **open and auditable**, because you shouldn't have to *trust* the app you hand your inbox to — you should be able to *verify* it.
