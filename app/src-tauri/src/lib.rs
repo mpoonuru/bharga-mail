@@ -821,6 +821,30 @@ pub fn run() {
             download_attachment,
             preview_attachment,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Bharga Mail");
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // macOS convention: the red "close" button hides the window and
+                // leaves the app running in the Dock — only ⌘Q (or the app menu's
+                // Quit) terminates. The window is re-shown when the user clicks the
+                // Dock icon (RunEvent::Reopen, below). Other platforms keep the
+                // default (closing the last window quits).
+                #[cfg(target_os = "macos")]
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building Bharga Mail")
+        .run(|_app, _event| {
+            // Dock-icon click after the window was closed → bring it back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                if let Some(window) = _app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        });
 }
