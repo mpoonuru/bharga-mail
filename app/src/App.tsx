@@ -15,13 +15,17 @@ import { Icon } from "@/components/icons";
 import { useHotkeys } from "@/lib/useHotkeys";
 import { useViewport } from "@/lib/useViewport";
 import { applyFont, applyLocale } from "@/lib/prefs";
-import { startWindowDrag, titlebarDoubleClick, expectedBuildId } from "@/lib/bridge";
+import { startWindowDrag, titlebarDoubleClick, expectedBuildId, setDockBadge } from "@/lib/bridge";
 import logo from "@/assets/logo.png";
 
 export function App() {
   const { view, load, focusMode, composeOpen, theme, density } = useApp();
   const layout = useViewport();
   useHotkeys();
+
+  // Dock/taskbar unread badge (like Apple Mail) — total unread across all inboxes.
+  const inboxUnread = useApp((s) => s.threads.reduce((n, t) => n + (t.unread && t.view.includes("inbox") ? 1 : 0), 0));
+  useEffect(() => { void setDockBadge(inboxUnread); }, [inboxUnread]);
 
   // Stale-shell guard: if the WebView replayed a cached frontend from an older
   // build (its compiled-in __BUILD_ID__ differs from what the current core

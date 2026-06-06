@@ -63,6 +63,18 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
   return invoke<T>(cmd, args);
 }
 
+/** Show the unread count on the Dock (macOS) / taskbar (Windows) icon, like
+ *  Apple Mail. `0` clears the badge. No-op in the browser preview. */
+export async function setDockBadge(count: number): Promise<void> {
+  if (!inTauri) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().setBadgeCount(count > 0 ? count : undefined);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** The build id the CURRENT core expects its frontend to be. Compared against the
  *  loaded frontend's compiled-in `__BUILD_ID__` to detect a stale WebView-cached
  *  shell. Null outside the desktop app (browser preview / dev). */
