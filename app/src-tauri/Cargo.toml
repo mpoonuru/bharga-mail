@@ -1,6 +1,6 @@
 [package]
 name = "bharga-mail"
-version = "0.1.0"
+version = "0.1.1"
 license = "AGPL-3.0-only"
 description = "AI-native, model-agnostic, local-first mail client"
 authors = ["Bharga Mail"]
