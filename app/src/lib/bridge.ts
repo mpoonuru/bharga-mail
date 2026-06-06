@@ -63,6 +63,36 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
   return invoke<T>(cmd, args);
 }
 
+// Holds the pending update between the check and the install so the UI can show
+// a prompt first. Cleared once installed.
+let pendingUpdate: { version: string; downloadAndInstall: () => Promise<void> } | null = null;
+
+/** Check GitHub Releases for a newer signed build. Returns the new version
+ *  string if one is available, else null. No-op outside the desktop app. */
+export async function checkForUpdate(): Promise<string | null> {
+  if (!inTauri) return null;
+  try {
+    const { check } = await import("@tauri-apps/plugin-updater");
+    const upd = await check();
+    if (upd && upd.available) {
+      pendingUpdate = upd as unknown as typeof pendingUpdate;
+      return upd.version;
+    }
+  } catch {
+    /* offline / no update / not packaged — ignore */
+  }
+  return null;
+}
+
+/** Download + install the pending update (verified against our public key) and
+ *  relaunch the app. */
+export async function installUpdateAndRestart(): Promise<void> {
+  if (!inTauri || !pendingUpdate) return;
+  await pendingUpdate.downloadAndInstall();
+  const { relaunch } = await import("@tauri-apps/plugin-process");
+  await relaunch();
+}
+
 /** Show the unread count on the Dock (macOS) / taskbar (Windows) icon, like
  *  Apple Mail. `0` clears the badge. No-op in the browser preview. */
 export async function setDockBadge(count: number): Promise<void> {

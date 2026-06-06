@@ -1,6 +1,6 @@
 [package]
 name = "bharga-mail"
-version = "0.1.1"
+version = "0.1.2"
 license = "AGPL-3.0-only"
 description = "AI-native, model-agnostic, local-first mail client"
 authors = ["Bharga Mail"]
@@ -17,6 +17,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
+# Self-update from GitHub Releases (signed with our minisign key) + relaunch.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

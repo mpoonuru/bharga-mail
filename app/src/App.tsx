@@ -15,7 +15,7 @@ import { Icon } from "@/components/icons";
 import { useHotkeys } from "@/lib/useHotkeys";
 import { useViewport } from "@/lib/useViewport";
 import { applyFont, applyLocale } from "@/lib/prefs";
-import { startWindowDrag, titlebarDoubleClick, expectedBuildId, setDockBadge } from "@/lib/bridge";
+import { startWindowDrag, titlebarDoubleClick, expectedBuildId, setDockBadge, checkForUpdate, installUpdateAndRestart } from "@/lib/bridge";
 import logo from "@/assets/logo.png";
 
 export function App() {
@@ -26,6 +26,17 @@ export function App() {
   // Dock/taskbar unread badge (like Apple Mail) — total unread across all inboxes.
   const inboxUnread = useApp((s) => s.threads.reduce((n, t) => n + (t.unread && t.view.includes("inbox") ? 1 : 0), 0));
   useEffect(() => { void setDockBadge(inboxUnread); }, [inboxUnread]);
+
+  // Auto-update: check GitHub Releases on launch (and every 6h). When a newer
+  // signed build exists, surface a banner; the user clicks to install + relaunch.
+  const [updateVer, setUpdateVer] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
+  useEffect(() => {
+    const run = () => { void checkForUpdate().then((v) => v && setUpdateVer(v)); };
+    run();
+    const timer = setInterval(run, 6 * 60 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Stale-shell guard: if the WebView replayed a cached frontend from an older
   // build (its compiled-in __BUILD_ID__ differs from what the current core
@@ -97,6 +108,19 @@ export function App() {
       <CommandBar />
       <ModelPicker />
       <UndoToast />
+      {updateVer && (
+        <div className="update-banner" role="status">
+          <Icon name="cloud" size={15} weight="duotone" />
+          <span>Bharga Mail <b>{updateVer}</b> is available.</span>
+          <button className="update-btn" disabled={updating}
+            onClick={() => { setUpdating(true); void installUpdateAndRestart().catch(() => setUpdating(false)); }}>
+            {updating ? "Updating…" : "Restart to update"}
+          </button>
+          <button className="update-x" title="Later" onClick={() => setUpdateVer(null)} disabled={updating}>
+            <Icon name="close" size={13} />
+          </button>
+        </div>
+      )}
     </>
   );
 }
