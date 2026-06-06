@@ -48,13 +48,13 @@ export async function startWindowDrag(): Promise<void> {
   }
 }
 
-/** Double-click handler for title-bar / drag-region strips: zoom (maximize) the
- *  window like a native macOS title bar — but ignore double-clicks that land on
- *  interactive controls (buttons, inputs, links) inside the strip. */
-export function titlebarDoubleClick(e: { target: EventTarget | null }): void {
-  const el = e.target as HTMLElement | null;
-  if (el && el.closest('button, input, textarea, a, [role="button"], [contenteditable="true"]')) return;
-  void toggleMaximizeWindow();
+/** Double-click on a title-bar / drag-region strip. Intentionally a NO-OP:
+ *  Tauri's native `data-tauri-drag-region` already maximizes on double-click
+ *  (window/scripts/drag.js → `internal_toggle_maximize`). Toggling again here
+ *  double-fired, so the window zoomed and instantly un-zoomed. Kept as a named
+ *  export so the drag strips can still reference it without behavioural churn. */
+export function titlebarDoubleClick(): void {
+  /* native drag-region handles double-click-to-zoom */
 }
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {

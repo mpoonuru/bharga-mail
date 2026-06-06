@@ -78,9 +78,12 @@ function AccountRow({ a }: { a: Account }) {
             }}
             onBlur={() => setAcctRename(null)} />
         ) : (
-          <button className={`nav-item acct-main${isFocused ? " active" : ""}`} onClick={() => setAccount(a.id)} title={a.email}>
+          <button className={`nav-item acct-main${isFocused ? " active" : ""}`}
+            aria-expanded={isFocused}
+            onClick={() => setAccount(isFocused ? null : a.id)} title={a.email}>
             <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
             <span className="acct-email">{a.displayName?.trim() || a.email}</span>
+            <Icon name={isFocused ? "caretDown" : "caretRight"} size={11} weight="bold" className="acct-caret" />
             {acctUnread ? <span className="count">{acctUnread}</span> : null}
           </button>
         )}

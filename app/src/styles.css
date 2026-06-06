@@ -150,6 +150,9 @@
   .nav-item.active { @apply text-text; background: var(--accent-soft); font-weight: 550; }
   .nav-item .ic { @apply w-4 text-center inline-flex items-center; opacity: .85; }
   .nav-item .count { @apply ml-auto text-[11px] text-text-3; }
+  /* Account disclosure caret (accordion): subtle, sits just after the name. */
+  .acct-caret { @apply shrink-0 text-text-3 opacity-50; }
+  .acct-main:hover .acct-caret { @apply opacity-80; }
   .nav-item .acct-dot { @apply inline-block w-[10px] h-[10px] rounded-full; }
   .nav-item .acct-email { @apply truncate; }
   /* Scrollable nav region so any number of folders never push the footer off-screen. */
