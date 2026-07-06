@@ -1558,12 +1558,66 @@ fn migrate_v11_thread_flags(tx: &rusqlite::Transaction) -> rusqlite::Result<()> 
 
 /// Parse a provider date header (RFC 2822 from IMAP/Gmail, RFC 3339 from Graph)
 /// into epoch seconds for canonical ordering. Returns None if unparseable.
+///
+/// `DateTime::parse_from_rfc2822` is strict and rejects extremely common
+/// real-world `Date:` headers — e.g. a trailing timezone comment like
+/// `+0000 (UTC)` (Exchange/Outlook send these) or an obsolete named zone like
+/// `GMT`/`EST`. When that happens the caller falls back to `sort_ts = 0`, which
+/// dumps the message at the bottom of the list regardless of its real date and
+/// breaks newest-first ordering (notably in Sent). So we retry leniently:
+/// strip `(...)` comments, map named zones to numeric offsets, then reparse.
 fn parse_epoch(s: &str) -> Option<i64> {
     use chrono::DateTime;
-    DateTime::parse_from_rfc2822(s)
-        .or_else(|_| DateTime::parse_from_rfc3339(s))
-        .ok()
-        .map(|dt| dt.timestamp())
+    let s = s.trim();
+    if let Ok(dt) = DateTime::parse_from_rfc2822(s) {
+        return Some(dt.timestamp());
+    }
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Some(dt.timestamp());
+    }
+
+    // Strip any CFWS parenthesized comment, e.g. "10:00:00 +0000 (UTC)".
+    let mut cleaned = String::with_capacity(s.len());
+    let mut depth: u32 = 0;
+    for c in s.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => cleaned.push(c),
+            _ => {}
+        }
+    }
+    let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    // Map an obsolete/named trailing timezone token to a numeric offset.
+    let mapped = if let Some((head, tz)) = cleaned.rsplit_once(' ') {
+        let offset = match tz.to_ascii_uppercase().as_str() {
+            "UT" | "UTC" | "GMT" | "Z" => Some("+0000"),
+            "EDT" => Some("-0400"),
+            "EST" | "CDT" => Some("-0500"),
+            "CST" | "MDT" => Some("-0600"),
+            "MST" | "PDT" => Some("-0700"),
+            "PST" => Some("-0800"),
+            _ => None,
+        };
+        match offset {
+            Some(off) => format!("{head} {off}"),
+            None => cleaned.clone(),
+        }
+    } else {
+        cleaned.clone()
+    };
+
+    if let Ok(dt) = DateTime::parse_from_rfc2822(&mapped) {
+        return Some(dt.timestamp());
+    }
+    // Last resort: explicit formats, with and without the leading weekday.
+    for fmt in ["%a, %d %b %Y %H:%M:%S %z", "%d %b %Y %H:%M:%S %z"] {
+        if let Ok(dt) = DateTime::parse_from_str(&mapped, fmt) {
+            return Some(dt.timestamp());
+        }
+    }
+    None
 }
 
 fn f32_to_blob(v: &[f32]) -> Vec<u8> {
@@ -1661,6 +1715,27 @@ mod tests {
     #[test]
     fn strip_html_works() {
         assert_eq!(strip_html("<p>Hello <b>world</b></p>"), "Hello world");
+    }
+
+    #[test]
+    fn parse_epoch_handles_real_world_date_headers() {
+        // Plain RFC 2822 — the easy case.
+        let base = parse_epoch("Fri, 29 May 2026 10:00:00 +0000").unwrap();
+        // Exchange/Outlook append a "(UTC)" comment — must parse to the same instant.
+        assert_eq!(parse_epoch("Fri, 29 May 2026 10:00:00 +0000 (UTC)"), Some(base));
+        // Obsolete named zones must map to the right offset, not fail to 0.
+        assert_eq!(parse_epoch("Fri, 29 May 2026 10:00:00 GMT"), Some(base));
+        assert_eq!(parse_epoch("29 May 2026 05:00:00 EST"), Some(base)); // -0500 == 10:00 UTC
+        // RFC 3339 (Graph) still works.
+        assert_eq!(parse_epoch("2026-05-29T10:00:00+00:00"), Some(base));
+        // Genuinely unparseable stays None (caller falls back deliberately).
+        assert_eq!(parse_epoch("not a date"), None);
+
+        // Ordering: a "(UTC)"-commented later date must sort AFTER an earlier one
+        // (previously both collapsed to 0 and lost their order).
+        let earlier = parse_epoch("Fri, 29 May 2026 10:00:00 +0000 (UTC)").unwrap();
+        let later = parse_epoch("Fri, 29 May 2026 12:00:00 +0000 (UTC)").unwrap();
+        assert!(later > earlier);
     }
 
     #[test]
