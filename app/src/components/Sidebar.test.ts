@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ACCOUNT_DISCLOSURE_MOTION } from "@/components/Sidebar";
+import { ACCOUNT_DISCLOSURE_MOTION, ACCOUNT_REORDER_MOTION } from "@/components/Sidebar";
 
 describe("mail account disclosure motion", () => {
   it("uses a restrained CSS-grid timing contract", () => {
@@ -11,5 +11,17 @@ describe("mail account disclosure motion", () => {
       offsetPx: 2,
     });
     expect(ACCOUNT_DISCLOSURE_MOTION).not.toHaveProperty("type");
+  });
+});
+
+describe("mail account reorder motion", () => {
+  it("disables layout projection except during an explicit tweened reorder", () => {
+    expect(ACCOUNT_REORDER_MOTION.idleLayout).toBe(false);
+    expect(ACCOUNT_REORDER_MOTION.activeLayout).toBe("position");
+    expect(ACCOUNT_REORDER_MOTION.transition).toMatchObject({
+      type: "tween",
+      duration: 0.18,
+    });
+    expect(ACCOUNT_REORDER_MOTION.transition).not.toHaveProperty("stiffness");
   });
 });

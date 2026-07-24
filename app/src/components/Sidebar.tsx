@@ -38,6 +38,16 @@ export const ACCOUNT_DISCLOSURE_MOTION = {
   offsetPx: 2,
 } as const;
 
+export const ACCOUNT_REORDER_MOTION = {
+  idleLayout: false,
+  activeLayout: "position",
+  transition: {
+    type: "tween",
+    duration: 0.18,
+    ease: [0.2, 0.8, 0.2, 1],
+  },
+} as const;
+
 type DisclosureStyle = CSSProperties & Record<`--${string}`, string>;
 
 const ACCOUNT_DISCLOSURE_STYLE: DisclosureStyle = {
@@ -49,7 +59,7 @@ const ACCOUNT_DISCLOSURE_STYLE: DisclosureStyle = {
 
 /** A single account row in the expanded sidebar: drag-handle to reorder, the
  *  account selector, refresh, and (when focused) its folders with pin toggles. */
-function AccountRow({ a }: { a: Account }) {
+function AccountRow({ a, reordering, setReordering }: { a: Account; reordering: boolean; setReordering: (active: boolean) => void }) {
   const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads, createFolder, renameFolder, deleteFolder, removeAccount, renameAccount, syncOneFolder, markFolderRead } = useApp();
   const controls = useDragControls();
   const [busy, setBusy] = useState(false);
@@ -85,11 +95,15 @@ function AccountRow({ a }: { a: Account }) {
       as="div"
       dragListener={false}
       dragControls={controls}
-      layout="position"
+      // Motion's current types represent disabled layout projection as undefined;
+      // this is the runtime equivalent of the idle false contract.
+      layout={reordering ? ACCOUNT_REORDER_MOTION.activeLayout : undefined}
+      transition={reordering ? { layout: ACCOUNT_REORDER_MOTION.transition } : undefined}
+      onDragEnd={() => setReordering(false)}
       className="acct-reorder"
     >
       <div className="acct-row">
-        <button className="acct-drag" title="Drag to reorder" aria-label="Drag to reorder" onPointerDown={(e) => controls.start(e)}>
+        <button className="acct-drag" title="Drag to reorder" aria-label="Drag to reorder" onPointerDown={(e) => { setReordering(true); controls.start(e); }}>
           <Icon name="grip" size={13} weight="bold" />
         </button>
         {acctRename !== null ? (
@@ -237,6 +251,7 @@ function AccountRow({ a }: { a: Account }) {
 
 export function Sidebar({ rail = false }: { rail?: boolean }) {
   const { view, setView, setCompose, setModelPicker, threads, tasks, ai, accounts, selectedAccountId, setAccount, selectedFolder, setFolder, toggleSidebar, accountOrder, setAccountOrder, pinnedFolders, togglePinFolder } = useApp();
+  const [reordering, setReordering] = useState(false);
   // Accounts in the user's saved order; any not yet in the order sort to the end.
   const ordered = [...accounts].sort((x, y) => {
     const ix = accountOrder.indexOf(x.id), iy = accountOrder.indexOf(y.id);
@@ -337,7 +352,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
               ))
             ) : (
               <Reorder.Group axis="y" values={orderedIds} onReorder={setAccountOrder} as="div" className="acct-list">
-                {ordered.map((a) => <AccountRow key={a.id} a={a} />)}
+                {ordered.map((a) => <AccountRow key={a.id} a={a} reordering={reordering} setReordering={setReordering} />)}
               </Reorder.Group>
             )}
           </>
