@@ -151,7 +151,7 @@
   .nav-item .ic { @apply w-4 text-center inline-flex items-center; opacity: .85; }
   .nav-item .count { @apply ml-auto text-[11px] text-text-3; }
   /* Account disclosure caret (accordion): subtle, sits just after the name. */
-  .acct-caret { @apply shrink-0 text-text-3 opacity-50; }
+  .acct-caret { @apply inline-flex shrink-0 items-center justify-center text-text-3 opacity-50; transform-origin: center; will-change: transform; }
   .acct-main:hover .acct-caret { @apply opacity-80; }
   .nav-item .acct-dot { @apply inline-block w-[10px] h-[10px] rounded-full; }
   .nav-item .acct-email { @apply truncate; }
@@ -174,6 +174,7 @@
   .acct-row:hover .acct-more { @apply opacity-60; }
   .acct-more:hover, .acct-more.open { @apply opacity-100 text-text bg-surface; }
   /* Folder list nested under an account, with a tree connector line. */
+  .folder-tree-motion { @apply min-w-0; will-change: height, opacity, transform; }
   .folder-tree { @apply ml-[15px] pl-2.5 flex flex-col gap-[1px] mt-0.5 mb-1.5; border-left: 1px solid var(--border-2); }
   .folder-row { @apply relative flex items-center; }
   .folder-row .folder-item { @apply flex-1 min-w-0; }

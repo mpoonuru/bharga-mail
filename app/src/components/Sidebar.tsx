@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion, Reorder, useDragControls } from "motion/react";
+import { AnimatePresence, motion, Reorder, useDragControls } from "motion/react";
 import { useApp } from "@/store";
 import type { View, Account } from "@/types";
 import { Icon, type IconName } from "@/components/icons";
@@ -30,6 +30,13 @@ const FOLDER_ICON: Record<string, IconName> = {
 // Pinned-folder key separator — must match the store's togglePinFolder (U+0001).
 const PIN_SEP = "";
 const pinKey = (accountId: string, folder: string) => `${accountId}${PIN_SEP}${folder}`;
+
+export const ACCOUNT_ACCORDION_TRANSITION = {
+  type: "spring",
+  stiffness: 360,
+  damping: 32,
+  mass: 0.82,
+} as const;
 
 /** A single account row in the expanded sidebar: drag-handle to reorder, the
  *  account selector, refresh, and (when focused) its folders with pin toggles. */
@@ -83,7 +90,14 @@ function AccountRow({ a }: { a: Account }) {
             onClick={() => setAccount(isFocused ? null : a.id)} title={a.email}>
             <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
             <span className="acct-email">{a.displayName?.trim() || a.email}</span>
-            <Icon name={isFocused ? "caretDown" : "caretRight"} size={11} weight="bold" className="acct-caret" />
+            <motion.span
+              className="acct-caret"
+              animate={{ rotate: isFocused ? 90 : 0 }}
+              transition={ACCOUNT_ACCORDION_TRANSITION}
+              aria-hidden="true"
+            >
+              <Icon name="caretRight" size={11} weight="bold" />
+            </motion.span>
             {acctUnread ? <span className="count">{acctUnread}</span> : null}
           </button>
         )}
@@ -112,8 +126,17 @@ function AccountRow({ a }: { a: Account }) {
           </>
         )}
       </div>
-      {isFocused && (
-        <div className="folder-tree">
+      <AnimatePresence initial={false}>
+        {isFocused && (
+          <motion.div
+            key={`folders-${a.id}`}
+            className="folder-tree-motion"
+            initial={{ height: 0, opacity: 0, y: -4, overflow: "hidden" }}
+            animate={{ height: "auto", opacity: 1, y: 0, transitionEnd: { overflow: "visible" } }}
+            exit={{ height: 0, opacity: 0, y: -4, overflow: "hidden" }}
+            transition={ACCOUNT_ACCORDION_TRANSITION}
+          >
+            <div className="folder-tree">
           {(folders.length ? folders : [{ name: "INBOX", role: "inbox", unread: 0, total: 0 }]).map((f) => {
             const pinned = pinnedFolders.includes(pinKey(a.id, f.name));
             // Every IMAP folder gets a full options menu (Open / Sync / Mark all
@@ -197,8 +220,10 @@ function AccountRow({ a }: { a: Account }) {
               onBlur={() => { setNewName(null); setNewParent(null); }} />
           ))}
           {folderErr && <div className="folder-err" title={folderErr}>{folderErr}</div>}
-        </div>
-      )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Reorder.Item>
   );
 }
