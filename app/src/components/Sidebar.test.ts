@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { ACCOUNT_ACCORDION_TRANSITION } from "@/components/Sidebar";
+import { ACCOUNT_DISCLOSURE_MOTION } from "@/components/Sidebar";
 
-describe("mail account accordion motion", () => {
-  it("uses a deterministic cubic-bezier curve", () => {
-    expect(ACCOUNT_ACCORDION_TRANSITION.type).toBe("tween");
-    expect(ACCOUNT_ACCORDION_TRANSITION.duration).toBeGreaterThanOrEqual(0.2);
-    expect(ACCOUNT_ACCORDION_TRANSITION.duration).toBeLessThanOrEqual(0.3);
-    expect(ACCOUNT_ACCORDION_TRANSITION.ease).toEqual([0.22, 1, 0.36, 1]);
+describe("mail account disclosure motion", () => {
+  it("uses a restrained CSS-grid timing contract", () => {
+    expect(ACCOUNT_DISCLOSURE_MOTION).toEqual({
+      durationMs: 180,
+      caretDurationMs: 160,
+      easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      offsetPx: 2,
+    });
+    expect(ACCOUNT_DISCLOSURE_MOTION).not.toHaveProperty("type");
   });
 });
