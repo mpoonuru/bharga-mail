@@ -54,14 +54,30 @@ pub struct ModelConfig {
     pub label: String,
     pub kind: ProviderKind,
     pub roles: Vec<Role>,
+    #[serde(default)]
     pub ready: bool,
     pub endpoint: Option<String>,
     /// Provider-specific model id (e.g. "gpt-4o", "llama3"). Optional; sensible default per kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Looked up via the OS keychain, never persisted in plaintext or sent to our servers.
-    #[serde(skip)]
+    #[serde(default)]
+    pub caps: Capabilities,
+}
+
+/// Write-only provider mutation input. `api_key` is consumed by the command and
+/// never copied into [`ModelConfig`] or returned to the frontend.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveProviderInput {
+    pub id: String,
+    pub label: String,
+    pub kind: ProviderKind,
+    #[serde(default)]
+    pub roles: Vec<Role>,
+    pub endpoint: Option<String>,
+    pub model: Option<String>,
     pub api_key: Option<String>,
+    #[serde(default)]
     pub caps: Capabilities,
 }
 
@@ -113,19 +129,22 @@ pub trait AiProvider: Send + Sync {
 
 /// Build a live provider from a model's config. The single place that maps
 /// a [`ModelConfig`] to a concrete [`AiProvider`] implementation.
-pub fn build_provider(m: &ModelConfig) -> Box<dyn AiProvider> {
+pub fn build_provider(m: &ModelConfig, api_key: Option<String>) -> Box<dyn AiProvider> {
     use adapters::{AnthropicProvider, LocalProvider, OpenAiCompatibleProvider};
     let model_name = m.model_name();
     match m.kind {
         ProviderKind::Anthropic => Box::new(AnthropicProvider {
             id: m.id.clone(),
-            api_key: m.api_key.clone(),
+            api_key,
             model: model_name,
             caps: m.caps.clone(),
         }),
         ProviderKind::Local => Box::new(LocalProvider {
             id: m.id.clone(),
-            base_url: m.endpoint.clone().unwrap_or_else(|| "http://localhost:11434".into()),
+            base_url: m
+                .endpoint
+                .clone()
+                .unwrap_or_else(|| "http://localhost:11434".into()),
             model: model_name,
             caps: m.caps.clone(),
         }),
@@ -133,8 +152,11 @@ pub fn build_provider(m: &ModelConfig) -> Box<dyn AiProvider> {
         ProviderKind::OpenAiCompatible | ProviderKind::Google | ProviderKind::Custom => {
             Box::new(OpenAiCompatibleProvider {
                 id: m.id.clone(),
-                base_url: m.endpoint.clone().unwrap_or_else(|| "https://api.openai.com/v1".into()),
-                api_key: m.api_key.clone(),
+                base_url: m
+                    .endpoint
+                    .clone()
+                    .unwrap_or_else(|| "https://api.openai.com/v1".into()),
+                api_key,
                 model: model_name,
                 caps: m.caps.clone(),
             })
@@ -174,8 +196,13 @@ pub fn default_profile() -> AiProfile {
                 ready: false,
                 endpoint: None,
                 model: Some("claude-sonnet-4-6".into()),
-                api_key: None,
-                caps: Capabilities { context_tokens: 200_000, tool_calling: true, vision: true, embeddings: false, streaming: true },
+                caps: Capabilities {
+                    context_tokens: 200_000,
+                    tool_calling: true,
+                    vision: true,
+                    embeddings: false,
+                    streaming: true,
+                },
             },
             ModelConfig {
                 id: "llama".into(),
@@ -185,9 +212,28 @@ pub fn default_profile() -> AiProfile {
                 ready: false,
                 endpoint: Some("http://localhost:11434".into()),
                 model: Some("llama3".into()),
-                api_key: None,
-                caps: Capabilities { context_tokens: 8192, tool_calling: false, vision: false, embeddings: true, streaming: true },
+                caps: Capabilities {
+                    context_tokens: 8192,
+                    tool_calling: false,
+                    vision: false,
+                    embeddings: true,
+                    streaming: true,
+                },
             },
         ],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profile_json_never_contains_api_credentials() {
+        let profile = default_profile();
+        let json = serde_json::to_string(&profile).expect("serialize profile");
+
+        assert!(!json.contains("api_key"));
+        assert!(!json.contains("apiKey"));
     }
 }

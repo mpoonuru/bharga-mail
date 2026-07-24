@@ -111,7 +111,17 @@ export interface AiModel {
   endpoint?: string; // for local / custom / openai-compatible
   /** provider-specific model id, e.g. "gpt-4o", "llama3" */
   model?: string;
-  /** held in memory in the UI only; the core moves it to the OS keychain */
+  caps?: {
+    context_tokens: number;
+    tool_calling: boolean;
+    vision: boolean;
+    embeddings: boolean;
+    streaming: boolean;
+  };
+}
+
+export interface SaveAiProviderInput extends Omit<AiModel, "ready"> {
+  /** Write-only. The core stores it securely and never returns it. */
   apiKey?: string;
 }
 

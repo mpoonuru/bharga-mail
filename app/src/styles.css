@@ -658,6 +658,39 @@
   .af-btn.primary:not(:disabled):hover { filter: brightness(1.08); }
   .btn-spinner { @apply w-[13px] h-[13px] rounded-full inline-block; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; animation: spin .7s linear infinite; }
   .af-btn.ghost .btn-spinner { border-color: var(--border-2); border-top-color: var(--accent); }
+  .af-btn.danger { @apply border-transparent text-white; background: var(--danger); }
+
+  /* ---- AI provider management ---- */
+  .provider-manager { @apply flex flex-col gap-3; }
+  .provider-manager-head { @apply flex items-start justify-between gap-4 mb-1; }
+  .provider-manager-head p { @apply text-[12px] text-text-3 mt-1; }
+  .provider-list { @apply grid gap-3; }
+  .provider-card { @apply rounded-[14px] border border-border p-4; background: color-mix(in srgb, var(--bg-2) 78%, transparent); }
+  .provider-card:focus-within { border-color: var(--border-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .provider-card-head { @apply grid items-center gap-2.5; grid-template-columns: auto minmax(0, 1fr) auto auto; }
+  .provider-state { @apply h-2.5 w-2.5 rounded-full bg-text-3; box-shadow: 0 0 0 4px color-mix(in srgb, var(--text-3) 12%, transparent); }
+  .provider-state.ready { @apply bg-good; box-shadow: 0 0 0 4px color-mix(in srgb, var(--good) 14%, transparent); }
+  .provider-identity { @apply flex min-w-0 items-center gap-2; }
+  .provider-identity input { @apply min-w-0 max-w-[280px] border-0 bg-transparent p-0 text-[13px] font-semibold text-text outline-none; }
+  .provider-identity span { @apply shrink-0 rounded-md px-1.5 py-0.5 text-[10px] text-accent; background: var(--accent-soft); }
+  .provider-status { @apply text-[11px] text-text-3; }
+  .provider-status.ready { @apply text-good; }
+  .provider-remove { @apply grid h-8 w-8 place-items-center rounded-lg border border-transparent bg-transparent text-text-3; }
+  .provider-remove:hover, .provider-remove:focus-visible { @apply border-danger text-danger outline-none; background: color-mix(in srgb, var(--danger) 8%, transparent); }
+  .provider-fields { @apply mt-3 grid gap-2.5; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .provider-fields label { @apply grid gap-1 text-[10.5px] font-medium uppercase tracking-[.04em] text-text-3; }
+  .provider-fields input { @apply w-full rounded-lg border border-border-2 bg-bg-2 px-2.5 py-2 text-[12.5px] normal-case tracking-normal text-text outline-none; }
+  .provider-fields input:focus { @apply border-accent; box-shadow: 0 0 0 3px var(--accent-soft); }
+  .provider-roles { @apply mt-3 flex flex-wrap gap-1.5; }
+  .provider-roles button { @apply rounded-full border border-border bg-transparent px-2.5 py-1.5 text-[11px] text-text-3; }
+  .provider-roles button:hover, .provider-roles button:focus-visible { @apply border-accent text-text outline-none; }
+  .provider-roles button.selected { @apply border-transparent text-white; background: var(--accent); }
+  .provider-card-foot { @apply mt-3 flex min-h-9 items-center justify-end gap-3; }
+  .provider-message { @apply mr-auto text-[11.5px]; }
+  .provider-message.error { @apply text-danger; }
+  .provider-message.success { @apply text-good; }
+  .provider-confirm { @apply grid gap-3 text-[13px] text-text-2; }
+  .provider-impact { @apply rounded-lg border border-border bg-bg-2 p-3 text-[12px]; }
 
   /* ---- Signatures list ---- */
   .sig-row { @apply flex items-start gap-2.5 py-2.5 border-b border-border; }
@@ -683,4 +716,9 @@
 @keyframes spin { to { transform: rotate(360deg) } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+@media (max-width: 640px) {
+  .provider-manager-head { align-items: stretch; flex-direction: column; }
+  .provider-card-head { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .provider-status { display: none; }
 }

@@ -2,7 +2,7 @@
 // When running in the browser (vite dev without Tauri), we fall back to mock data
 // so the whole UI is explorable. In the Tauri shell, these call real `#[tauri::command]`s.
 
-import type { Thread, Task, CalEvent, AiProfile, Account, FolderInfo } from "@/types";
+import type { Thread, Task, CalEvent, AiProfile, Account, FolderInfo, SaveAiProviderInput } from "@/types";
 import * as mock from "@/data/mock";
 
 export interface ImapAccountInput {
@@ -201,20 +201,36 @@ export const api = {
   },
 
   async getAiProfile(): Promise<AiProfile> {
-    try {
-      return await invoke<AiProfile>("get_ai_profile");
-    } catch {
-      return mock.aiProfile;
-    }
+    if (!inTauri) return mock.aiProfile;
+    return invoke<AiProfile>("get_ai_profile");
   },
 
   /** Persist the AI profile (model/role assignment, keys, endpoints) to the core. */
   async setAiProfile(profile: AiProfile): Promise<void> {
-    try {
-      await invoke<void>("set_ai_profile", { profile });
-    } catch {
-      // browser preview: nothing to persist
+    if (!inTauri) return;
+    await invoke<void>("set_ai_profile", { profile });
+  },
+
+  async saveAiProvider(input: SaveAiProviderInput): Promise<AiProfile> {
+    if (!inTauri) {
+      const { apiKey, ...metadata } = input;
+      const model = { ...metadata, ready: input.kind === "local" ? !!input.endpoint : !!apiKey };
+      const models = mock.aiProfile.models.filter((candidate) => candidate.id !== input.id);
+      return { ...mock.aiProfile, models: [...models, model] };
     }
+    return invoke<AiProfile>("save_ai_provider", { input });
+  },
+
+  async removeAiProvider(providerId: string): Promise<AiProfile> {
+    if (!inTauri) {
+      return { ...mock.aiProfile, models: mock.aiProfile.models.filter((model) => model.id !== providerId) };
+    }
+    return invoke<AiProfile>("remove_ai_provider", { providerId });
+  },
+
+  async testAiProvider(input: SaveAiProviderInput): Promise<string> {
+    if (!inTauri) return "Configuration looks valid. Run the desktop app to test the connection.";
+    return invoke<string>("test_ai_provider", { input });
   },
 
   /** Ask the AI engine to (re)draft a reply for a thread, routed to the "draft" role model. */

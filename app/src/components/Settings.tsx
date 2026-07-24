@@ -7,32 +7,10 @@ import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/icons";
 import { SignatureManager } from "@/components/SignatureManager";
+import { AiProviderManager } from "@/components/AiProviderManager";
 import { FONTS, LOCALES } from "@/lib/prefs";
-import type { AiRole } from "@/types";
-
-const field: React.CSSProperties = {
-  flex: 1,
-  minWidth: 160,
-  border: "1px solid var(--border-2)",
-  background: "var(--bg-2)",
-  color: "var(--text)",
-  fontFamily: "var(--font)",
-  fontSize: 12.5,
-  padding: "7px 10px",
-  borderRadius: 8,
-  outline: "none",
-};
-
-const ROLES: { id: AiRole; label: string; hint: string }[] = [
-  { id: "triage", label: "Triage & labeling", hint: "runs on every email — cheap, private" },
-  { id: "embeddings", label: "Search / embeddings", hint: "high volume, privacy-sensitive" },
-  { id: "summarize", label: "Summaries", hint: "balance cost & quality" },
-  { id: "draft", label: "Drafts & rewrite", hint: "quality matters most here" },
-  { id: "agent", label: "Agent / tool-use", hint: "needs function calling" },
-];
-
 export function Settings() {
-  const { ai, density, setDensity, theme, toggleTheme, assignRole, setPrivacy, updateModel, addModel, saveAi, connectGmail, connectMicrosoft, font, locale, setFont, setLocale, groupConversations, setGroupConversations, highlights, setHighlights, autoOrganize, setAutoOrganize, accounts, load, removeAccount } = useApp();
+  const { ai, density, setDensity, theme, toggleTheme, setPrivacy, saveAi, connectGmail, connectMicrosoft, font, locale, setFont, setLocale, groupConversations, setGroupConversations, highlights, setHighlights, autoOrganize, setAutoOrganize, accounts, load, removeAccount } = useApp();
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [editAccount, setEditAccount] = useState<{ id: string; initial: Partial<import("@/lib/bridge").ImapAccountInput> } | null>(null);
 
@@ -122,65 +100,8 @@ export function Settings() {
         </div>
 
         <div className="setting-row" style={{ display: "block" }}>
-          <div className="info" style={{ marginBottom: 12 }}>
-            <b>Models</b>
-            <p>Bring your own: cloud APIs, any OpenAI-compatible endpoint, or a local model. Keys live in the OS keychain.</p>
-          </div>
-          {ai?.models.map((m) => {
-            const needsKey = m.kind === "anthropic" || m.kind === "openai-compatible" || m.kind === "google";
-            return (
-              <div key={m.id} style={{ padding: "12px 0", borderBottom: "1px solid var(--border)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <span className="dot" style={{ background: m.ready ? "var(--good)" : "var(--text-3)", boxShadow: m.ready ? undefined : "none" }} />
-                  <b style={{ fontSize: 13, minWidth: 150 }}>{m.label}</b>
-                  <span className="tag ai" style={{ textTransform: "none" }}>{m.kind}</span>
-                  <span style={{ fontSize: 11, color: m.ready ? "var(--good)" : "var(--text-3)" }}>{m.ready ? "ready" : "not configured"}</span>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                  <input
-                    placeholder="model id (e.g. gpt-4o, llama3)"
-                    defaultValue={m.model ?? ""}
-                    onChange={(e) => updateModel(m.id, { model: e.target.value })}
-                    style={field}
-                  />
-                  {needsKey ? (
-                    <input
-                      type="password"
-                      placeholder="API key"
-                      defaultValue={m.apiKey ?? ""}
-                      onChange={(e) => updateModel(m.id, { apiKey: e.target.value })}
-                      style={field}
-                    />
-                  ) : (
-                    <input
-                      placeholder="endpoint (e.g. http://localhost:11434)"
-                      defaultValue={m.endpoint ?? ""}
-                      onChange={(e) => updateModel(m.id, { endpoint: e.target.value })}
-                      style={field}
-                    />
-                  )}
-                </div>
-
-                <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                  {ROLES.map((r) => (
-                    <button
-                      key={r.id}
-                      className={`chip${m.roles.includes(r.id) ? " solid" : ""}`}
-                      title={r.hint}
-                      onClick={() => assignRole(m.id, r.id)}
-                      disabled={!m.ready}
-                      style={{ opacity: m.ready ? 1 : 0.4 }}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+          <AiProviderManager />
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-            <button className="af-btn ghost" onClick={addModel}><Icon name="plus" size={14} /> Add provider</button>
             <div style={{ marginLeft: "auto" }}>
               <Button onClick={save} icon={saved ? "tasks" : "settings"} loading={savingEngine}>{savingEngine ? "Saving…" : saved ? "Saved" : "Save engine"}</Button>
             </div>

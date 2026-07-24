@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import dayjs from "dayjs";
-import type { View, Thread, Task, AiProfile, AiRole, AiModel, Account, FolderInfo } from "@/types";
+import type { View, Thread, Task, AiProfile, AiRole, AiModel, Account, FolderInfo, SaveAiProviderInput } from "@/types";
 import { api, listenMail } from "@/lib/bridge";
 import { account } from "@/data/mock";
 import { SEND } from "@/config";
@@ -101,6 +101,8 @@ interface AppState {
   setPrivacy: (p: AiProfile["privacy"]) => void;
   updateModel: (modelId: string, patch: Partial<AiModel>) => void;
   addModel: () => void;
+  saveModel: (input: SaveAiProviderInput) => Promise<void>;
+  removeModel: (id: string) => Promise<void>;
   saveAi: () => Promise<void>;
   connectGmail: () => Promise<string>;
   connectMicrosoft: () => Promise<string>;
@@ -534,8 +536,7 @@ export const useApp = create<AppState>((set, get) => ({
       if (m.id !== modelId) return m;
       const next = { ...m, ...patch };
       // a model is "ready" once it has credentials (cloud) or an endpoint (local/custom)
-      const needsKey = next.kind === "anthropic" || next.kind === "openai-compatible" || next.kind === "google";
-      next.ready = needsKey ? !!next.apiKey : !!next.endpoint;
+      next.ready = next.kind === "local" ? !!next.endpoint : next.ready;
       return next;
     });
     set({ ai: { ...ai, models } });
@@ -543,15 +544,23 @@ export const useApp = create<AppState>((set, get) => ({
   addModel: () => {
     const ai = get().ai;
     if (!ai) return;
-    const n = ai.models.filter((m) => m.id.startsWith("custom-")).length + 1;
+    const n = ai.models.filter((model) => model.kind === "openai-compatible" || model.kind === "custom").length + 1;
     const model: AiModel = {
-      id: `custom-${Date.now()}`,
+      id: crypto.randomUUID(),
       label: `Custom provider ${n}`,
       kind: "openai-compatible",
       roles: [],
       ready: false,
     };
     set({ ai: { ...ai, models: [...ai.models, model] } });
+  },
+  saveModel: async (input) => {
+    const ai = await api.saveAiProvider(input);
+    set({ ai });
+  },
+  removeModel: async (id) => {
+    const ai = await api.removeAiProvider(id);
+    set({ ai });
   },
   saveAi: async () => {
     const ai = get().ai;

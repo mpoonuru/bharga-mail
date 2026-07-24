@@ -11,7 +11,10 @@
 
 use std::sync::{Arc, OnceLock};
 
-use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Key, Nonce};
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Key, Nonce,
+};
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use keyring::Entry;
 use rand::RngCore;
@@ -68,7 +71,9 @@ fn encrypt_secret(plain: &str) -> Option<String> {
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
     let mut nonce = [0u8; 12];
     rand::rngs::OsRng.fill_bytes(&mut nonce);
-    let ct = cipher.encrypt(Nonce::from_slice(&nonce), plain.as_bytes()).ok()?;
+    let ct = cipher
+        .encrypt(Nonce::from_slice(&nonce), plain.as_bytes())
+        .ok()?;
     let mut out = nonce.to_vec();
     out.extend_from_slice(&ct);
     Some(format!("v1:{}", B64.encode(out)))
@@ -109,7 +114,9 @@ fn get(account_id: &str, kind: &str) -> Option<String> {
             return Some(v);
         }
     }
-    let stored = DB.get().and_then(|db| db.get_secret(&db_key(account_id, kind)))?;
+    let stored = DB
+        .get()
+        .and_then(|db| db.get_secret(&db_key(account_id, kind)))?;
     decrypt_secret(&stored)
 }
 
@@ -146,4 +153,32 @@ pub fn save_secret(account_id: &str, kind: &str, value: &str) {
 
 pub fn secret(account_id: &str, kind: &str) -> Option<String> {
     get(account_id, kind)
+}
+
+/// Store a write-only AI provider key and verify that at least one secure
+/// backend can read it back. The value is never logged or returned.
+pub fn save_ai_key(provider_id: &str, value: &str) -> Result<(), String> {
+    put(provider_id, "ai-api-key", value);
+    match get(provider_id, "ai-api-key") {
+        Some(stored) if stored == value => Ok(()),
+        _ => Err("Secure credential storage is unavailable".into()),
+    }
+}
+
+pub fn ai_key(provider_id: &str) -> Option<String> {
+    get(provider_id, "ai-api-key")
+}
+
+pub fn delete_ai_key(provider_id: &str) -> Result<(), String> {
+    if let Ok(e) = entry(provider_id, "ai-api-key") {
+        let _ = e.delete_credential();
+    }
+    if let Some(db) = DB.get() {
+        db.delete_secret(&db_key(provider_id, "ai-api-key"));
+    }
+    if get(provider_id, "ai-api-key").is_some() {
+        Err("Could not remove the provider credential".into())
+    } else {
+        Ok(())
+    }
 }

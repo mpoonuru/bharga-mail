@@ -5,22 +5,42 @@ use super::{CalEvent, Message, Party, Store, Task, Thread};
 
 pub fn events() -> Vec<CalEvent> {
     vec![
-        CalEvent { id: "e1".into(), title: "Standup".into(), day: 1, time: "09:30".into() },
-        CalEvent { id: "e2".into(), title: "Marco · pipeline".into(), day: 3, time: "14:00".into() },
-        CalEvent { id: "e3".into(), title: "1:1 Priya".into(), day: 3, time: "16:00".into() },
-        CalEvent { id: "e4".into(), title: "Renewal deadline".into(), day: 4, time: "EOD".into() },
+        CalEvent {
+            id: "e1".into(),
+            title: "Standup".into(),
+            day: 1,
+            time: "09:30".into(),
+        },
+        CalEvent {
+            id: "e2".into(),
+            title: "Marco · pipeline".into(),
+            day: 3,
+            time: "14:00".into(),
+        },
+        CalEvent {
+            id: "e3".into(),
+            title: "1:1 Priya".into(),
+            day: 3,
+            time: "16:00".into(),
+        },
+        CalEvent {
+            id: "e4".into(),
+            title: "Renewal deadline".into(),
+            day: 4,
+            time: "EOD".into(),
+        },
     ]
 }
 
 pub fn seed(store: &Store) {
-    let _ = store.upsert_account("acc1", "itmanagement@pjtelesoft.de", "imap", "Arjun");
+    let _ = store.upsert_account("acc1", "alex.morgan@example.com", "imap", "Alex");
 
     let threads = vec![
         Thread {
             id: "t1".into(),
             account_id: "acc1".into(),
             subject: "Contract renewal — need decision by Friday".into(),
-            preview: "Hi Arjun, following up on the renewal terms we discussed. Legal needs the signed…".into(),
+            preview: "Hi Alex, following up on the renewal terms we discussed. Legal needs the signed…".into(),
             participants: vec!["Lena Hoffmann".into()],
             last_time: "9:24".into(),
             unread: true,
@@ -32,9 +52,9 @@ pub fn seed(store: &Store) {
             messages: vec![Message {
                 id: "m1".into(),
                 from: Party { name: "Lena Hoffmann".into(), address: "lena@northwind.co".into() },
-                to: vec![Party { name: "Arjun".into(), address: "itmanagement@pjtelesoft.de".into() }],
+                to: vec![Party { name: "Alex".into(), address: "alex.morgan@example.com".into() }],
                 when: "2026-05-29T09:24:00Z".into(),
-                body_html: "<p>Hi Arjun,</p><p>Following up on the renewal terms. Legal needs the signed agreement back by <b>Friday</b>. Terms identical to last year, with a 7% adjustment.</p><p>Best,<br>Lena</p>".into(),
+                body_html: "<p>Hi Alex,</p><p>Following up on the renewal terms. Legal needs the signed agreement back by <b>Friday</b>. Terms identical to last year, with a 7% adjustment.</p><p>Best,<br>Lena</p>".into(),
                 attachments: vec![],
                 meta: None,
             }],
@@ -54,10 +74,10 @@ pub fn seed(store: &Store) {
             ai_draft: Some("Thursday at 14:00 works for me — I'll send an invite with a Meet link.".into()),
             messages: vec![Message {
                 id: "m2".into(),
-                from: Party { name: "Marco Reyes".into(), address: "marco@pjtelesoft.de".into() },
-                to: vec![Party { name: "Arjun".into(), address: "itmanagement@pjtelesoft.de".into() }],
+                from: Party { name: "Marco Reyes".into(), address: "marco.reyes@example.org".into() },
+                to: vec![Party { name: "Alex".into(), address: "alex.morgan@example.com".into() }],
                 when: "2026-05-29T08:51:00Z".into(),
-                body_html: "<p>Hey Arjun,</p><p>Are you free Thursday afternoon? I'd like to walk through the new release flow before we ship Friday.</p><p>— Marco</p>".into(),
+                body_html: "<p>Hey Alex,</p><p>Are you free Thursday afternoon? I'd like to walk through the new release flow before we ship Friday.</p><p>— Marco</p>".into(),
                 attachments: vec![],
                 meta: None,
             }],
@@ -78,7 +98,7 @@ pub fn seed(store: &Store) {
             messages: vec![Message {
                 id: "m3".into(),
                 from: Party { name: "Stripe".into(), address: "no-reply@stripe.com".into() },
-                to: vec![Party { name: "Arjun".into(), address: "itmanagement@pjtelesoft.de".into() }],
+                to: vec![Party { name: "Alex".into(), address: "alex.morgan@example.com".into() }],
                 when: "2026-05-29T07:30:00Z".into(),
                 body_html: "<p>We initiated a transfer of <b>€4,210.00</b> to your account ending 4421.</p>".into(),
                 attachments: vec![],
@@ -91,16 +111,58 @@ pub fn seed(store: &Store) {
     }
 
     let tasks = vec![
-        ("k1", "Review renewal terms from Lena", Some("Fri"), false, Some("t1")),
-        ("k2", "Send invite to Marco for Thursday 14:00", Some("Today"), false, Some("t2")),
-        ("k3", "Reply to Priya with onboarding feedback", Some("Wed"), false, None),
+        (
+            "k1",
+            "Review renewal terms from Lena",
+            Some("Fri"),
+            false,
+            Some("t1"),
+        ),
+        (
+            "k2",
+            "Send invite to Marco for Thursday 14:00",
+            Some("Today"),
+            false,
+            Some("t2"),
+        ),
+        (
+            "k3",
+            "Reply to Priya with onboarding feedback",
+            Some("Wed"),
+            false,
+            None,
+        ),
         ("k4", "Approve Q3 roadmap", None, true, None),
         ("k5", "Renew TLS certificate", Some("Jun 3"), false, None),
     ];
     for (id, title, due, done, src) in tasks {
         let _ = store.add_task(
-            &Task { id: id.into(), title: title.into(), due: due.map(String::from), done },
+            &Task {
+                id: id.into(),
+                title: title.into(),
+                due: due.map(String::from),
+                done,
+            },
             src,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn demo_seed_uses_reserved_domains() {
+        let store = Store::in_memory().expect("in-memory store");
+        seed(&store);
+
+        let accounts = store.accounts();
+        assert!(!accounts.is_empty());
+        assert!(accounts.iter().all(|account| {
+            account.email.ends_with("@example.com")
+                || account.email.ends_with("@example.org")
+                || account.email.ends_with("@example.net")
+        }));
     }
 }

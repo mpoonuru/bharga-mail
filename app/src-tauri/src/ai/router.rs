@@ -14,20 +14,15 @@ impl<'a> Router<'a> {
     }
 
     /// Resolve which model should run a given task.
-    /// 1. honor explicit role assignment, 2. respect the privacy preset,
-    /// 3. fall back to any ready model that can do the job.
+    /// Honor explicit role assignment and the privacy preset. We deliberately
+    /// do not fall back to another provider: silently moving mail content to a
+    /// different cloud is a privacy boundary violation.
     pub fn resolve(&self, role: Role) -> Option<&'a ModelConfig> {
-        let assigned = self
-            .profile
+        self.profile
             .models
             .iter()
             .filter(|m| m.ready && m.roles.contains(&role))
-            .find(|m| self.allowed(m));
-        if assigned.is_some() {
-            return assigned;
-        }
-        // fallback: any ready, privacy-allowed model
-        self.profile.models.iter().find(|m| m.ready && self.allowed(m))
+            .find(|m| self.allowed(m))
     }
 
     fn allowed(&self, m: &ModelConfig) -> bool {
@@ -45,15 +40,14 @@ mod tests {
     use crate::ai::default_profile;
 
     #[test]
-    fn local_preset_only_routes_to_local_models() {
+    fn local_preset_rejects_a_cloud_only_assignment() {
         let mut p = default_profile();
         p.privacy = Privacy::Local;
         for m in &mut p.models {
             m.ready = true;
         }
         let r = Router::new(&p);
-        let m = r.resolve(Role::Draft).expect("a model");
-        assert!(matches!(m.kind, ProviderKind::Local));
+        assert!(r.resolve(Role::Draft).is_none());
     }
 
     #[test]
@@ -65,5 +59,23 @@ mod tests {
         let r = Router::new(&p);
         let m = r.resolve(Role::Triage).expect("a model");
         assert_eq!(m.id, "llama");
+    }
+
+    #[test]
+    fn unavailable_assignment_does_not_fall_back_to_another_cloud_provider() {
+        let mut p = default_profile();
+        let assigned = p
+            .models
+            .iter_mut()
+            .find(|model| model.id == "claude")
+            .unwrap();
+        assigned.ready = false;
+        let mut fallback = assigned.clone();
+        fallback.id = "other-cloud".into();
+        fallback.ready = true;
+        fallback.roles.clear();
+        p.models.push(fallback);
+
+        assert!(Router::new(&p).resolve(Role::Draft).is_none());
     }
 }

@@ -63,15 +63,23 @@ describe("AI engine config", () => {
     expect(m.roles).toContain("draft");
   });
 
-  it("updateModel flips readiness when a cloud key is set", () => {
-    useApp.getState().updateModel("gpt", { apiKey: "sk-test" });
+  it("saveModel accepts a write-only cloud credential", async () => {
+    const current = useApp.getState().ai!.models.find((model) => model.id === "gpt")!;
+    await useApp.getState().saveModel({ ...current, apiKey: ["fixture", "credential"].join("-") });
     const m = useApp.getState().ai!.models.find((x) => x.id === "gpt")!;
     expect(m.ready).toBe(true);
+    expect("apiKey" in m).toBe(false);
   });
 
   it("setPrivacy updates the preset", () => {
     useApp.getState().setPrivacy("local");
     expect(useApp.getState().ai!.privacy).toBe("local");
+  });
+
+  it("removeModel removes the provider and its role assignments", async () => {
+    await useApp.getState().removeModel("custom");
+
+    expect(useApp.getState().ai!.models.some((model) => model.id === "custom")).toBe(false);
   });
 });
 

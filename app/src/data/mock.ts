@@ -5,9 +5,9 @@ import type { Thread, Task, CalEvent, AiProfile, Account } from "@/types";
 
 export const account: Account = {
   id: "acc1",
-  email: "itmanagement@pjtelesoft.de",
+  email: "alex.morgan@example.com",
   provider: "imap",
-  displayName: "Arjun",
+  displayName: "Alex",
 };
 
 export const threads: Thread[] = [
@@ -15,7 +15,7 @@ export const threads: Thread[] = [
     id: "t1",
     accountId: "acc1",
     subject: "Contract renewal — need decision by Friday",
-    preview: "Hi Arjun, following up on the renewal terms we discussed. Legal needs the signed…",
+    preview: "Hi Alex, following up on the renewal terms we discussed. Legal needs the signed…",
     participants: ["Lena Hoffmann"],
     lastTime: "9:24",
     unread: true,
@@ -29,11 +29,11 @@ export const threads: Thread[] = [
       {
         id: "m1",
         from: { name: "Lena Hoffmann", address: "lena@northwind.co" },
-        to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
+        to: [{ name: "Alex", address: "alex.morgan@example.com" }],
         when: "2026-05-29T09:24:00Z",
         meta: { auth: "spf=pass; dkim=pass; dmarc=pass", originIp: "203.0.113.24", messageId: "<renewal-7f3a@northwind.co>" },
         bodyHtml:
-          "<p>Hi Arjun,</p><p>Following up on the renewal terms we discussed last week. Legal needs the signed agreement back by <b>Friday</b> to keep the same start date. Terms are identical to last year, with a 7% adjustment on the platform tier.</p><p>Happy to hop on a quick call if it's easier. Let me know how you'd like to proceed.</p><p>Best,<br>Lena</p>",
+          "<p>Hi Alex,</p><p>Following up on the renewal terms we discussed last week. Legal needs the signed agreement back by <b>Friday</b> to keep the same start date. Terms are identical to last year, with a 7% adjustment on the platform tier.</p><p>Happy to hop on a quick call if it's easier. Let me know how you'd like to proceed.</p><p>Best,<br>Lena</p>",
         attachments: [
           { name: "Renewal-Agreement-2026.pdf", mime: "application/pdf", size: 248_320 },
           { name: "Pricing-Tier.xlsx", mime: "application/vnd.ms-excel", size: 18_944 },
@@ -56,29 +56,29 @@ export const threads: Thread[] = [
     messages: [
       {
         id: "m2a",
-        from: { name: "Arjun", address: "itmanagement@pjtelesoft.de" },
-        to: [{ name: "Marco Reyes", address: "marco@pjtelesoft.de" }],
+        from: { name: "Alex", address: "alex.morgan@example.com" },
+        to: [{ name: "Marco Reyes", address: "marco.reyes@example.org" }],
         when: "2026-05-28T17:40:00Z",
         meta: { auth: "spf=pass; dkim=pass; dmarc=pass" },
-        bodyHtml: "<p>Hi Marco,</p><p>The staging deploy is green. Can we do a quick walkthrough before the Friday release? I want to confirm the rollback steps and the migration order.</p><p>Thanks,<br>Arjun</p>",
+        bodyHtml: "<p>Hi Marco,</p><p>The staging deploy is green. Can we do a quick walkthrough before the Friday release? I want to confirm the rollback steps and the migration order.</p><p>Thanks,<br>Alex</p>",
       },
       {
         id: "m2",
-        from: { name: "Marco Reyes", address: "marco@pjtelesoft.de" },
-        to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
+        from: { name: "Marco Reyes", address: "marco.reyes@example.org" },
+        to: [{ name: "Alex", address: "alex.morgan@example.com" }],
         when: "2026-05-29T08:51:00Z",
         meta: { auth: "spf=pass; dkim=pass; dmarc=pass", originIp: "198.51.100.7" },
-        bodyHtml: "<p>Hey Arjun,</p><p>Are you free Thursday afternoon? I'd like to walk through the new release flow before we ship Friday.</p><p>— Marco</p>" +
-          "<div>________________________________</div><div>From: Arjun &lt;itmanagement@pjtelesoft.de&gt;<br>Sent: Wednesday, May 28, 2026 5:40 PM<br>Subject: Deployment pipeline</div><p>Hi Marco, the staging deploy is green. Can we do a quick walkthrough…</p>",
+        bodyHtml: "<p>Hey Alex,</p><p>Are you free Thursday afternoon? I'd like to walk through the new release flow before we ship Friday.</p><p>— Marco</p>" +
+          "<div>________________________________</div><div>From: Alex &lt;alex.morgan@example.com&gt;<br>Sent: Wednesday, May 28, 2026 5:40 PM<br>Subject: Deployment pipeline</div><p>Hi Marco, the staging deploy is green. Can we do a quick walkthrough…</p>",
       },
       {
         id: "m2c",
-        from: { name: "Arjun", address: "itmanagement@pjtelesoft.de" },
-        to: [{ name: "Marco Reyes", address: "marco@pjtelesoft.de" }],
+        from: { name: "Alex", address: "alex.morgan@example.com" },
+        to: [{ name: "Marco Reyes", address: "marco.reyes@example.org" }],
         when: "2026-05-29T09:32:00Z",
         meta: { auth: "spf=pass; dkim=pass; dmarc=pass" },
-        bodyHtml: "<p>Thursday at 14:00 works for me — I'll send an invite with a Meet link. Let's start with the rollback plan.</p><p>— Arjun</p>" +
-          "<div>On Thu, May 29, 2026, Marco Reyes wrote:</div><blockquote>Hey Arjun, Are you free Thursday afternoon? I'd like to walk through the new release flow…</blockquote>",
+        bodyHtml: "<p>Thursday at 14:00 works for me — I'll send an invite with a Meet link. Let's start with the rollback plan.</p><p>— Alex</p>" +
+          "<div>On Thu, May 29, 2026, Marco Reyes wrote:</div><blockquote>Hey Alex, Are you free Thursday afternoon? I'd like to walk through the new release flow…</blockquote>",
       },
     ],
   },
@@ -96,7 +96,7 @@ export const threads: Thread[] = [
       {
         id: "m3",
         from: { name: "Stripe", address: "no-reply@stripe.com" },
-        to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
+        to: [{ name: "Alex", address: "alex.morgan@example.com" }],
         when: "2026-05-29T07:30:00Z",
         meta: { auth: "spf=pass; dkim=pass; dmarc=pass", originIp: "54.187.205.235", messageId: "<payout-9c11@stripe.com>" },
         bodyHtml: "<p>We initiated a transfer of <b>€4,210.00</b> to your account ending 4421. Funds typically arrive in 1–2 business days.</p>",
@@ -118,7 +118,7 @@ export const threads: Thread[] = [
       {
         id: "m4",
         from: { name: "Priya Nair", address: "priya@studio.design" },
-        to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
+        to: [{ name: "Alex", address: "alex.morgan@example.com" }],
         when: "2026-05-28T16:10:00Z",
         meta: { auth: "spf=pass; dkim=fail; dmarc=none", originIp: "192.0.2.55" },
         bodyHtml: "<p>Thanks for the call! Notes are attached and the prototype is updated. Let me know your thoughts on the onboarding flow.</p>",
@@ -139,7 +139,7 @@ export const threads: Thread[] = [
       {
         id: "m5",
         from: { name: "Bharga Digest", address: "digest@bharga.app" },
-        to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
+        to: [{ name: "Alex", address: "alex.morgan@example.com" }],
         when: "2026-05-25T06:00:00Z",
         meta: { auth: "spf=pass; dkim=pass; dmarc=pass" },
         bodyHtml: "<p>This week: 3 releases shipped, 12 issues closed, roadmap updated for Q3.</p>",
@@ -160,7 +160,7 @@ export const threads: Thread[] = [
       {
         id: "m6",
         from: { name: "PayPal Service", address: "service@paypa1-secure.com" },
-        to: [{ name: "Arjun", address: "itmanagement@pjtelesoft.de" }],
+        to: [{ name: "Alex", address: "alex.morgan@example.com" }],
         when: "2026-05-31T22:00:00Z",
         // Failed authentication — a real spoof would not pass DMARC.
         meta: { auth: "spf=softfail; dkim=fail; dmarc=fail", originIp: "45.137.21.9" },

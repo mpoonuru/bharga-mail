@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "check:open-source": "node ../scripts/check-open-source-hygiene.mjs",
     "test": "vitest run",
     "preview": "vite preview",
     "tauri": "tauri",
