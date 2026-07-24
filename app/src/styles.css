@@ -197,7 +197,7 @@
   .folder-disclosure.expanded {
     grid-template-rows: 1fr;
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
   .folder-disclosure-clip {
     min-height: 0;

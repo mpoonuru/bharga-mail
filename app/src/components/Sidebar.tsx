@@ -112,6 +112,7 @@ function AccountRow({ a, reordering, setReordering }: { a: Account; reordering: 
       transition={reordering ? { layout: ACCOUNT_REORDER_MOTION.transition } : undefined}
       onDragEnd={() => setReordering(false)}
       className="acct-reorder"
+      style={ACCOUNT_DISCLOSURE_STYLE}
     >
       <div className="acct-row">
         <button
@@ -172,7 +173,6 @@ function AccountRow({ a, reordering, setReordering }: { a: Account; reordering: 
       </div>
       <div
         className={`folder-disclosure${isFocused ? " expanded" : ""}`}
-        style={ACCOUNT_DISCLOSURE_STYLE}
         aria-hidden={!isFocused}
         inert={!isFocused}
       >

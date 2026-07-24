@@ -1,6 +1,10 @@
+import { act, createElement, useState } from "react";
+import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
 
 import { ACCOUNT_DISCLOSURE_MOTION, ACCOUNT_REORDER_MOTION, accountReorderLayout, activateAccountReorder } from "@/components/Sidebar";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("mail account disclosure motion", () => {
   it("uses a restrained CSS-grid timing contract", () => {
@@ -12,7 +16,6 @@ describe("mail account disclosure motion", () => {
     });
     expect(ACCOUNT_DISCLOSURE_MOTION).not.toHaveProperty("type");
   });
-
 });
 
 describe("mail account reorder motion", () => {
@@ -28,14 +31,31 @@ describe("mail account reorder motion", () => {
     expect(ACCOUNT_REORDER_MOTION.transition).not.toHaveProperty("stiffness");
   });
 
-  it("commits reorder activation before starting a drag", () => {
-    const events: string[] = [];
+  it("commits active layout before the drag callback reads the rendered state", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const observedLayoutStates: string[] = [];
 
-    activateAccountReorder(
-      () => events.push("activation"),
-      () => events.push("drag-start"),
-    );
+    function ReorderHarness() {
+      const [reordering, setReordering] = useState(false);
 
-    expect(events).toEqual(["activation", "drag-start"]);
+      return createElement("button", {
+        "data-layout": accountReorderLayout(reordering),
+        onClick: () => activateAccountReorder(
+          () => setReordering(true),
+          () => observedLayoutStates.push(container.querySelector("button")?.dataset.layout ?? "missing"),
+        ),
+      });
+    }
+
+    act(() => root.render(createElement(ReorderHarness)));
+    const dragHandle = container.querySelector("button");
+    if (!dragHandle) throw new Error("Expected reorder harness drag handle");
+
+    act(() => dragHandle.click());
+
+    expect(observedLayoutStates).toEqual(["position"]);
+
+    act(() => root.unmount());
   });
 });
