@@ -48,6 +48,10 @@ export const ACCOUNT_REORDER_MOTION = {
   },
 } as const;
 
+export function accountReorderLayout(active: boolean): false | "position" {
+  return active ? ACCOUNT_REORDER_MOTION.activeLayout : ACCOUNT_REORDER_MOTION.idleLayout;
+}
+
 type DisclosureStyle = CSSProperties & Record<`--${string}`, string>;
 
 const ACCOUNT_DISCLOSURE_STYLE: DisclosureStyle = {
@@ -95,9 +99,10 @@ function AccountRow({ a, reordering, setReordering }: { a: Account; reordering: 
       as="div"
       dragListener={false}
       dragControls={controls}
-      // Motion's current types represent disabled layout projection as undefined;
-      // this is the runtime equivalent of the idle false contract.
-      layout={reordering ? ACCOUNT_REORDER_MOTION.activeLayout : undefined}
+      // ReorderItemProps narrows layout to true | "position", but the underlying
+      // Motion runtime accepts false and defaults undefined to true. Keep the
+      // upstream type mismatch isolated at this prop boundary.
+      layout={accountReorderLayout(reordering) as true | "position"}
       transition={reordering ? { layout: ACCOUNT_REORDER_MOTION.transition } : undefined}
       onDragEnd={() => setReordering(false)}
       className="acct-reorder"

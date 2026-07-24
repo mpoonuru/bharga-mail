@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ACCOUNT_DISCLOSURE_MOTION, ACCOUNT_REORDER_MOTION } from "@/components/Sidebar";
+import { ACCOUNT_DISCLOSURE_MOTION, ACCOUNT_REORDER_MOTION, accountReorderLayout } from "@/components/Sidebar";
 
 describe("mail account disclosure motion", () => {
   it("uses a restrained CSS-grid timing contract", () => {
@@ -18,6 +18,8 @@ describe("mail account reorder motion", () => {
   it("disables layout projection except during an explicit tweened reorder", () => {
     expect(ACCOUNT_REORDER_MOTION.idleLayout).toBe(false);
     expect(ACCOUNT_REORDER_MOTION.activeLayout).toBe("position");
+    expect(accountReorderLayout(false)).toBe(false);
+    expect(accountReorderLayout(true)).toBe("position");
     expect(ACCOUNT_REORDER_MOTION.transition).toMatchObject({
       type: "tween",
       duration: 0.18,
