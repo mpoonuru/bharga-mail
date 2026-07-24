@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ACCOUNT_DISCLOSURE_MOTION, ACCOUNT_REORDER_MOTION, accountReorderLayout } from "@/components/Sidebar";
+import { ACCOUNT_DISCLOSURE_MOTION, ACCOUNT_REORDER_MOTION, accountReorderLayout, activateAccountReorder } from "@/components/Sidebar";
 
 describe("mail account disclosure motion", () => {
   it("uses a restrained CSS-grid timing contract", () => {
@@ -12,6 +12,7 @@ describe("mail account disclosure motion", () => {
     });
     expect(ACCOUNT_DISCLOSURE_MOTION).not.toHaveProperty("type");
   });
+
 });
 
 describe("mail account reorder motion", () => {
@@ -25,5 +26,16 @@ describe("mail account reorder motion", () => {
       duration: 0.18,
     });
     expect(ACCOUNT_REORDER_MOTION.transition).not.toHaveProperty("stiffness");
+  });
+
+  it("commits reorder activation before starting a drag", () => {
+    const events: string[] = [];
+
+    activateAccountReorder(
+      () => events.push("activation"),
+      () => events.push("drag-start"),
+    );
+
+    expect(events).toEqual(["activation", "drag-start"]);
   });
 });

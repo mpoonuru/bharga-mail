@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
 import { motion, Reorder, useDragControls } from "motion/react";
 import { useApp } from "@/store";
 import type { View, Account } from "@/types";
@@ -50,6 +51,11 @@ export const ACCOUNT_REORDER_MOTION = {
 
 export function accountReorderLayout(active: boolean): false | "position" {
   return active ? ACCOUNT_REORDER_MOTION.activeLayout : ACCOUNT_REORDER_MOTION.idleLayout;
+}
+
+export function activateAccountReorder(commitActivation: () => void, startDrag: () => void): void {
+  flushSync(commitActivation);
+  startDrag();
 }
 
 type DisclosureStyle = CSSProperties & Record<`--${string}`, string>;
@@ -108,7 +114,15 @@ function AccountRow({ a, reordering, setReordering }: { a: Account; reordering: 
       className="acct-reorder"
     >
       <div className="acct-row">
-        <button className="acct-drag" title="Drag to reorder" aria-label="Drag to reorder" onPointerDown={(e) => { setReordering(true); controls.start(e); }}>
+        <button
+          className="acct-drag"
+          title="Drag to reorder"
+          aria-label="Drag to reorder"
+          onPointerDown={(e) => activateAccountReorder(
+            () => setReordering(true),
+            () => controls.start(e),
+          )}
+        >
           <Icon name="grip" size={13} weight="bold" />
         </button>
         {acctRename !== null ? (
