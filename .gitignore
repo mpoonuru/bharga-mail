@@ -35,5 +35,8 @@ secrets.json
 .idea/
 *.swp
 
+# Isolated feature workspaces
+.worktrees/
+
 # Large local source assets (optional — remove if you want them tracked)
 logo-source-OLD.png
