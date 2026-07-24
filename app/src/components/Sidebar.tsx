@@ -32,10 +32,9 @@ const PIN_SEP = "";
 const pinKey = (accountId: string, folder: string) => `${accountId}${PIN_SEP}${folder}`;
 
 export const ACCOUNT_ACCORDION_TRANSITION = {
-  type: "spring",
-  stiffness: 360,
-  damping: 32,
-  mass: 0.82,
+  type: "tween",
+  duration: 0.24,
+  ease: [0.22, 1, 0.36, 1],
 } as const;
 
 /** A single account row in the expanded sidebar: drag-handle to reorder, the
@@ -71,7 +70,15 @@ function AccountRow({ a }: { a: Account }) {
   const acctUnread = threads.filter((t) => t.accountId === a.id && t.unread).length;
   const folderUnread = (name: string) => threads.filter((t) => t.accountId === a.id && t.folder === name && t.unread).length;
   return (
-    <Reorder.Item value={a.id} as="div" dragListener={false} dragControls={controls} layout="position" className="acct-reorder">
+    <Reorder.Item
+      value={a.id}
+      as="div"
+      dragListener={false}
+      dragControls={controls}
+      layout="position"
+      transition={{ layout: ACCOUNT_ACCORDION_TRANSITION }}
+      className="acct-reorder"
+    >
       <div className="acct-row">
         <button className="acct-drag" title="Drag to reorder" aria-label="Drag to reorder" onPointerDown={(e) => controls.start(e)}>
           <Icon name="grip" size={13} weight="bold" />
