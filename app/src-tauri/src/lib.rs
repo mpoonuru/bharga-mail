@@ -183,9 +183,6 @@ fn remove_ai_provider(
     state: State<'_, AppState>,
 ) -> Result<AiProfile, String> {
     let mut profile = state.ai.lock().unwrap().clone();
-    if !profile.models.iter().any(|model| model.id == provider_id) {
-        return Err("Provider not found".into());
-    }
     sync::tokens::delete_ai_key(&provider_id)?;
     profile.models.retain(|model| model.id != provider_id);
     if let Err(error) = persist_ai_profile(&state.store, &profile) {

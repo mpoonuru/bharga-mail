@@ -559,8 +559,10 @@ export const useApp = create<AppState>((set, get) => ({
     set({ ai });
   },
   removeModel: async (id) => {
-    const ai = await api.removeAiProvider(id);
-    set({ ai });
+    await api.removeAiProvider(id);
+    const ai = get().ai;
+    if (!ai) return;
+    set({ ai: { ...ai, models: ai.models.filter((model) => model.id !== id) } });
   },
   saveAi: async () => {
     const ai = get().ai;

@@ -81,6 +81,21 @@ describe("AI engine config", () => {
 
     expect(useApp.getState().ai!.models.some((model) => model.id === "custom")).toBe(false);
   });
+
+  it("removes an unsaved provider without discarding other unsaved providers", async () => {
+    const existingIds = new Set(useApp.getState().ai!.models.map((model) => model.id));
+    useApp.getState().addModel();
+    useApp.getState().addModel();
+    const added = useApp.getState().ai!.models.filter((model) => !existingIds.has(model.id));
+
+    expect(added).toHaveLength(2);
+
+    await useApp.getState().removeModel(added[0].id);
+
+    const remainingIds = useApp.getState().ai!.models.map((model) => model.id);
+    expect(remainingIds).not.toContain(added[0].id);
+    expect(remainingIds).toContain(added[1].id);
+  });
 });
 
 describe("undo send", () => {
