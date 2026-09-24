@@ -180,28 +180,26 @@
   .acct-row:hover .acct-drag { @apply opacity-50; }
   .acct-drag:hover { @apply opacity-100 text-text; }
   .acct-drag:active { @apply cursor-grabbing; }
-  .acct-refresh { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 cursor-pointer bg-transparent border-none; transition: .14s var(--ease); }
-  .acct-refresh:hover:not(:disabled) { @apply text-text bg-surface; }
-  .acct-refresh:disabled { @apply opacity-50 cursor-default; }
   .acct-more { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 cursor-pointer bg-transparent border-none opacity-0; transition: .14s var(--ease); }
-  .acct-row:hover .acct-more { @apply opacity-60; }
+  .acct-row:hover .acct-more, .acct-row:focus-within .acct-more { @apply opacity-60; }
   .acct-more:hover, .acct-more.open { @apply opacity-100 text-text bg-surface; }
+  .acct-more:disabled { @apply opacity-60 cursor-default; }
+  .nav-label-row { @apply flex items-center justify-between; }
+  .order-toggle { @apply border-none bg-transparent text-[10.5px] text-text-3 cursor-pointer rounded-md px-1.5 py-1; transition: color var(--motion-instant) var(--ease), background var(--motion-instant) var(--ease); }
+  .order-toggle:hover, .order-toggle:focus-visible, .order-toggle[aria-pressed="true"] { @apply text-text bg-surface; }
   /* Folder list nested under an account, with a tree connector line. */
   .folder-disclosure {
     display: grid;
     grid-template-rows: 0fr;
     min-width: 0;
     opacity: 0;
-    transform: translateY(calc(-1 * var(--account-disclosure-offset, 2px)));
     transition:
-      grid-template-rows var(--account-disclosure-duration, 180ms) var(--account-disclosure-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
-      opacity 120ms ease-out,
-      transform var(--account-disclosure-duration, 180ms) var(--account-disclosure-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+      grid-template-rows var(--motion-disclosure) var(--account-disclosure-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
+      opacity var(--motion-standard) var(--account-disclosure-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
   }
   .folder-disclosure.expanded {
     grid-template-rows: 1fr;
     opacity: 1;
-    transform: none;
   }
   .folder-disclosure-clip {
     min-height: 0;

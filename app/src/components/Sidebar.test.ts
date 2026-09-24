@@ -2,19 +2,57 @@ import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
 
-import { ACCOUNT_DISCLOSURE_MOTION, ACCOUNT_REORDER_MOTION, accountReorderLayout, activateAccountReorder } from "@/components/Sidebar";
+import {
+  ACCOUNT_DISCLOSURE_MOTION,
+  ACCOUNT_REORDER_MOTION,
+  Sidebar,
+  accountDisclosureState,
+  accountReorderLayout,
+  activateAccountReorder,
+} from "@/components/Sidebar";
+import { useApp } from "@/store";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("mail account disclosure motion", () => {
   it("uses a restrained CSS-grid timing contract", () => {
     expect(ACCOUNT_DISCLOSURE_MOTION).toEqual({
-      durationMs: 180,
+      durationMs: 160,
       caretDurationMs: 160,
       easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
-      offsetPx: 2,
     });
     expect(ACCOUNT_DISCLOSURE_MOTION).not.toHaveProperty("type");
+  });
+
+  it("keeps hidden and inert semantics synchronized with expansion", () => {
+    expect(accountDisclosureState(false)).toEqual({ ariaHidden: true, inert: true });
+    expect(accountDisclosureState(true)).toEqual({ ariaHidden: false, inert: false });
+  });
+
+  it("shows reorder controls only in explicit edit-order mode", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    useApp.setState({
+      accounts: [
+        { id: "a1", email: "one@example.test", provider: "imap", displayName: "One" },
+        { id: "a2", email: "two@example.test", provider: "gmail", displayName: "Two" },
+      ],
+      accountOrder: [],
+      selectedAccountId: null,
+      threads: [],
+    });
+
+    act(() => root.render(createElement(Sidebar)));
+    expect(container.querySelectorAll(".acct-drag")).toHaveLength(0);
+
+    const editOrderButton = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent?.trim() === "Edit order");
+    if (!(editOrderButton instanceof HTMLButtonElement)) throw new Error("Edit order button not found");
+    act(() => editOrderButton.click());
+
+    expect(container.querySelectorAll(".acct-drag")).toHaveLength(2);
+    expect(editOrderButton.textContent).toContain("Done");
+    act(() => root.unmount());
   });
 });
 
@@ -26,7 +64,7 @@ describe("mail account reorder motion", () => {
     expect(accountReorderLayout(true)).toBe("position");
     expect(ACCOUNT_REORDER_MOTION.transition).toMatchObject({
       type: "tween",
-      duration: 0.18,
+      duration: 0.16,
     });
     expect(ACCOUNT_REORDER_MOTION.transition).not.toHaveProperty("stiffness");
   });

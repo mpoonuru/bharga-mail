@@ -7,6 +7,7 @@ import { Icon, type IconName } from "@/components/icons";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { accountColor } from "@/lib/colors";
 import { titlebarDoubleClick } from "@/lib/bridge";
+import { MOTION, MOTION_EASE } from "@/lib/motion";
 
 const NAV: { id: View; icon: IconName; label: string }[] = [
   { id: "priority", icon: "priority", label: "Priority" },
@@ -33,10 +34,9 @@ const PIN_SEP = "";
 const pinKey = (accountId: string, folder: string) => `${accountId}${PIN_SEP}${folder}`;
 
 export const ACCOUNT_DISCLOSURE_MOTION = {
-  durationMs: 180,
+  durationMs: MOTION.disclosure * 1000,
   caretDurationMs: 160,
   easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
-  offsetPx: 2,
 } as const;
 
 export const ACCOUNT_REORDER_MOTION = {
@@ -44,8 +44,8 @@ export const ACCOUNT_REORDER_MOTION = {
   activeLayout: "position",
   transition: {
     type: "tween",
-    duration: 0.18,
-    ease: [0.2, 0.8, 0.2, 1],
+    duration: MOTION.disclosure,
+    ease: MOTION_EASE,
   },
 } as const;
 
@@ -58,18 +58,21 @@ export function activateAccountReorder(commitActivation: () => void, startDrag: 
   startDrag();
 }
 
+export function accountDisclosureState(expanded: boolean) {
+  return { ariaHidden: !expanded, inert: !expanded } as const;
+}
+
 type DisclosureStyle = CSSProperties & Record<`--${string}`, string>;
 
 const ACCOUNT_DISCLOSURE_STYLE: DisclosureStyle = {
   "--account-disclosure-duration": `${ACCOUNT_DISCLOSURE_MOTION.durationMs}ms`,
   "--account-caret-duration": `${ACCOUNT_DISCLOSURE_MOTION.caretDurationMs}ms`,
   "--account-disclosure-ease": ACCOUNT_DISCLOSURE_MOTION.easing,
-  "--account-disclosure-offset": `${ACCOUNT_DISCLOSURE_MOTION.offsetPx}px`,
 };
 
 /** A single account row in the expanded sidebar: drag-handle to reorder, the
  *  account selector, refresh, and (when focused) its folders with pin toggles. */
-function AccountRow({ a, reordering, setReordering }: { a: Account; reordering: boolean; setReordering: (active: boolean) => void }) {
+function AccountRow({ a, orderEditing, reordering, setReordering }: { a: Account; orderEditing: boolean; reordering: boolean; setReordering: (active: boolean) => void }) {
   const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads, createFolder, renameFolder, deleteFolder, removeAccount, renameAccount, syncOneFolder, markFolderRead } = useApp();
   const controls = useDragControls();
   const [busy, setBusy] = useState(false);
@@ -108,24 +111,26 @@ function AccountRow({ a, reordering, setReordering }: { a: Account; reordering: 
       // ReorderItemProps narrows layout to true | "position", but the underlying
       // Motion runtime accepts false and defaults undefined to true. Keep the
       // upstream type mismatch isolated at this prop boundary.
-      layout={accountReorderLayout(reordering) as true | "position"}
+      layout={accountReorderLayout(orderEditing && reordering) as true | "position"}
       transition={reordering ? { layout: ACCOUNT_REORDER_MOTION.transition } : undefined}
       onDragEnd={() => setReordering(false)}
       className="acct-reorder"
       style={ACCOUNT_DISCLOSURE_STYLE}
     >
       <div className="acct-row">
-        <button
-          className="acct-drag"
-          title="Drag to reorder"
-          aria-label="Drag to reorder"
-          onPointerDown={(e) => activateAccountReorder(
-            () => setReordering(true),
-            () => controls.start(e),
-          )}
-        >
-          <Icon name="grip" size={13} weight="bold" />
-        </button>
+        {orderEditing && (
+          <button
+            className="acct-drag"
+            title="Drag to reorder"
+            aria-label={`Drag ${a.displayName?.trim() || a.email} to reorder`}
+            onPointerDown={(e) => activateAccountReorder(
+              () => setReordering(true),
+              () => controls.start(e),
+            )}
+          >
+            <Icon name="grip" size={13} weight="bold" />
+          </button>
+        )}
         {acctRename !== null ? (
           <input className="folder-edit" autoFocus value={acctRename} placeholder={a.email}
             onChange={(e) => setAcctRename(e.target.value)}
@@ -146,17 +151,12 @@ function AccountRow({ a, reordering, setReordering }: { a: Account; reordering: 
             {acctUnread ? <span className="count">{acctUnread}</span> : null}
           </button>
         )}
-        {a.provider === "imap" && acctRename === null && (
-          <button className="acct-refresh" title="Refresh folders" disabled={busy}
-            onClick={async (e) => { e.stopPropagation(); setBusy(true); try { await refreshFolders(a.id); } finally { setBusy(false); } }}>
-            <Icon name="cloud" size={13} weight={busy ? "fill" : "duotone"} />
-          </button>
-        )}
         {acctRename === null && (
-          <button className={`acct-more${acctMenu ? " open" : ""}`} title="Account options"
+          <button className={`acct-more${acctMenu ? " open" : ""}`} title={busy ? "Refreshing folders" : "Account options"}
             aria-haspopup="menu" aria-expanded={acctMenu}
+            disabled={busy}
             onClick={(e) => { e.stopPropagation(); setAcctMenu((o) => !o); }}>
-            <Icon name="more" size={15} weight="bold" />
+            <Icon name={busy ? "cloud" : "more"} size={15} weight={busy ? "fill" : "bold"} />
           </button>
         )}
         {acctMenu && (
@@ -164,7 +164,7 @@ function AccountRow({ a, reordering, setReordering }: { a: Account; reordering: 
             <div className="folder-menu-backdrop" onClick={() => setAcctMenu(false)} aria-hidden="true" />
             <div className="folder-menu acct-menu" role="menu">
               {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); setAccount(a.id); setNewName(""); }}><Icon name="compose" size={12} /> New folder</button>}
-              {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); void refreshFolders(a.id); }}><Icon name="cloud" size={12} /> Refresh folders</button>}
+              {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); setBusy(true); void refreshFolders(a.id).finally(() => setBusy(false)); }}><Icon name="cloud" size={12} /> Refresh folders</button>}
               <button role="menuitem" onClick={() => { setAcctMenu(false); setAcctRename(a.displayName?.trim() || ""); }}><Icon name="reply" size={12} /> Rename</button>
               <button role="menuitem" className="danger" onClick={() => { setAcctMenu(false); if (window.confirm(`Remove ${a.email} from Bharga? Its locally-cached mail will be deleted — your mail stays on the server.`)) void run(() => removeAccount(a.id)); }}><Icon name="trash" size={12} /> Remove account</button>
             </div>
@@ -173,8 +173,8 @@ function AccountRow({ a, reordering, setReordering }: { a: Account; reordering: 
       </div>
       <div
         className={`folder-disclosure${isFocused ? " expanded" : ""}`}
-        aria-hidden={!isFocused}
-        inert={!isFocused}
+        aria-hidden={accountDisclosureState(isFocused).ariaHidden}
+        inert={accountDisclosureState(isFocused).inert}
       >
         <div className="folder-disclosure-clip">
           <div className="folder-tree">
@@ -271,6 +271,7 @@ function AccountRow({ a, reordering, setReordering }: { a: Account; reordering: 
 export function Sidebar({ rail = false }: { rail?: boolean }) {
   const { view, setView, setCompose, setModelPicker, threads, tasks, ai, accounts, selectedAccountId, setAccount, selectedFolder, setFolder, toggleSidebar, accountOrder, setAccountOrder, pinnedFolders, togglePinFolder } = useApp();
   const [reordering, setReordering] = useState(false);
+  const [orderEditing, setOrderEditing] = useState(false);
   // Accounts in the user's saved order; any not yet in the order sort to the end.
   const ordered = [...accounts].sort((x, y) => {
     const ix = accountOrder.indexOf(x.id), iy = accountOrder.indexOf(y.id);
@@ -347,7 +348,24 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
 
         {accounts.length > 0 && (
           <>
-            {!rail && <div className="nav-label">Accounts</div>}
+            {!rail && (
+              <div className="nav-label nav-label-row">
+                <span>Accounts</span>
+                {accounts.length > 1 && (
+                  <button
+                    className="order-toggle"
+                    type="button"
+                    aria-pressed={orderEditing}
+                    onClick={() => {
+                      setOrderEditing((active) => !active);
+                      setReordering(false);
+                    }}
+                  >
+                    {orderEditing ? "Done" : "Edit order"}
+                  </button>
+                )}
+              </div>
+            )}
             {accounts.length > 1 && (
               <button
                 className={`nav-item${selectedAccountId === null ? " active" : ""}`}
@@ -371,7 +389,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
               ))
             ) : (
               <Reorder.Group axis="y" values={orderedIds} onReorder={setAccountOrder} as="div" className="acct-list">
-                {ordered.map((a) => <AccountRow key={a.id} a={a} reordering={reordering} setReordering={setReordering} />)}
+                {ordered.map((a) => <AccountRow key={a.id} a={a} orderEditing={orderEditing} reordering={reordering} setReordering={setReordering} />)}
               </Reorder.Group>
             )}
           </>
