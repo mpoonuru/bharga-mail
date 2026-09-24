@@ -3,7 +3,14 @@
 // so the whole UI is explorable. In the Tauri shell, these call real `#[tauri::command]`s.
 
 import type { Thread, Task, CalEvent, AiProfile, Account, FolderInfo, SaveAiProviderInput } from "@/types";
-import * as mock from "@/data/mock";
+import dayjs from "dayjs";
+import {
+  account as mockAccount,
+  aiProfile as mockAiProfile,
+  events as mockEvents,
+  tasks as mockTasks,
+  threads as mockThreads,
+} from "@/data/mock";
 
 export interface ImapAccountInput {
   email: string;
@@ -21,6 +28,10 @@ export interface ImapAccountInput {
 }
 
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+export function runtimeMode(): "desktop" | "preview" {
+  return inTauri ? "desktop" : "preview";
+}
 
 /** Toggle the OS window between maximized/restored (macOS title-bar zoom). */
 export async function toggleMaximizeWindow(): Promise<void> {
@@ -132,11 +143,17 @@ export async function listenMail(handlers: { onSync?: () => void; onNew?: (count
 }
 
 export const api = {
+  async getAppVersion(): Promise<string> {
+    if (!inTauri) return __APP_VERSION__;
+    const { getVersion } = await import("@tauri-apps/api/app");
+    return getVersion();
+  },
+
   async listThreads(): Promise<Thread[]> {
     try {
       return await invoke<Thread[]>("list_threads");
     } catch {
-      return mock.threads;
+      return mockThreads;
     }
   },
 
@@ -149,7 +166,7 @@ export const api = {
     } catch {
       // Browser/preview fallback — search subject + preview + body across the mock.
       const lc = q.toLowerCase();
-      return mock.threads.filter((t) =>
+      return mockThreads.filter((t) =>
         [t.subject, t.preview, t.participants.join(" "), ...t.messages.map((m) => m.bodyHtml)]
           .join(" ").toLowerCase().includes(lc));
     }
@@ -180,7 +197,7 @@ export const api = {
       // In the desktop app an empty list means "no account connected yet".
       return a;
     } catch {
-      return [mock.account];
+      return [mockAccount];
     }
   },
 
@@ -188,7 +205,7 @@ export const api = {
     try {
       return await invoke<Task[]>("list_tasks");
     } catch {
-      return mock.tasks;
+      return mockTasks;
     }
   },
 
@@ -196,12 +213,12 @@ export const api = {
     try {
       return await invoke<CalEvent[]>("list_events");
     } catch {
-      return mock.events;
+      return mockEvents;
     }
   },
 
   async getAiProfile(): Promise<AiProfile> {
-    if (!inTauri) return mock.aiProfile;
+    if (!inTauri) return mockAiProfile;
     return invoke<AiProfile>("get_ai_profile");
   },
 
@@ -215,15 +232,15 @@ export const api = {
     if (!inTauri) {
       const { apiKey, ...metadata } = input;
       const model = { ...metadata, ready: input.kind === "local" ? !!input.endpoint : !!apiKey };
-      const models = mock.aiProfile.models.filter((candidate) => candidate.id !== input.id);
-      return { ...mock.aiProfile, models: [...models, model] };
+      const models = mockAiProfile.models.filter((candidate) => candidate.id !== input.id);
+      return { ...mockAiProfile, models: [...models, model] };
     }
     return invoke<AiProfile>("save_ai_provider", { input });
   },
 
   async removeAiProvider(providerId: string): Promise<AiProfile> {
     if (!inTauri) {
-      return { ...mock.aiProfile, models: mock.aiProfile.models.filter((model) => model.id !== providerId) };
+      return { ...mockAiProfile, models: mockAiProfile.models.filter((model) => model.id !== providerId) };
     }
     return invoke<AiProfile>("remove_ai_provider", { providerId });
   },
@@ -238,7 +255,7 @@ export const api = {
     try {
       return await invoke<string>("ai_draft_reply", { threadId, threadText });
     } catch {
-      const t = mock.threads.find((x) => x.id === threadId);
+      const t = mockThreads.find((x) => x.id === threadId);
       return t?.aiDraft ?? "Thanks for your message — I'll get back to you shortly.";
     }
   },
@@ -289,7 +306,7 @@ export const api = {
     try {
       return await invoke<string>("ai_ask_inbox", { query });
     } catch {
-      return `(${mock.aiProfile.name} engine) Here's what I found across your mailbox for: "${query}". Connect a model in Settings — then run the desktop app — to enable live answers.`;
+      return `(${mockAiProfile.name} engine) Here's what I found across your mailbox for: "${query}". Connect a model in Settings — then run the desktop app — to enable live answers.`;
     }
   },
 
@@ -310,7 +327,7 @@ export const api = {
     try {
       return await invoke<string>("queue_send", { ...args });
     } catch {
-      return `preview-${Date.now()}`; // browser preview
+      return `preview-${dayjs().valueOf()}`; // browser preview
     }
   },
 

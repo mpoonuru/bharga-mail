@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApp } from "@/store";
-import { api } from "@/lib/bridge";
+import { api, runtimeMode } from "@/lib/bridge";
 import { AccountForm } from "@/components/AccountForm";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
@@ -8,11 +8,19 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/icons";
 import { SignatureManager } from "@/components/SignatureManager";
 import { AiProviderManager } from "@/components/AiProviderManager";
+import { AboutSettings } from "@/components/settings/AboutSettings";
 import { FONTS, LOCALES } from "@/lib/prefs";
 export function Settings() {
   const { ai, density, setDensity, theme, toggleTheme, setPrivacy, saveAi, connectGmail, connectMicrosoft, font, locale, setFont, setLocale, groupConversations, setGroupConversations, highlights, setHighlights, autoOrganize, setAutoOrganize, accounts, load, removeAccount } = useApp();
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [editAccount, setEditAccount] = useState<{ id: string; initial: Partial<import("@/lib/bridge").ImapAccountInput> } | null>(null);
+  const [appVersion, setAppVersion] = useState(__APP_VERSION__);
+
+  useEffect(() => {
+    let active = true;
+    void api.getAppVersion().then((version) => { if (active) setAppVersion(version); });
+    return () => { active = false; };
+  }, []);
 
   async function openEdit(id: string) {
     const initial = await api.getImapAccount(id);
@@ -218,15 +226,7 @@ export function Settings() {
         {acctStatus && <p className="sub" style={{ marginTop: 10 }}>{acctStatus}</p>}
       </div>
 
-      <p className="sub" style={{ fontWeight: 600, color: "var(--text-2)", marginBottom: 8, marginTop: 18 }}>About</p>
-      <div className="card">
-        <div className="setting-row">
-          <div className="info"><b>Bharga Mail</b><p>AI-native email client — your mail, your model, your machine. Version 0.1.0.</p></div>
-        </div>
-        <div className="setting-row">
-          <div className="info"><b>Built by</b><p>Arjun P</p></div>
-        </div>
-      </div>
+      <AboutSettings version={appVersion} runtime={runtimeMode()} />
     </>
   );
 }

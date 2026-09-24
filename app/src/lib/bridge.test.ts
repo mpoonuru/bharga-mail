@@ -1,8 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { api } from "@/lib/bridge";
+import { api, runtimeMode } from "@/lib/bridge";
 
 // Outside Tauri, the bridge falls back to seed data — verify those paths.
 describe("bridge fallbacks (non-Tauri)", () => {
+  it("reports the package version in browser preview", async () => {
+    expect(await api.getAppVersion()).toBe("0.1.3");
+  });
+
+  it("identifies the browser runtime as preview", () => {
+    expect(runtimeMode()).toBe("preview");
+  });
+
   it("listThreads returns seed threads", async () => {
     const threads = await api.listThreads();
     expect(threads.length).toBeGreaterThan(0);

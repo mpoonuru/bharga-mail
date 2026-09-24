@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 // A unique id stamped into every build. It is baked into the JS bundle as the
@@ -11,6 +12,7 @@ import path from "node:path";
 // This is the standard "stale deploy" guard — it eliminates the cached-shell
 // problem without fragile cache-directory deletion.
 const BUILD_ID = randomBytes(8).toString("hex");
+const packageJson = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string };
 
 // Vite 8 + React 19 + Tailwind v4. Tauri expects a fixed port and no auto-clearing.
 export default defineConfig({
@@ -27,7 +29,10 @@ export default defineConfig({
       },
     },
   ],
-  define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
+  define: {
+    __APP_VERSION__: JSON.stringify(packageJson.version),
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
+  },
   resolve: { alias: { "@": path.resolve(__dirname, "src") } },
   clearScreen: false,
   server: { port: 1420, strictPort: true },
