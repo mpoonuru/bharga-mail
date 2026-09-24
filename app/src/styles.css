@@ -80,6 +80,15 @@
     letter-spacing: -0.01em;
   }
   button { font-family: var(--font); cursor: pointer; }
+  :is(button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  :is(button.danger, .danger[role="button"], .provider-remove):focus-visible {
+    outline-color: var(--danger);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 16%, transparent);
+  }
   ::-webkit-scrollbar { width: 10px; }
   ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
 }
@@ -99,7 +108,7 @@
   .topbar-ctx::before { content: "·"; @apply pr-1.5; }
   .topbar-right { @apply flex items-center gap-1.5 shrink-0; }
   .topbar-msg { @apply text-[12px] text-text-3 truncate max-w-[160px]; }
-  .topbar-btn { @apply inline-flex items-center gap-1.5 rounded-lg border border-border-2 px-2.5 py-1 text-[12px] text-text-2 bg-transparent cursor-pointer; transition: var(--motion-standard) var(--ease); }
+  .topbar-btn { @apply inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border-2 px-2.5 py-1 text-[12px] text-text-2 bg-transparent cursor-pointer; transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
   .topbar-btn:hover:not(:disabled) { @apply text-text bg-surface; }
   .topbar-btn:disabled { @apply opacity-60 cursor-default; }
   /* Slim sidebar top: just the collapse/expand toggle (identity moved to top bar). */
@@ -120,7 +129,7 @@
   .tip-top { @apply bottom-full left-1/2 -translate-x-1/2 mb-2; }
   .tip-bottom { @apply top-full left-1/2 -translate-x-1/2 mt-2; }
   /* Collapse/expand control for the sidebar. */
-  .rail-toggle { @apply shrink-0 w-7 h-7 rounded-lg inline-flex items-center justify-center text-text-3 border-none bg-transparent cursor-pointer; transition: var(--motion-standard) var(--ease); }
+  .rail-toggle { @apply shrink-0 w-8 h-8 rounded-lg inline-flex items-center justify-center text-text-3 border-none bg-transparent cursor-pointer; transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
   .rail-toggle:hover { @apply text-text bg-surface; }
   .rail-expand { @apply self-center mb-1.5; }
   /* min-h-0 is essential: as grid items these default to min-height:auto, which
@@ -149,7 +158,7 @@
   .brand .acct { @apply text-[11px] text-text-3 overflow-hidden text-ellipsis whitespace-nowrap max-w-[150px]; }
   .compose-btn { @apply mt-1 mx-0.5 mb-2.5 p-2.5 rounded-[11px] border-none bg-accent text-white text-[13px] font-semibold flex items-center justify-center gap-2; transition: var(--motion-standard) var(--ease); }
   .compose-btn:hover { filter: brightness(1.08); }
-  .nav-item { @apply flex items-center gap-[11px] px-[11px] py-2 rounded-[10px] text-text-2 text-[13.5px] cursor-pointer border-none bg-transparent w-full text-left; transition: var(--motion-standard) var(--ease); }
+  .nav-item { @apply flex min-h-8 items-center gap-[11px] px-[11px] py-2 rounded-[10px] text-text-2 text-[13.5px] cursor-pointer border-none bg-transparent w-full text-left; transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
   .nav-item:hover { @apply bg-surface text-text; }
   .nav-item.active { @apply text-text; background: var(--accent-soft); font-weight: 550; }
   .nav-item .ic { @apply w-4 text-center inline-flex items-center; opacity: .85; }
@@ -175,18 +184,19 @@
   .acct-reorder { @apply relative; }
   .acct-row { @apply relative flex items-center; }
   .acct-row .acct-main { @apply flex-1 min-w-0; }
-  /* Drag handle — appears on hover, only it starts a reorder (dragListener off). */
-  .acct-drag { @apply shrink-0 inline-flex items-center justify-center w-[15px] self-stretch text-text-3 opacity-0 cursor-grab bg-transparent border-none; touch-action: none; transition: var(--motion-standard) var(--ease); }
-  .acct-row:hover .acct-drag { @apply opacity-50; }
+  /* Edit-order mode is explicit, so its handles remain visible without hover. */
+  .acct-drag { @apply shrink-0 inline-flex min-h-8 w-6 items-center justify-center self-stretch text-text-3 opacity-60 cursor-grab bg-transparent border-none; touch-action: none; transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
+  .acct-row:hover .acct-drag { @apply opacity-80; }
   .acct-drag:hover { @apply opacity-100 text-text; }
   .acct-drag:active { @apply cursor-grabbing; }
-  .acct-more { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 cursor-pointer bg-transparent border-none opacity-0; transition: var(--motion-standard) var(--ease); }
+  .acct-more { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 cursor-pointer bg-transparent border-none opacity-0; transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
   .acct-row:hover .acct-more, .acct-row:focus-within .acct-more { @apply opacity-60; }
   .acct-more:hover, .acct-more.open { @apply opacity-100 text-text bg-surface; }
   .acct-more:disabled { @apply opacity-60 cursor-default; }
   .nav-label-row { @apply flex items-center justify-between; }
-  .order-toggle { @apply border-none bg-transparent text-[10.5px] text-text-3 cursor-pointer rounded-md px-1.5 py-1; transition: color var(--motion-instant) var(--ease), background var(--motion-instant) var(--ease); }
+  .order-toggle { @apply min-h-8 border-none bg-transparent text-[10.5px] text-text-3 cursor-pointer rounded-md px-1.5 py-1; transition: color var(--motion-instant) var(--ease), background-color var(--motion-instant) var(--ease); }
   .order-toggle:hover, .order-toggle:focus-visible, .order-toggle[aria-pressed="true"] { @apply text-text bg-surface; }
+  .account-order-instructions { @apply px-2 pb-1 text-[10.5px] leading-[1.35] text-text-3; }
   /* Folder list nested under an account, with a tree connector line. */
   .folder-disclosure {
     display: grid;
@@ -295,6 +305,12 @@
   /* Mail row — Design B: squircle avatar + sender/time, subject, AI summary line. */
   .mail { @apply flex gap-3 rounded-xl cursor-pointer border border-transparent; padding: var(--row-pad); transition: background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), color var(--motion-standard) var(--ease); background: transparent; }
   .mail:hover { @apply bg-surface; }
+  .mail:focus-visible, .convo-kid:focus-visible {
+    outline-color: var(--accent);
+    border-color: var(--accent);
+    background-color: var(--accent-soft);
+    background-image: none;
+  }
   /* Selected row carries the ambient "itopup" design over its surface. */
   .mail.sel { @apply border-border-2; background-color: var(--surface); background-image: var(--ambient); }
   .mail-av { @apply shrink-0 w-[38px] h-[38px] flex items-center justify-center text-[14px] font-semibold select-none; border-radius: 13px; }
@@ -317,7 +333,7 @@
   .mail-replyglyph { @apply text-text-3 shrink-0; }
   .mail .prev { @apply text-[12px] text-text-3 leading-[1.35] line-clamp-1; }
   /* Conversation count badge + disclosure chevron (Apple-Mail accordion). */
-  .convo-toggle { @apply shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-[2px] border-none cursor-pointer text-[11px] font-semibold; background: var(--accent-soft); color: var(--accent); transition: var(--motion-instant) var(--ease); }
+  .convo-toggle { @apply shrink-0 inline-flex min-h-6 min-w-6 items-center justify-center gap-1 rounded-md px-1.5 py-[2px] border-none cursor-pointer text-[11px] font-semibold; background: var(--accent-soft); color: var(--accent); transition: color var(--motion-instant) var(--ease), background-color var(--motion-instant) var(--ease), border-color var(--motion-instant) var(--ease), opacity var(--motion-instant) var(--ease); }
   .convo-toggle:hover { background: color-mix(in oklch, var(--accent) 22%, transparent); }
   .convo-count { @apply leading-none; }
   /* Expanded accordion: child messages, indented under their header with a spine. */
@@ -372,8 +388,8 @@
   .stage-inner { @apply w-full max-w-[920px] mx-auto pt-[14px] px-6 pb-[120px] min-w-0; }
   .stage-bar { @apply sticky top-0 flex items-center gap-2 pt-[14px] pb-2.5 z-[5]; background: linear-gradient(var(--bg), var(--bg) 70%, transparent); }
   .stage-bar .spacer { @apply flex-1; }
-  .iconbtn { @apply min-w-[32px] h-8 px-[9px] rounded-[9px] border border-border bg-surface text-text-2 inline-flex items-center justify-center gap-1.5 text-[14px]; transition: var(--motion-standard) var(--ease); }
-  .iconbtn:hover { @apply text-text border-border-2; transform: translateY(-1px); }
+  .iconbtn { @apply min-w-[32px] h-8 px-[9px] rounded-[9px] border border-border bg-surface text-text-2 inline-flex items-center justify-center gap-1.5 text-[14px]; transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
+  .iconbtn:hover { @apply text-text border-border-2; }
   .iconbtn:disabled { @apply opacity-40 cursor-default; transform: none; }
   /* Text-size stepper (A− A A+) — joined segmented control. */
   .font-step { @apply inline-flex items-center; }
@@ -655,11 +671,7 @@
   /* ---- Modal dialog (ported from iTopup Dialog) ---- */
   .modal-overlay { @apply fixed inset-0 z-50 flex items-start justify-center p-6 pt-[10vh]; background: rgba(0,0,0,0.45); backdrop-filter: blur(6px); }
   .modal-panel { @apply w-full p-0 overflow-hidden; max-height: 85vh; display: flex; flex-direction: column; }
-  .modal-panel:focus-visible,
-  .modal-panel :is(button, a, input, select, textarea, [tabindex]):focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
+  .modal-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   /* Solid surface + ambient design (not the muddy translucent glass). */
   .modal-panel.glass-card { background-color: var(--surface); background-image: var(--ambient); backdrop-filter: none; -webkit-backdrop-filter: none; }
   .modal-head { @apply flex items-center justify-between px-5 py-3.5 border-b border-border; }
@@ -685,14 +697,14 @@
   .af-field { @apply flex flex-col min-w-0; }
   .af-field.af-full { grid-column: 1 / -1; }
   .af-field label { @apply text-[11px] text-text-3 mb-1; }
-  .af-input { @apply w-full bg-surface border border-border-2 rounded-lg px-2.5 py-2 text-[13px] text-text outline-none; font-family: var(--font); }
+  .af-input { @apply min-h-8 w-full bg-surface border border-border-2 rounded-lg px-2.5 py-2 text-[13px] text-text; font-family: var(--font); }
   .af-input:focus { @apply border-accent; box-shadow: 0 0 0 3px var(--accent-soft); }
   .af-check { @apply flex items-center gap-2 text-[12px] text-text-2 mt-3; }
   .af-status { @apply flex items-center gap-2 mt-4 px-3 py-2 rounded-lg text-[12.5px]; background: var(--accent-soft); color: var(--text); }
   .af-status.err { background: oklch(0.71 0.17 18 / 0.14); color: var(--danger); }
   .af-actions { @apply flex items-center justify-between gap-3 mt-4; }
   .af-actions-right { @apply flex items-center gap-2; }
-  .af-btn { @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-[10px] text-[13px] font-medium border cursor-pointer; pointer-events: auto; transition: var(--motion-standard) var(--ease); }
+  .af-btn { @apply inline-flex min-h-8 items-center gap-2 px-3.5 py-2 rounded-[10px] text-[13px] font-medium border cursor-pointer; pointer-events: auto; transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
   .af-btn:disabled { @apply opacity-50 cursor-not-allowed; }
   .af-btn.ghost { @apply border-border-2 bg-surface text-text-2; }
   .af-btn.ghost:not(:disabled):hover { @apply text-text border-accent; }
@@ -718,14 +730,14 @@
   .provider-status { @apply text-[11px] text-text-3; }
   .provider-status.ready { @apply text-good; }
   .provider-remove { @apply grid h-8 w-8 place-items-center rounded-lg border border-transparent bg-transparent text-text-3; }
-  .provider-remove:hover, .provider-remove:focus-visible { @apply border-danger text-danger outline-none; background: color-mix(in srgb, var(--danger) 8%, transparent); }
+  .provider-remove:hover, .provider-remove:focus-visible { @apply border-danger text-danger; background: color-mix(in srgb, var(--danger) 8%, transparent); }
   .provider-fields { @apply mt-3 grid gap-2.5; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
   .provider-fields label { @apply grid gap-1 text-[10.5px] font-medium uppercase tracking-[.04em] text-text-3; }
   .provider-fields input { @apply w-full rounded-lg border border-border-2 bg-bg-2 px-2.5 py-2 text-[12.5px] normal-case tracking-normal text-text outline-none; }
   .provider-fields input:focus { @apply border-accent; box-shadow: 0 0 0 3px var(--accent-soft); }
   .provider-roles { @apply mt-3 flex flex-wrap gap-1.5; }
   .provider-roles button { @apply rounded-full border border-border bg-transparent px-2.5 py-1.5 text-[11px] text-text-3; }
-  .provider-roles button:hover, .provider-roles button:focus-visible { @apply border-accent text-text outline-none; }
+  .provider-roles button:hover, .provider-roles button:focus-visible { @apply border-accent text-text; }
   .provider-roles button.selected { @apply border-transparent text-white; background: var(--accent); }
   .provider-card-foot { @apply mt-3 flex min-h-9 items-center justify-end gap-3; }
   .provider-message { @apply mr-auto text-[11.5px]; }
@@ -766,6 +778,12 @@
   }
 }
 @media (max-width: 640px) {
+  :is(.topbar-btn, .rail-toggle, .compose-btn, .nav-item, .order-toggle, .acct-drag, .acct-more, .folder-pin, .folder-more, .mail, .convo-kid, .convo-toggle, .iconbtn, .reply-action, .af-btn, .ctx-menu button, .menu button, .ta-select-btn) {
+    min-height: 44px;
+  }
+  :is(.rail-toggle, .acct-drag, .acct-more, .folder-pin, .folder-more, .convo-toggle, .iconbtn) {
+    min-width: 44px;
+  }
   .provider-manager-head { align-items: stretch; flex-direction: column; }
   .provider-card-head { grid-template-columns: auto minmax(0, 1fr) auto; }
   .provider-status { display: none; }

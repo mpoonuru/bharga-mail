@@ -123,6 +123,7 @@ function AccountRow({ a, orderEditing, reordering, setReordering }: { a: Account
             className="acct-drag"
             title="Drag to reorder"
             aria-label={`Drag ${a.displayName?.trim() || a.email} to reorder`}
+            aria-describedby="account-order-instructions"
             onPointerDown={(e) => activateAccountReorder(
               () => setReordering(true),
               () => controls.start(e),
@@ -349,22 +350,29 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
         {accounts.length > 0 && (
           <>
             {!rail && (
-              <div className="nav-label nav-label-row">
-                <span>Accounts</span>
-                {accounts.length > 1 && (
-                  <button
-                    className="order-toggle"
-                    type="button"
-                    aria-pressed={orderEditing}
-                    onClick={() => {
-                      setOrderEditing((active) => !active);
-                      setReordering(false);
-                    }}
-                  >
-                    {orderEditing ? "Done" : "Edit order"}
-                  </button>
+              <>
+                <div className="nav-label nav-label-row">
+                  <span>Accounts</span>
+                  {accounts.length > 1 && (
+                    <button
+                      className="order-toggle"
+                      type="button"
+                      aria-pressed={orderEditing}
+                      onClick={() => {
+                        setOrderEditing((active) => !active);
+                        setReordering(false);
+                      }}
+                    >
+                      {orderEditing ? "Done" : "Edit order"}
+                    </button>
+                  )}
+                </div>
+                {orderEditing && (
+                  <p className="account-order-instructions" id="account-order-instructions">
+                    Drag the handles to reorder accounts.
+                  </p>
                 )}
-              </div>
+              </>
             )}
             {accounts.length > 1 && (
               <button

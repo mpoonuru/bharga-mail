@@ -46,6 +46,8 @@ describe("routine motion contracts", () => {
     const buttons = host.querySelectorAll<HTMLButtonElement>("button");
     expect(buttons).toHaveLength(2);
     act(() => {
+      buttons[0].focus();
+      buttons[1].focus();
       buttons[0].click();
       buttons[1].click();
     });

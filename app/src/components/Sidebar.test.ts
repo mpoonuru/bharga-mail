@@ -50,8 +50,16 @@ describe("mail account disclosure motion", () => {
     if (!(editOrderButton instanceof HTMLButtonElement)) throw new Error("Edit order button not found");
     act(() => editOrderButton.click());
 
-    expect(container.querySelectorAll(".acct-drag")).toHaveLength(2);
+    const instructions = container.querySelector<HTMLElement>("#account-order-instructions");
+    const dragHandles = [...container.querySelectorAll<HTMLButtonElement>(".acct-drag")];
+    expect(instructions?.textContent).toContain("Drag the handles");
+    expect(dragHandles).toHaveLength(2);
+    expect(dragHandles.every((handle) => handle.getAttribute("aria-describedby") === "account-order-instructions")).toBe(true);
     expect(editOrderButton.textContent).toContain("Done");
+
+    act(() => editOrderButton.click());
+    expect(container.querySelector("#account-order-instructions")).toBeNull();
+    expect(container.querySelectorAll(".acct-drag")).toHaveLength(0);
     act(() => root.unmount());
   });
 });
