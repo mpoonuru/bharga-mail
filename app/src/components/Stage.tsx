@@ -20,6 +20,7 @@ import { senderTrust } from "@/lib/senderTrust";
 import { messageThreat } from "@/lib/threat";
 import { processEmail } from "@/lib/emailHtml";
 import { accountAddress, replyRecipients } from "@/lib/accountIdentity";
+import { THREAD_CROSSFADE } from "@/lib/motion";
 
 /**
  * Render an email body with the standard mail-client pipeline:
@@ -248,8 +249,8 @@ export function Stage() {
 
   return (
     <section className="stage">
-      <AnimatePresence mode="wait">
-        <motion.div className="stage-inner" key={thread.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}>
+      <AnimatePresence initial={false}>
+        <motion.div className="stage-inner" key={thread.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={THREAD_CROSSFADE}>
           <div className="stage-bar" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
             <IconButton icon="focus" title="Focus mode (F)" onClick={toggleFocus} />
             <IconButton icon="reply" title="Reply" onClick={() => composerRef.current?.open("reply")} />
@@ -283,7 +284,7 @@ export function Stage() {
           <h1 className="subject">{thread.subject}</h1>
 
           {thread.aiSummary && (
-            <motion.div className="ai-summary" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.05, type: "spring", stiffness: 260, damping: 24 }}>
+            <div className="ai-summary">
               <div className="lbl"><Icon name="ai" size={14} weight="duotone" /> AI Summary · by your model</div>
               <p>{thread.aiSummary}</p>
               <div className="chips">
@@ -291,7 +292,7 @@ export function Stage() {
                 {thread.labels.includes("meeting") && <Chip icon="schedule" onClick={() => setView("calendar")}>Schedule from thread</Chip>}
                 <Chip icon="tasks" onClick={makeTask}>Create task</Chip>
               </div>
-            </motion.div>
+            </div>
           )}
 
           {/* Conversation: the message you clicked is on top; the rest of the chain
@@ -303,7 +304,7 @@ export function Stage() {
             }
             return whenMs(b.when) - whenMs(a.when);
           }).map((m, i) => (
-            <motion.div className={`msg${i > 0 ? " reply" : ""}`} key={m.id} style={i > 0 ? { marginLeft: Math.min(i, 5) * 30 } : undefined} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + i * 0.06, ease: [0.2, 0.8, 0.2, 1] }}>
+            <div className={`msg${i > 0 ? " reply" : ""}`} key={m.id} style={i > 0 ? { marginLeft: Math.min(i, 5) * 30 } : undefined}>
               {i > 0 && <span className="reply-arrow" title="Earlier message"><Icon name="reply" size={13} weight="duotone" /></span>}
               {(() => { const c = avatarColor(m.from.address || m.from.name); return (
               <div className="avatar" style={{ background: c.bg, color: c.fg, boxShadow: `0 0 0 1.5px ${c.ring}` }}>{initials(m.from.name || m.from.address)}</div>
@@ -384,7 +385,7 @@ export function Stage() {
                   </div>
                 )}
               </div>
-            </motion.div>
+            </div>
           ))}
 
           <Composer ref={composerRef} thread={thread} />

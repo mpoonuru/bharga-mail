@@ -9,6 +9,7 @@ import { Attachments, type Attach } from "@/components/ui/Attachments";
 import { SendLater } from "@/components/ui/SendLater";
 import { RecipientChips, type Contact } from "@/components/ui/RecipientChips";
 import { Select } from "@/components/ui/Select";
+import { THREAD_CROSSFADE } from "@/lib/motion";
 
 // Full-screen new-message composer (opened from the sidebar or the "C" hotkey).
 export function Compose() {
@@ -104,7 +105,7 @@ export function Compose() {
 
   return (
     <section className="stage">
-      <motion.div className="stage-inner" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
+      <motion.div className="stage-inner" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={THREAD_CROSSFADE}>
         <div className="stage-bar">
           <IconButton icon="close" title="Close" onClick={() => setCompose(false)} />
           <div className="spacer" />
