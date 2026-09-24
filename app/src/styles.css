@@ -88,7 +88,7 @@
   /* ---- App shell ---- */
   /* Window shell: a full-width title bar on top, the column grid filling the rest. */
   .shell { @apply flex flex-col h-screen min-h-0; }
-  .app { @apply grid flex-1 min-h-0; grid-template-columns: 234px 366px 1fr; grid-template-rows: minmax(0, 1fr); transition: grid-template-columns .4s var(--ease); }
+  .app { @apply grid flex-1 min-h-0; grid-template-columns: 234px 366px 1fr; grid-template-rows: minmax(0, 1fr); transition: grid-template-columns var(--motion-structural) var(--ease); }
   /* The solid top bar — whole strip drags the window; left padding clears the
      macOS traffic-light controls in the overlay title bar. */
   .topbar { @apply flex items-center justify-between gap-3 h-[44px] shrink-0 border-b border-border bg-bg-2 pr-3 select-none; padding-left: 80px; background-image: var(--ambient); }
@@ -99,7 +99,7 @@
   .topbar-ctx::before { content: "·"; @apply pr-1.5; }
   .topbar-right { @apply flex items-center gap-1.5 shrink-0; }
   .topbar-msg { @apply text-[12px] text-text-3 truncate max-w-[160px]; }
-  .topbar-btn { @apply inline-flex items-center gap-1.5 rounded-lg border border-border-2 px-2.5 py-1 text-[12px] text-text-2 bg-transparent cursor-pointer; transition: .14s var(--ease); }
+  .topbar-btn { @apply inline-flex items-center gap-1.5 rounded-lg border border-border-2 px-2.5 py-1 text-[12px] text-text-2 bg-transparent cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .topbar-btn:hover:not(:disabled) { @apply text-text bg-surface; }
   .topbar-btn:disabled { @apply opacity-60 cursor-default; }
   /* Slim sidebar top: just the collapse/expand toggle (identity moved to top bar). */
@@ -109,18 +109,18 @@
   .app.compose-only .stage { @apply hidden; }
   /* Draggable column dividers between sidebar | list | reading pane. */
   .splitter { @apply absolute top-0 bottom-0 z-20 w-[9px] -translate-x-1/2; cursor: col-resize; }
-  .splitter::after { content: ""; @apply absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2; background: transparent; transition: background .12s var(--ease); }
+  .splitter::after { content: ""; @apply absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2; background: transparent; transition: background var(--motion-instant) var(--ease); }
   .splitter:hover::after, .splitter.dragging::after { background: var(--accent); width: 2px; }
   /* Custom tooltip (collapsed sidebar icons) — glass bubble, pure CSS hover. */
   .tip-wrap { @apply relative inline-flex; }
   .tip-wrap.tip-block { @apply block; }
-  .tip { @apply absolute z-[80] px-2.5 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap pointer-events-none opacity-0; background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--border-2); box-shadow: var(--shadow); color: var(--text); transition: opacity .12s var(--ease); }
+  .tip { @apply absolute z-[80] px-2.5 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap pointer-events-none opacity-0; background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--border-2); box-shadow: var(--shadow); color: var(--text); transition: opacity var(--motion-instant) var(--ease); }
   .tip-wrap:hover .tip, .tip-wrap:focus-within .tip { @apply opacity-100; }
   .tip-right { @apply left-full top-1/2 -translate-y-1/2 ml-2; }
   .tip-top { @apply bottom-full left-1/2 -translate-x-1/2 mb-2; }
   .tip-bottom { @apply top-full left-1/2 -translate-x-1/2 mt-2; }
   /* Collapse/expand control for the sidebar. */
-  .rail-toggle { @apply shrink-0 w-7 h-7 rounded-lg inline-flex items-center justify-center text-text-3 border-none bg-transparent cursor-pointer; transition: .15s var(--ease); }
+  .rail-toggle { @apply shrink-0 w-7 h-7 rounded-lg inline-flex items-center justify-center text-text-3 border-none bg-transparent cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .rail-toggle:hover { @apply text-text bg-surface; }
   .rail-expand { @apply self-center mb-1.5; }
   /* min-h-0 is essential: as grid items these default to min-height:auto, which
@@ -147,9 +147,9 @@
   .logo { @apply w-[34px] h-[34px] shrink-0 object-cover rounded-[10px]; box-shadow: 0 4px 12px oklch(0.30 0.08 250 / 0.35); }
   .brand b { @apply text-[14px]; font-weight: 650; }
   .brand .acct { @apply text-[11px] text-text-3 overflow-hidden text-ellipsis whitespace-nowrap max-w-[150px]; }
-  .compose-btn { @apply mt-1 mx-0.5 mb-2.5 p-2.5 rounded-[11px] border-none bg-accent text-white text-[13px] font-semibold flex items-center justify-center gap-2; transition: .15s var(--ease); }
+  .compose-btn { @apply mt-1 mx-0.5 mb-2.5 p-2.5 rounded-[11px] border-none bg-accent text-white text-[13px] font-semibold flex items-center justify-center gap-2; transition: var(--motion-standard) var(--ease); }
   .compose-btn:hover { filter: brightness(1.08); }
-  .nav-item { @apply flex items-center gap-[11px] px-[11px] py-2 rounded-[10px] text-text-2 text-[13.5px] cursor-pointer border-none bg-transparent w-full text-left; transition: .14s var(--ease); }
+  .nav-item { @apply flex items-center gap-[11px] px-[11px] py-2 rounded-[10px] text-text-2 text-[13.5px] cursor-pointer border-none bg-transparent w-full text-left; transition: var(--motion-standard) var(--ease); }
   .nav-item:hover { @apply bg-surface text-text; }
   .nav-item.active { @apply text-text; background: var(--accent-soft); font-weight: 550; }
   .nav-item .ic { @apply w-4 text-center inline-flex items-center; opacity: .85; }
@@ -161,7 +161,7 @@
     transform-origin: center;
     transition:
       transform var(--account-caret-duration, 160ms) var(--account-disclosure-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
-      opacity 120ms ease-out;
+      opacity var(--motion-instant) var(--account-disclosure-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
     will-change: transform;
   }
   .acct-main:hover .acct-caret { @apply opacity-80; }
@@ -176,11 +176,11 @@
   .acct-row { @apply relative flex items-center; }
   .acct-row .acct-main { @apply flex-1 min-w-0; }
   /* Drag handle — appears on hover, only it starts a reorder (dragListener off). */
-  .acct-drag { @apply shrink-0 inline-flex items-center justify-center w-[15px] self-stretch text-text-3 opacity-0 cursor-grab bg-transparent border-none; touch-action: none; transition: .14s var(--ease); }
+  .acct-drag { @apply shrink-0 inline-flex items-center justify-center w-[15px] self-stretch text-text-3 opacity-0 cursor-grab bg-transparent border-none; touch-action: none; transition: var(--motion-standard) var(--ease); }
   .acct-row:hover .acct-drag { @apply opacity-50; }
   .acct-drag:hover { @apply opacity-100 text-text; }
   .acct-drag:active { @apply cursor-grabbing; }
-  .acct-more { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 cursor-pointer bg-transparent border-none opacity-0; transition: .14s var(--ease); }
+  .acct-more { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 cursor-pointer bg-transparent border-none opacity-0; transition: var(--motion-standard) var(--ease); }
   .acct-row:hover .acct-more, .acct-row:focus-within .acct-more { @apply opacity-60; }
   .acct-more:hover, .acct-more.open { @apply opacity-100 text-text bg-surface; }
   .acct-more:disabled { @apply opacity-60 cursor-default; }
@@ -206,7 +206,7 @@
     overflow: hidden;
   }
   .folder-disclosure.expanded .folder-disclosure-clip {
-    animation: account-disclosure-overflow var(--account-disclosure-duration, 180ms) step-end forwards;
+    animation: account-disclosure-overflow var(--account-disclosure-duration, 160ms) step-end forwards;
   }
   @keyframes account-disclosure-overflow {
     to { overflow: visible; }
@@ -217,19 +217,19 @@
   .folder-item { @apply py-[7px] text-[12.5px]; }
   .folder-item .ic { @apply w-[15px]; }
   /* Pin toggle on folders + pinned-section rows. */
-  .folder-pin { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] rounded-md text-text-3 opacity-0 bg-transparent border-none cursor-pointer; transition: .14s var(--ease); }
+  .folder-pin { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] rounded-md text-text-3 opacity-0 bg-transparent border-none cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .folder-row:hover .folder-pin { @apply opacity-60; }
   .folder-pin:hover { @apply opacity-100 text-text bg-surface; }
   .folder-pin.pinned { @apply opacity-100; color: var(--accent); }
   /* Hover "⋯" button — the visible entry point to folder management. */
-  .folder-more { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] rounded-md text-text-3 opacity-0 bg-transparent border-none cursor-pointer; transition: .14s var(--ease); }
+  .folder-more { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] rounded-md text-text-3 opacity-0 bg-transparent border-none cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .folder-row:hover .folder-more { @apply opacity-70; }
   .folder-more:hover, .folder-more.open { @apply opacity-100 text-text bg-surface; }
   /* Full-viewport transparent catcher so any click outside closes the menu. */
   .folder-menu-backdrop { @apply fixed inset-0 z-[69]; }
   /* Folder management: create / rename inline input, per-folder menu. */
   .folder-edit { @apply flex-1 min-w-0 bg-surface border border-accent rounded-md px-2 py-[5px] text-[12.5px] text-text outline-none; font-family: var(--font); }
-  .folder-new { @apply flex items-center gap-[11px] px-[11px] py-[6px] mt-0.5 rounded-[9px] text-text-3 text-[12px] bg-transparent border-none cursor-pointer w-full text-left; transition: .14s var(--ease); }
+  .folder-new { @apply flex items-center gap-[11px] px-[11px] py-[6px] mt-0.5 rounded-[9px] text-text-3 text-[12px] bg-transparent border-none cursor-pointer w-full text-left; transition: var(--motion-standard) var(--ease); }
   .folder-new:hover { @apply text-text bg-surface; }
   .folder-new .ic { @apply w-[15px] inline-flex justify-center; }
   .folder-menu { @apply absolute right-1 top-full z-[70] mt-0.5 min-w-[140px] rounded-lg border border-border-2 py-1 flex flex-col; background: var(--bg-2); box-shadow: var(--shadow); }
@@ -239,7 +239,7 @@
   .folder-menu-sep { @apply my-1 mx-2 border-t border-border-2; }
   /* Auto-update banner (bottom-right). */
   .update-banner { @apply fixed bottom-4 right-4 z-[100] flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-[12.5px] text-text border border-border-2; background: var(--bg-2); box-shadow: var(--shadow); }
-  .update-btn { @apply ml-1 px-2.5 py-1 rounded-lg text-[12px] font-medium text-white border-none cursor-pointer; background: var(--accent); transition: .14s var(--ease); }
+  .update-btn { @apply ml-1 px-2.5 py-1 rounded-lg text-[12px] font-medium text-white border-none cursor-pointer; background: var(--accent); transition: var(--motion-standard) var(--ease); }
   .update-btn:hover:not(:disabled) { filter: brightness(1.08); }
   .update-btn:disabled { @apply opacity-70 cursor-default; }
   .update-x { @apply text-text-3 bg-transparent border-none cursor-pointer inline-flex items-center p-0.5; }
@@ -247,7 +247,7 @@
   .folder-err { @apply text-[11px] px-2 py-1 truncate; color: var(--danger); }
   .nav-label { @apply text-[10.5px] uppercase text-text-3 pt-4 px-[11px] pb-1.5 font-semibold; letter-spacing: .09em; }
   .sidebar .spacer { @apply flex-1; }
-  .model-chip { @apply mt-2 px-[11px] py-2.5 border border-border rounded-xl bg-surface cursor-pointer text-left; transition: .15s var(--ease); }
+  .model-chip { @apply mt-2 px-[11px] py-2.5 border border-border rounded-xl bg-surface cursor-pointer text-left; transition: var(--motion-standard) var(--ease); }
   .model-chip:hover { @apply border-border-2; }
   .model-chip .row { @apply flex items-center gap-2; }
   .dot { @apply w-[7px] h-[7px] rounded-full; background: var(--good); box-shadow: 0 0 8px var(--good); }
@@ -273,7 +273,7 @@
   .smart-chips { @apply mx-2.5 mt-1.5 mb-0.5 flex items-center gap-1.5 overflow-x-auto pb-1; scrollbar-width: none; }
   .smart-chips::-webkit-scrollbar { display: none; }
   .smart-chips-lead { @apply inline-flex items-center shrink-0 pr-0.5; color: var(--accent); }
-  .chip { @apply shrink-0 inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-full border border-border bg-bg-2 text-text-2 text-[12px] font-medium cursor-pointer whitespace-nowrap; transition: .14s var(--ease); }
+  .chip { @apply shrink-0 inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-full border border-border bg-bg-2 text-text-2 text-[12px] font-medium cursor-pointer whitespace-nowrap; transition: var(--motion-standard) var(--ease); }
   .chip:hover { @apply bg-surface text-text border-border-2; }
   .chip.on { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 40%, transparent); background: var(--accent-soft); font-weight: 600; }
   /* Security alert chip (possible phishing). */
@@ -285,10 +285,10 @@
   .chip-count { @apply text-[11px] text-text-3 tabular-nums; }
   .chip.on .chip-count { color: color-mix(in oklch, var(--accent) 80%, var(--text)); }
   .chip-new { @apply text-[10px] font-semibold leading-none text-white px-1.5 py-0.5 rounded-full; background: var(--accent); }
-  .chip-clear { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] p-0 rounded-full border border-border bg-bg-2 text-text-3 cursor-pointer; transition: .14s var(--ease); }
+  .chip-clear { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] p-0 rounded-full border border-border bg-bg-2 text-text-3 cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .chip-clear:hover { @apply text-text bg-surface border-border-2; }
   .list { @apply flex-1 min-h-0 overflow-y-auto px-2.5 pt-1 pb-4 flex flex-col; gap: var(--gap); scroll-behavior: smooth; }
-  .load-older { @apply mx-auto mt-2 mb-3 px-4 py-1.5 rounded-full text-[12px] font-medium text-text-2 border border-border bg-bg-2 cursor-pointer shrink-0; transition: .14s var(--ease); }
+  .load-older { @apply mx-auto mt-2 mb-3 px-4 py-1.5 rounded-full text-[12px] font-medium text-text-2 border border-border bg-bg-2 cursor-pointer shrink-0; transition: var(--motion-standard) var(--ease); }
   .load-older:hover:not(:disabled) { @apply text-text border-border-2 bg-surface; }
   .load-older:disabled { @apply opacity-60 cursor-default; }
   .load-older--done { @apply text-text-3 border-transparent bg-transparent cursor-default; }
@@ -317,13 +317,13 @@
   .mail-replyglyph { @apply text-text-3 shrink-0; }
   .mail .prev { @apply text-[12px] text-text-3 leading-[1.35] line-clamp-1; }
   /* Conversation count badge + disclosure chevron (Apple-Mail accordion). */
-  .convo-toggle { @apply shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-[2px] border-none cursor-pointer text-[11px] font-semibold; background: var(--accent-soft); color: var(--accent); transition: .12s var(--ease); }
+  .convo-toggle { @apply shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-[2px] border-none cursor-pointer text-[11px] font-semibold; background: var(--accent-soft); color: var(--accent); transition: var(--motion-instant) var(--ease); }
   .convo-toggle:hover { background: color-mix(in oklch, var(--accent) 22%, transparent); }
   .convo-count { @apply leading-none; }
   /* Expanded accordion: child messages, indented under their header with a spine. */
   .convo.open { @apply rounded-xl; background: color-mix(in oklch, var(--surface) 55%, transparent); }
   .convo-kids { @apply ml-[26px] pl-3 pb-1 flex flex-col gap-0.5; border-left: 1.5px solid var(--border-2); }
-  .convo-kid { @apply flex gap-2.5 items-start px-2 py-[7px] rounded-lg cursor-pointer border border-transparent; transition: .12s var(--ease); }
+  .convo-kid { @apply flex gap-2.5 items-start px-2 py-[7px] rounded-lg cursor-pointer border border-transparent; transition: var(--motion-instant) var(--ease); }
   .convo-kid:hover { @apply bg-surface; }
   .convo-kid.sel { @apply border-border-2; background-color: var(--surface); background-image: var(--ambient); }
   .ck-av { @apply shrink-0 w-7 h-7 flex items-center justify-center text-[11px] font-semibold select-none rounded-[9px]; }
@@ -372,7 +372,7 @@
   .stage-inner { @apply w-full max-w-[920px] mx-auto pt-[14px] px-6 pb-[120px] min-w-0; }
   .stage-bar { @apply sticky top-0 flex items-center gap-2 pt-[14px] pb-2.5 z-[5]; background: linear-gradient(var(--bg), var(--bg) 70%, transparent); }
   .stage-bar .spacer { @apply flex-1; }
-  .iconbtn { @apply min-w-[32px] h-8 px-[9px] rounded-[9px] border border-border bg-surface text-text-2 inline-flex items-center justify-center gap-1.5 text-[14px]; transition: .15s var(--ease); }
+  .iconbtn { @apply min-w-[32px] h-8 px-[9px] rounded-[9px] border border-border bg-surface text-text-2 inline-flex items-center justify-center gap-1.5 text-[14px]; transition: var(--motion-standard) var(--ease); }
   .iconbtn:hover { @apply text-text border-border-2; transform: translateY(-1px); }
   .iconbtn:disabled { @apply opacity-40 cursor-default; transform: none; }
   /* Text-size stepper (A− A A+) — joined segmented control. */
@@ -386,7 +386,7 @@
   .ai-summary { @apply border border-border rounded-card px-4 py-[14px] mb-[22px]; background: var(--accent-soft); }
   /* Reply action bar + recipient fields */
   .reply-bar { @apply flex gap-2 mt-2; }
-  .reply-action { @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-[10px] border border-border-2 bg-surface text-text-2 text-[13px] font-medium; transition: .15s var(--ease); }
+  .reply-action { @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-[10px] border border-border-2 bg-surface text-text-2 text-[13px] font-medium; transition: var(--motion-standard) var(--ease); }
   .reply-action:hover { @apply text-text border-accent; }
   .composer .recip { @apply w-full bg-transparent border-none outline-none text-[13.5px] text-text py-2 border-b border-border; font-family: var(--font); }
   .composer .recip::placeholder { @apply text-text-3; }
@@ -465,7 +465,7 @@
      internal <style> sets the matching background/ink so plain + simple emails
      adapt cleanly, while emails that ship their own colours keep them. */
   .email-body { @apply min-w-0 relative; }
-  .img-banner { @apply w-full flex items-center gap-2 mb-1.5 px-3 py-2 rounded-lg text-[12px] text-text-2 cursor-pointer; background: var(--accent-soft); border: 1px solid var(--border); transition: .14s var(--ease); }
+  .img-banner { @apply w-full flex items-center gap-2 mb-1.5 px-3 py-2 rounded-lg text-[12px] text-text-2 cursor-pointer; background: var(--accent-soft); border: 1px solid var(--border); transition: var(--motion-standard) var(--ease); }
   .img-banner:hover { @apply text-text border-accent; }
   .email-frame { @apply w-full block rounded-[10px] min-w-0; min-height: 40px; border: 1px solid var(--border); background: var(--bg-2); }
   /* Phishing warning banner above a risky message body. */
@@ -488,7 +488,7 @@
   .lc-card p { @apply text-[12.5px] text-text-2 m-0; }
   .lc-url { @apply text-[11.5px] text-text-3 break-all px-2.5 py-1.5 rounded-md; background: var(--bg-2); border: 1px solid var(--border); font-family: var(--mono, monospace); }
   .lc-actions { @apply flex justify-end gap-2 mt-1; }
-  .lc-actions button { @apply px-3 py-1.5 rounded-lg text-[12.5px] font-semibold cursor-pointer border border-border bg-bg-2 text-text; transition: .14s var(--ease); }
+  .lc-actions button { @apply px-3 py-1.5 rounded-lg text-[12.5px] font-semibold cursor-pointer border border-border bg-bg-2 text-text; transition: var(--motion-standard) var(--ease); }
   .lc-actions button:hover { @apply bg-surface; }
   .lc-actions .lc-danger { color: var(--danger); border-color: color-mix(in oklch, var(--danger) 45%, transparent); }
   .msg .text {
@@ -508,7 +508,7 @@
 
   /* ---- Composer + buttons ---- */
   .send { @apply inline-flex items-center gap-[7px] bg-accent text-white border-none px-4 py-2 rounded-[9px] text-[13px] font-semibold; }
-  .chip { @apply cursor-pointer text-[12px] px-[11px] py-1.5 rounded-[20px] border border-border-2 bg-surface inline-flex items-center gap-1.5; transition: .15s var(--ease); }
+  .chip { @apply cursor-pointer text-[12px] px-[11px] py-1.5 rounded-[20px] border border-border-2 bg-surface inline-flex items-center gap-1.5; transition: var(--motion-standard) var(--ease); }
   .chip:hover { @apply text-accent border-accent; }
   .chip.solid { @apply bg-accent text-white; border-color: transparent; }
   .composer { @apply border border-border-2 rounded-card bg-surface px-4 py-[14px]; box-shadow: var(--shadow); }
@@ -610,11 +610,11 @@
 
   /* ---- Attachments ---- */
   .attach-row { @apply flex flex-wrap gap-2 w-full mt-2; }
-  .attach-chip { @apply inline-flex items-center gap-1.5 text-[11.5px] text-text-2 bg-bg-2 border border-border rounded-lg px-2 py-1 cursor-pointer; transition: .15s var(--ease); }
+  .attach-chip { @apply inline-flex items-center gap-1.5 text-[11.5px] text-text-2 bg-bg-2 border border-border rounded-lg px-2 py-1 cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .attach-chip:hover:not(:disabled) { @apply border-accent text-text; }
   .attach-chip:disabled { @apply opacity-60 cursor-default; }
   .attach-group { @apply inline-flex items-center; }
-  .attach-preview { @apply inline-flex items-center ml-1 px-1.5 py-1 text-text-3 bg-bg-2 border border-border rounded-lg cursor-pointer; transition: .15s var(--ease); }
+  .attach-preview { @apply inline-flex items-center ml-1 px-1.5 py-1 text-text-3 bg-bg-2 border border-border rounded-lg cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .attach-preview:hover:not(:disabled) { @apply border-accent text-text; }
   .attach-preview:disabled { @apply opacity-60 cursor-default; }
   .attach-size { @apply text-text-3 text-[10.5px]; }
@@ -641,7 +641,7 @@
   .menu button.danger:hover { background: color-mix(in oklch, var(--bad) 14%, transparent); color: var(--bad); }
 
   /* ---- Custom Select dropdown (ported from iTopup) ---- */
-  .ta-select-btn { @apply w-full flex items-center justify-between gap-2 bg-surface border border-border-2 rounded-lg px-2.5 py-2 text-[13px] text-text; transition: .15s var(--ease); }
+  .ta-select-btn { @apply w-full flex items-center justify-between gap-2 bg-surface border border-border-2 rounded-lg px-2.5 py-2 text-[13px] text-text; transition: var(--motion-standard) var(--ease); }
   .ta-select-btn:hover { @apply border-accent; }
   .ta-ph { @apply text-text-3; }
   .ta-caret { @apply text-text-3; }
@@ -687,7 +687,7 @@
   .af-status.err { background: oklch(0.71 0.17 18 / 0.14); color: var(--danger); }
   .af-actions { @apply flex items-center justify-between gap-3 mt-4; }
   .af-actions-right { @apply flex items-center gap-2; }
-  .af-btn { @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-[10px] text-[13px] font-medium border cursor-pointer; pointer-events: auto; transition: .15s var(--ease); }
+  .af-btn { @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-[10px] text-[13px] font-medium border cursor-pointer; pointer-events: auto; transition: var(--motion-standard) var(--ease); }
   .af-btn:disabled { @apply opacity-50 cursor-not-allowed; }
   .af-btn.ghost { @apply border-border-2 bg-surface text-text-2; }
   .af-btn.ghost:not(:disabled):hover { @apply text-text border-accent; }
@@ -742,7 +742,7 @@
 
   /* ---- Floating utilities ---- */
   .util { @apply fixed bottom-[18px] right-5 flex gap-2 z-30; }
-  .util button { @apply border border-border-2 text-text-2 rounded-[10px] px-3 py-2 text-[12px]; background: var(--glass); backdrop-filter: blur(20px); transition: .15s var(--ease); }
+  .util button { @apply border border-border-2 text-text-2 rounded-[10px] px-3 py-2 text-[12px]; background: var(--glass); backdrop-filter: blur(20px); transition: var(--motion-standard) var(--ease); }
   .util button:hover { @apply text-text; }
 }
 

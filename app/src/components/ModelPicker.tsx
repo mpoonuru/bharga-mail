@@ -1,6 +1,7 @@
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useApp } from "@/store";
 import { Icon, type IconName } from "@/components/icons";
+import { OVERLAY_FADE } from "@/lib/motion";
 
 const ICONS: Record<string, IconName> = {
   anthropic: "ai",
@@ -13,12 +14,17 @@ const ICONS: Record<string, IconName> = {
 // Quick switcher popover (the bottom-left engine chip + ⌘\).
 export function ModelPicker() {
   const { modelPickerOpen, setModelPicker, ai, setView } = useApp();
-  if (!modelPickerOpen || !ai) return null;
 
   return (
-    <>
-      <div style={{ position: "fixed", inset: 0, zIndex: 39 }} onClick={() => setModelPicker(false)} />
-      <motion.div className="pop" initial={{ y: 10, opacity: 0, scale: 0.98 }} animate={{ y: 0, opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 320, damping: 26 }}>
+    <AnimatePresence>
+      {modelPickerOpen && ai && <>
+      <motion.div
+        style={{ position: "fixed", inset: 0, zIndex: 39 }}
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        transition={OVERLAY_FADE}
+        onClick={() => setModelPicker(false)}
+      />
+      <motion.div className="pop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={OVERLAY_FADE}>
         <h4>Bring-your-own AI · per role</h4>
         {ai.models.map((m) => {
           const primary = m.roles[0];
@@ -42,7 +48,8 @@ export function ModelPicker() {
           </button>
         </div>
       </motion.div>
-    </>
+      </>}
+    </AnimatePresence>
   );
 }
 

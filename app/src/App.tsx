@@ -17,6 +17,7 @@ import { useViewport } from "@/lib/useViewport";
 import { applyFont, applyLocale } from "@/lib/prefs";
 import { startWindowDrag, titlebarDoubleClick, expectedBuildId, setDockBadge, checkForUpdate, installUpdateAndRestart } from "@/lib/bridge";
 import logo from "@/assets/logo.png";
+import { OVERLAY_FADE, STRUCTURAL_TRANSITION } from "@/lib/motion";
 
 export function App() {
   const { view, load, focusMode, composeOpen, theme, density } = useApp();
@@ -259,12 +260,13 @@ function NarrowLayout() {
             <motion.div
               className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={OVERLAY_FADE}
               onClick={() => setDrawer(false)}
             />
             <motion.div
               className="fixed inset-y-0 left-0 z-50 w-[264px]"
               initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
-              transition={{ type: "spring", stiffness: 320, damping: 32 }}
+              transition={STRUCTURAL_TRANSITION}
             >
               <Sidebar />
             </motion.div>
@@ -294,4 +296,3 @@ function CommandButton() {
   const setCmd = useApp((s) => s.setCmd);
   return <button className="iconbtn" title="Command (⌘K)" onClick={() => setCmd(true)}><Icon name="command" size={14} /></button>;
 }
-

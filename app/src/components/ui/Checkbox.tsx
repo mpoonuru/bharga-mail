@@ -1,5 +1,6 @@
 import { forwardRef, useId, type InputHTMLAttributes } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { MOTION, MOTION_EASE } from "@/lib/motion";
 
 // Ported from the Topup Arena (iTopup) design system: a custom checkbox with an
 // animated SVG "draw" checkmark, sized variants, and an accessible hidden input.
@@ -24,10 +25,10 @@ function CheckMark({ size, stroke }: { size: number; stroke: number }) {
     <motion.svg
       viewBox={`0 0 ${size} ${size}`}
       className="absolute inset-0"
-      initial={{ opacity: 0, scale: 0.5 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.5 }}
-      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: MOTION.instant, ease: MOTION_EASE }}
     >
       <motion.path
         d={d}
@@ -39,7 +40,7 @@ function CheckMark({ size, stroke }: { size: number; stroke: number }) {
         initial={{ pathLength: 0 }}
         animate={{ pathLength: 1 }}
         exit={{ pathLength: 0 }}
-        transition={{ type: "spring", stiffness: 500, damping: 35, delay: 0.05 }}
+        transition={{ duration: MOTION.standard, ease: MOTION_EASE }}
       />
     </motion.svg>
   );
@@ -69,15 +70,16 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
         {...rest}
       />
       <span
-        className="relative flex-shrink-0 rounded-md border transition-all duration-150 peer-focus-visible:ring-2 peer-focus-visible:ring-offset-1"
+        className="relative flex-shrink-0 rounded-md border peer-focus-visible:ring-2 peer-focus-visible:ring-offset-1"
         style={{
           width: s.box,
           height: s.box,
           background: checked ? "var(--accent)" : "var(--surface)",
           borderColor: checked ? "var(--accent)" : "var(--border-2)",
+          transition: "background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease)",
         }}
       >
-        <AnimatePresence mode="wait">{checked && <CheckMark key="c" size={s.box} stroke={s.stroke} />}</AnimatePresence>
+        <AnimatePresence initial={false}>{checked && <CheckMark key="c" size={s.box} stroke={s.stroke} />}</AnimatePresence>
       </span>
       {(label || description) && (
         <span className={description ? "flex flex-col gap-0.5" : ""}>

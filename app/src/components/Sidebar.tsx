@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
-import { motion, Reorder, useDragControls } from "motion/react";
+import { Reorder, useDragControls } from "motion/react";
 import { useApp } from "@/store";
 import type { View, Account } from "@/types";
 import { Icon, type IconName } from "@/components/icons";
@@ -305,14 +305,14 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
 
       {rail ? (
         <Tooltip label="Compose" block>
-          <motion.button className="compose-btn" onClick={() => setCompose(true)} whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}>
+          <button className="compose-btn" onClick={() => setCompose(true)}>
             <Icon name="compose" size={16} weight="bold" />
-          </motion.button>
+          </button>
         </Tooltip>
       ) : (
-        <motion.button className="compose-btn" onClick={() => setCompose(true)} whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}>
+        <button className="compose-btn" onClick={() => setCompose(true)}>
           <Icon name="compose" size={16} weight="bold" /> Compose
-        </motion.button>
+        </button>
       )}
 
       <div className="sidebar-scroll">
@@ -411,7 +411,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
         return rail ? <Tooltip label="Settings" block>{settingsBtn}</Tooltip> : settingsBtn;
       })()}
 
-      <motion.button className="model-chip" onClick={() => setModelPicker(true)} whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} title="AI engine">
+      <button className="model-chip" onClick={() => setModelPicker(true)} title="AI engine">
         {rail ? (
           <div className="row" style={{ justifyContent: "center" }}><span className="dot" /></div>
         ) : (
@@ -420,7 +420,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
             <small>Draft: {draftModel?.label ?? "—"} · Triage: {triageModel?.label ?? "—"}</small>
           </>
         )}
-      </motion.button>
+      </button>
     </aside>
   );
 }

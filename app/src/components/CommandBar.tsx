@@ -4,6 +4,7 @@ import { useApp } from "@/store";
 import { api } from "@/lib/bridge";
 import type { View } from "@/types";
 import { Icon, type IconName } from "@/components/icons";
+import { OVERLAY_FADE } from "@/lib/motion";
 
 interface Cmd { ic: IconName; label: string; hint?: string; run: () => void; }
 
@@ -56,14 +57,14 @@ export function CommandBar() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+          transition={OVERLAY_FADE}
         >
           <motion.div
             className="cmd"
-            initial={{ y: -14, scale: 0.98, opacity: 0 }}
-            animate={{ y: 0, scale: 1, opacity: 1 }}
-            exit={{ y: -10, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 320, damping: 26 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={OVERLAY_FADE}
           >
             <input
               ref={inputRef}

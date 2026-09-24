@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Icon } from "@/components/icons";
+import { OVERLAY_FADE } from "@/lib/motion";
 
 interface Props {
   open: boolean;
@@ -11,8 +12,7 @@ interface Props {
   maxWidth?: number;
 }
 
-// Centered modal dialog with backdrop, scroll-lock, Esc-to-close — ported from
-// the Topup Arena Dialog pattern (glass panel, spring entrance).
+// Centered modal dialog with backdrop, scroll-lock, and Esc-to-close.
 export function Modal({ open, onClose, title, children, maxWidth = 640 }: Props) {
   useEffect(() => {
     if (!open) return;
@@ -34,15 +34,16 @@ export function Modal({ open, onClose, title, children, maxWidth = 640 }: Props)
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={OVERLAY_FADE}
           onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
           <motion.div
             className="modal-panel glass-card"
             style={{ maxWidth }}
-            initial={{ y: 14, scale: 0.98, opacity: 0 }}
-            animate={{ y: 0, scale: 1, opacity: 1 }}
-            exit={{ y: 10, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 26 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={OVERLAY_FADE}
           >
             {title && (
               <div className="modal-head">
