@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { useApp } from "@/store";
 import { api } from "@/lib/bridge";
@@ -26,9 +26,20 @@ export function Compose() {
   const [showCc, setShowCc] = useState(false);
   const [subject, setSubject] = useState("");
   const [files, setFiles] = useState<Attach[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
   const editorRef = useRef<RichTextHandle>(null);
   const initialHtml = defaultSig?.html ? `<p></p><p>--<br>${defaultSig.html}</p>` : "";
+  const validFrom = accounts.some((account) => account.id === from);
+
+  // Account state can change while the composer is open (for example after an
+  // account is removed). Never retain a stale sender identity.
+  useEffect(() => {
+    if (validFrom) return;
+    const next = accounts.find((account) => account.id === selectedAccountId) ?? accounts[0];
+    setFrom(next?.id ?? "");
+  }, [accounts, selectedAccountId, validFrom]);
 
   // Autocomplete contacts: every distinct From/To address seen across the mailbox,
   // newest threads first (so frequent/recent correspondents surface). Skip our own
@@ -53,24 +64,42 @@ export function Compose() {
   }, [threads, accounts]);
 
   async function help() {
-    setBusy(true);
-    const draft = await api.draftReply("__new__", `Subject: ${subject}\nTo: ${to}`);
-    editorRef.current?.setHtml(draft);
-    setBusy(false);
+    setDrafting(true);
+    setError("");
+    try {
+      const draft = await api.draftReply("__new__", `Subject: ${subject}\nTo: ${to}`);
+      editorRef.current?.setHtml(draft);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "A draft could not be generated.");
+    } finally {
+      setDrafting(false);
+    }
   }
 
   async function send(atTs?: number) {
-    await queueSend({
-      accountId: from || undefined,
-      to,
-      cc,
-      bcc,
-      subject,
-      body: editorRef.current?.getHtml() ?? "",
-      sendAt: atTs,
-      attachments: files.map(({ name, mime, dataB64 }) => ({ name, mime, dataB64 })),
-    });
-    setCompose(false);
+    if (!validFrom) {
+      setError("Choose a connected account before sending.");
+      return;
+    }
+    setSending(true);
+    setError("");
+    try {
+      await queueSend({
+        accountId: from,
+        to,
+        cc,
+        bcc,
+        subject,
+        body: editorRef.current?.getHtml() ?? "",
+        sendAt: atTs,
+        attachments: files.map(({ name, mime, dataB64 }) => ({ name, mime, dataB64 })),
+      });
+      setCompose(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The message could not be queued.");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -79,7 +108,7 @@ export function Compose() {
         <div className="stage-bar">
           <IconButton icon="close" title="Close" onClick={() => setCompose(false)} />
           <div className="spacer" />
-          <IconButton icon="ai" weight="duotone" title="Draft with AI" onClick={help} label={busy ? "Drafting…" : "Draft for me"} />
+          <IconButton icon="ai" weight="duotone" title="Draft with AI" onClick={help} label={drafting ? "Drafting…" : "Draft for me"} />
         </div>
         <h1 className="subject">New message</h1>
         <div className="composer">
@@ -107,9 +136,14 @@ export function Compose() {
           <div style={{ marginTop: 10 }}>
             <RichText ref={editorRef} initialHtml={initialHtml} placeholder="Write your message… (or let AI draft it)" minHeight={200} />
           </div>
+          {(error || accounts.length === 0) && (
+            <div className="stream-status err" role="alert">
+              {error || "Connect an account before composing a message."}
+            </div>
+          )}
           <div className="cfoot">
-            <Button onClick={() => send()} icon="send">Send</Button>
-            <SendLater onSchedule={(ts) => send(ts)} />
+            <Button onClick={() => send()} icon="send" loading={sending} disabled={!validFrom}>Send</Button>
+            <SendLater onSchedule={(ts) => send(ts)} disabled={!validFrom || sending} />
             <Attachments files={files} onAdd={(f) => setFiles((p) => [...p, ...f])} onRemove={(n) => setFiles((p) => p.filter((x) => x.name !== n))} />
           </div>
         </div>

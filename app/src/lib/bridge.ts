@@ -192,13 +192,10 @@ export const api = {
 
   /** Connected mail accounts (for the sidebar account switcher). */
   async listAccounts(): Promise<Account[]> {
-    try {
-      const a = await invoke<Account[]>("list_accounts");
-      // In the desktop app an empty list means "no account connected yet".
-      return a;
-    } catch {
-      return [mockAccount];
-    }
+    if (!inTauri) return [mockAccount];
+    // In the desktop app an empty list means "no account connected yet" and
+    // an IPC error must remain an error rather than inventing an identity.
+    return invoke<Account[]>("list_accounts");
   },
 
   async listTasks(): Promise<Task[]> {
@@ -324,11 +321,8 @@ export const api = {
     /** Absolute epoch-seconds to send at (scheduled send). Omit for immediate. */
     sendAt?: number;
   }): Promise<string> {
-    try {
-      return await invoke<string>("queue_send", { ...args });
-    } catch {
-      return `preview-${dayjs().valueOf()}`; // browser preview
-    }
+    if (!inTauri) return `preview-${dayjs().valueOf()}`;
+    return invoke<string>("queue_send", { ...args });
   },
 
   async cancelSend(id: string): Promise<boolean> {

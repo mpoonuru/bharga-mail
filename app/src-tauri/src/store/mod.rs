@@ -610,6 +610,17 @@ impl Store {
         conn.query_row("SELECT value FROM secrets WHERE key=?1", [key], |r| r.get(0)).ok()
     }
 
+    /// Whether encrypted credentials already depend on the current master key.
+    /// A missing Keychain key in this state is recovery-required, not first run.
+    pub fn has_encrypted_secrets(&self) -> rusqlite::Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM secrets WHERE value LIKE 'v1:%')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+    }
+
     pub fn delete_secret(&self, key: &str) {
         let conn = self.conn.lock().unwrap();
         let _ = conn.execute("DELETE FROM secrets WHERE key=?1", [key]);
@@ -1090,6 +1101,48 @@ impl Store {
                 a.smtp_host, a.smtp_port as i64, a.smtp_security.as_str(), a.smtp_username,
             ],
         )?;
+        Ok(())
+    }
+
+    /// Commit an IMAP account, its public account row, and a pre-encrypted
+    /// credential batch together. Callers must prepare every ciphertext before
+    /// entering this transaction so a credential failure cannot leave partial
+    /// account configuration behind.
+    pub fn save_imap_account_atomic(
+        &self,
+        a: &ImapAccount,
+        encrypted_secrets: &[(String, String)],
+    ) -> rusqlite::Result<()> {
+        let mut guard = self.conn.lock().unwrap();
+        let conn: &mut Connection = &mut *guard;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT INTO accounts (id,email,provider,display_name) VALUES (?1,?2,'imap',?3)
+             ON CONFLICT(id) DO UPDATE SET email=excluded.email, display_name=excluded.display_name",
+            params![a.account_id, a.email, a.display_name],
+        )?;
+        tx.execute(
+            "INSERT INTO imap_accounts
+                (account_id, email, display_name, imap_host, imap_port, imap_security, imap_username, smtp_host, smtp_port, smtp_security, smtp_username)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+             ON CONFLICT(account_id) DO UPDATE SET
+                email=excluded.email, display_name=excluded.display_name,
+                imap_host=excluded.imap_host, imap_port=excluded.imap_port, imap_security=excluded.imap_security, imap_username=excluded.imap_username,
+                smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port, smtp_security=excluded.smtp_security, smtp_username=excluded.smtp_username",
+            params![
+                a.account_id, a.email, a.display_name,
+                a.imap_host, a.imap_port as i64, a.imap_security.as_str(), a.imap_username,
+                a.smtp_host, a.smtp_port as i64, a.smtp_security.as_str(), a.smtp_username,
+            ],
+        )?;
+        for (kind, encrypted) in encrypted_secrets {
+            tx.execute(
+                "INSERT INTO secrets (key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                params![format!("{}:{kind}", a.account_id), encrypted],
+            )?;
+        }
+        tx.commit()?;
         Ok(())
     }
 
@@ -1819,6 +1872,29 @@ mod tests {
         assert_eq!(got.display_name, "Me");
         assert_eq!(got.imap_port, 993);
         assert_eq!(got.smtp_security.as_str(), "starttls");
+    }
+
+    #[test]
+    fn imap_account_and_prepared_secrets_commit_together() {
+        let s = Store::in_memory().unwrap();
+        let acct = ImapAccount {
+            account_id: "imap:me@host.de".into(), email: "me@host.de".into(), display_name: "Me".into(),
+            imap_host: "imap.host.de".into(), imap_port: 993, imap_security: Security::Ssl, imap_username: "me@host.de".into(),
+            smtp_host: "smtp.host.de".into(), smtp_port: 587, smtp_security: Security::Starttls, smtp_username: "me@host.de".into(),
+        };
+        let secrets = vec![
+            ("imap-pass".into(), "v1:encrypted-imap".into()),
+            ("smtp-pass".into(), "v1:encrypted-smtp".into()),
+        ];
+
+        assert!(!s.has_encrypted_secrets().unwrap());
+        s.save_imap_account_atomic(&acct, &secrets).unwrap();
+
+        assert_eq!(s.imap_account(&acct.account_id).unwrap().smtp_host, "smtp.host.de");
+        assert_eq!(s.get_secret("imap:me@host.de:imap-pass").as_deref(), Some("v1:encrypted-imap"));
+        assert_eq!(s.get_secret("imap:me@host.de:smtp-pass").as_deref(), Some("v1:encrypted-smtp"));
+        assert!(s.has_encrypted_secrets().unwrap());
+        assert!(s.accounts().iter().any(|account| account.id == acct.account_id));
     }
 
     /// Regression: a DB created by a pre-redesign build (old `imap_accounts`

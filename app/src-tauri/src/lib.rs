@@ -591,20 +591,23 @@ fn save_imap_account(
         smtp_security: Security::parse(&input.smtp_security),
         smtp_username: smtp_user,
     };
-    state
-        .store
-        .upsert_imap_account(&acct)
-        .map_err(|e| e.to_string())?;
-    state
-        .store
-        .upsert_account(&account_id, &input.email, "imap", &acct.display_name)
-        .map_err(|e| e.to_string())?;
-    // On edit, an empty password means "keep the existing one" — don't overwrite.
+    // On edit, an empty password means "keep the existing one". Encrypt the
+    // complete update before the transaction, then commit config and ciphertexts
+    // together so a locked Keychain cannot partially mutate the account.
+    let mut plain_updates = Vec::new();
     if !input.imap_password.is_empty() {
-        sync::tokens::save_secret(&account_id, "imap-pass", &input.imap_password)?;
+        plain_updates.push(("imap-pass", input.imap_password.as_str()));
     }
     if !smtp_pass.is_empty() {
-        sync::tokens::save_secret(&account_id, "smtp-pass", &smtp_pass)?;
+        plain_updates.push(("smtp-pass", smtp_pass.as_str()));
+    }
+    let encrypted_updates = sync::tokens::prepare_secret_updates(&plain_updates)?;
+    state
+        .store
+        .save_imap_account_atomic(&acct, &encrypted_updates)
+        .map_err(|e| e.to_string())?;
+    for (kind, _) in &encrypted_updates {
+        sync::tokens::delete_legacy_secret(&account_id, kind);
     }
     Ok(account_id)
 }

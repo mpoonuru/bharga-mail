@@ -45,21 +45,61 @@ fn entry(account_id: &str, kind: &str) -> keyring::Result<Entry> {
 // master key that itself lives in the keychain. If the key is unavailable (e.g.
 // an unsigned rebuild), we simply can't read the fallback — but never plaintext.
 
-fn load_or_create_master_key() -> Option<[u8; 32]> {
-    let e = Entry::new(SERVICE, MASTER_KEY_KIND).ok()?;
-    if let Ok(b64) = e.get_password() {
-        if let Ok(bytes) = B64.decode(b64) {
-            if bytes.len() == 32 {
-                let mut k = [0u8; 32];
-                k.copy_from_slice(&bytes);
-                return Some(k);
-            }
+fn load_or_create_master_key_with<FRead, FCanCreate, FWrite>(
+    read: FRead,
+    can_create: FCanCreate,
+    write: FWrite,
+) -> Result<[u8; 32], String>
+where
+    FRead: FnOnce() -> Result<Option<String>, String>,
+    FCanCreate: FnOnce() -> Result<bool, String>,
+    FWrite: FnOnce(&str) -> Result<(), String>,
+{
+    if let Some(b64) = read()? {
+        let bytes = B64
+            .decode(b64)
+            .map_err(|_| "Stored credential key is malformed".to_string())?;
+        if bytes.len() != 32 {
+            return Err("Stored credential key has an invalid length".into());
         }
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&bytes);
+        return Ok(key);
+    }
+
+    if !can_create()? {
+        return Err(
+            "Credential recovery is required before a new master key can be created".into(),
+        );
     }
     let mut k = [0u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut k);
-    e.set_password(&B64.encode(k)).ok()?; // don't encrypt-and-orphan if we can't persist the key
-    Some(k)
+    write(&B64.encode(k))?; // don't encrypt-and-orphan if we can't persist the key
+    Ok(k)
+}
+
+fn load_or_create_master_key() -> Option<[u8; 32]> {
+    let e = Entry::new(SERVICE, MASTER_KEY_KIND).ok()?;
+    load_or_create_master_key_with(
+        || match e.get_password() {
+            Ok(value) => Ok(Some(value)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(_) => Err("Credential key access is unavailable".into()),
+        },
+        || {
+            let db = DB
+                .get()
+                .ok_or_else(|| "Credential database is unavailable".to_string())?;
+            db.has_encrypted_secrets()
+                .map(|has_encrypted| !has_encrypted)
+                .map_err(|_| "Credential recovery state could not be checked".into())
+        },
+        |value| {
+            e.set_password(value)
+                .map_err(|_| "Credential key could not be stored".into())
+        },
+    )
+    .ok()
 }
 
 fn cached_master_key<F>(cache: &OnceLock<Option<[u8; 32]>>, load: F) -> Option<[u8; 32]>
@@ -74,18 +114,18 @@ fn master_key() -> Option<[u8; 32]> {
     cached_master_key(&MASTER_KEY, load_or_create_master_key)
 }
 
-/// "v1:" + base64(nonce(12) || ciphertext+tag). None if no master key available.
-fn encrypt_secret(plain: &str) -> Option<String> {
-    let key = master_key()?;
+/// "v1:" + base64(nonce(12) || ciphertext+tag).
+fn encrypt_secret(plain: &str) -> Result<String, String> {
+    let key = master_key().ok_or_else(|| "Secure credential storage is unavailable".to_string())?;
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
     let mut nonce = [0u8; 12];
     rand::rngs::OsRng.fill_bytes(&mut nonce);
     let ct = cipher
         .encrypt(Nonce::from_slice(&nonce), plain.as_bytes())
-        .ok()?;
+        .map_err(|_| "Credential encryption failed".to_string())?;
     let mut out = nonce.to_vec();
     out.extend_from_slice(&ct);
-    Some(format!("v1:{}", B64.encode(out)))
+    Ok(format!("v1:{}", B64.encode(out)))
 }
 
 fn decrypt_secret(stored: &str) -> Option<String> {
@@ -103,8 +143,13 @@ fn decrypt_secret(stored: &str) -> Option<String> {
 
 fn persist_encrypted(account_id: &str, kind: &str, value: &str) -> bool {
     let Some(db) = DB.get() else { return false };
-    let Some(encrypted) = encrypt_secret(value) else { return false };
-    if db.set_secret(&db_key(account_id, kind), &encrypted).is_err() {
+    let Ok(encrypted) = encrypt_secret(value) else {
+        return false;
+    };
+    if db
+        .set_secret(&db_key(account_id, kind), &encrypted)
+        .is_err()
+    {
         return false;
     }
     db.get_secret(&db_key(account_id, kind))
@@ -112,10 +157,34 @@ fn persist_encrypted(account_id: &str, kind: &str, value: &str) -> bool {
         .is_some_and(|stored| stored == value)
 }
 
+fn prepare_secret_updates_with<F>(
+    updates: &[(&str, &str)],
+    mut encrypt: F,
+) -> Result<Vec<(String, String)>, String>
+where
+    F: FnMut(&str) -> Result<String, String>,
+{
+    updates
+        .iter()
+        .map(|(kind, value)| encrypt(value).map(|encrypted| ((*kind).to_string(), encrypted)))
+        .collect()
+}
+
+/// Encrypt a complete credential batch before any account/configuration rows
+/// are changed. A failure leaves the database untouched.
+pub fn prepare_secret_updates(updates: &[(&str, &str)]) -> Result<Vec<(String, String)>, String> {
+    prepare_secret_updates_with(updates, encrypt_secret)
+}
+
 fn delete_legacy(account_id: &str, kind: &str) {
     if let Ok(entry) = entry(account_id, kind) {
         let _ = entry.delete_credential();
     }
+}
+
+/// Remove a migrated per-secret Keychain value after its encrypted DB batch commits.
+pub fn delete_legacy_secret(account_id: &str, kind: &str) {
+    delete_legacy(account_id, kind);
 }
 
 fn resolve_secret<FReadLegacy, FPersist, FDeleteLegacy>(
@@ -223,7 +292,83 @@ mod tests {
     use std::cell::Cell;
     use std::sync::OnceLock;
 
-    use super::{cached_master_key, resolve_secret};
+    use super::{
+        cached_master_key, load_or_create_master_key_with, prepare_secret_updates_with,
+        resolve_secret,
+    };
+
+    #[test]
+    fn master_key_access_failure_never_writes_a_replacement() {
+        let writes = Cell::new(0);
+        let result = load_or_create_master_key_with(
+            || Err("Keychain access denied".into()),
+            || Ok(true),
+            |_| {
+                writes.set(writes.get() + 1);
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(writes.get(), 0);
+    }
+
+    #[test]
+    fn malformed_master_key_never_writes_a_replacement() {
+        let writes = Cell::new(0);
+        let result = load_or_create_master_key_with(
+            || Ok(Some("not-a-valid-master-key".into())),
+            || Ok(true),
+            |_| {
+                writes.set(writes.get() + 1);
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(writes.get(), 0);
+    }
+
+    #[test]
+    fn missing_master_key_with_existing_ciphertext_requires_recovery() {
+        let writes = Cell::new(0);
+        let result = load_or_create_master_key_with(
+            || Ok(None),
+            || Ok(false),
+            |_| {
+                writes.set(writes.get() + 1);
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(writes.get(), 0);
+    }
+
+    #[test]
+    fn first_secret_preparation_failure_aborts_the_batch() {
+        let attempts = Cell::new(0);
+        let result =
+            prepare_secret_updates_with(&[("imap-pass", "one"), ("smtp-pass", "two")], |_| {
+                attempts.set(attempts.get() + 1);
+                Err("first secret failed".into())
+            });
+        assert!(result.is_err());
+        assert_eq!(attempts.get(), 1);
+    }
+
+    #[test]
+    fn second_secret_preparation_failure_aborts_the_batch() {
+        let attempts = Cell::new(0);
+        let result =
+            prepare_secret_updates_with(&[("imap-pass", "one"), ("smtp-pass", "two")], |value| {
+                attempts.set(attempts.get() + 1);
+                if value == "two" {
+                    Err("second secret failed".into())
+                } else {
+                    Ok("encrypted-one".into())
+                }
+            });
+        assert!(result.is_err());
+        assert_eq!(attempts.get(), 2);
+    }
 
     #[test]
     fn master_key_loader_runs_once_per_cache() {
