@@ -73,10 +73,10 @@ describe("Stream row motion", () => {
 describe("Stream row keyboard behavior", () => {
   it("exposes conversation rows as buttons and activates them with Enter or Space", () => {
     const { container, selectThread } = renderStream();
-    const row = container.querySelector<HTMLElement>(".mail");
+    const row = container.querySelector<HTMLElement>(".mail-open");
 
-    expect(row?.getAttribute("role")).toBe("button");
-    expect(row?.getAttribute("tabindex")).toBe("0");
+    expect(row?.tagName).toBe("BUTTON");
+    expect(row?.tabIndex).toBe(0);
     expect(row?.getAttribute("aria-label")).toContain(threads[1].subject);
 
     act(() => row?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
@@ -89,7 +89,7 @@ describe("Stream row keyboard behavior", () => {
 
   it("opens the row context menu with Shift+F10", () => {
     const { container } = renderStream();
-    const row = container.querySelector<HTMLElement>(".mail");
+    const row = container.querySelector<HTMLElement>(".mail-open");
 
     act(() => row?.dispatchEvent(new KeyboardEvent("keydown", {
       key: "F10",
@@ -99,12 +99,24 @@ describe("Stream row keyboard behavior", () => {
     })));
 
     expect(container.querySelector(".ctx-menu")).not.toBeNull();
+    const firstItem = container.querySelector<HTMLButtonElement>('.ctx-menu [role="menuitem"]');
+    expect(document.activeElement).toBe(firstItem);
+
+    act(() => firstItem?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
+    const menuItems = [...container.querySelectorAll<HTMLButtonElement>('.ctx-menu [role="menuitem"]')];
+    expect(document.activeElement).toBe(menuItems[1]);
+
+    act(() => menuItems[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(container.querySelector(".ctx-menu")).toBeNull();
+    expect(document.activeElement).toBe(row);
   });
 
   it("keeps the disclosure control isolated and makes expanded messages keyboard complete", () => {
     const { container, selectThread } = renderStream();
     const toggle = container.querySelector<HTMLButtonElement>(".convo-toggle");
+    const row = container.querySelector<HTMLElement>(".mail-open");
 
+    expect(row?.contains(toggle ?? null)).toBe(false);
     expect(toggle?.getAttribute("aria-label")).toContain("expand");
     act(() => toggle?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
     expect(selectThread).not.toHaveBeenCalled();
@@ -113,8 +125,8 @@ describe("Stream row keyboard behavior", () => {
     expect(toggle?.getAttribute("aria-label")).toContain("collapse");
 
     const child = container.querySelector<HTMLElement>(".convo-kid");
-    expect(child?.getAttribute("role")).toBe("button");
-    expect(child?.getAttribute("tabindex")).toBe("0");
+    expect(child?.tagName).toBe("BUTTON");
+    expect(child?.tabIndex).toBe(0);
     expect(child?.getAttribute("aria-label")).toContain("Marco Reyes");
 
     act(() => child?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));

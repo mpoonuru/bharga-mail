@@ -5,12 +5,30 @@ const FOCUSABLE = [
   "input:not([disabled])",
   "select:not([disabled])",
   "textarea:not([disabled])",
-  '[tabindex]:not([tabindex="-1"])',
+  '[contenteditable="true"]',
+  "[tabindex]",
 ].join(",");
+
+function isUnavailable(node: HTMLElement, container: HTMLElement): boolean {
+  if (node.tabIndex < 0) return true;
+  let current: HTMLElement | null = node;
+  while (current) {
+    if (
+      current.hidden
+      || current.hasAttribute("inert")
+      || current.getAttribute("aria-hidden") === "true"
+    ) return true;
+    const style = getComputedStyle(current);
+    if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") return true;
+    if (current === container) break;
+    current = current.parentElement;
+  }
+  return false;
+}
 
 export function focusableElements(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>(FOCUSABLE)]
-    .filter((node) => !node.hidden && node.getAttribute("aria-hidden") !== "true");
+    .filter((node) => !isUnavailable(node, container));
 }
 
 export function containTabKey(event: KeyboardEvent, container: HTMLElement): void {

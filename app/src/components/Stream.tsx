@@ -126,7 +126,7 @@ function labelTag(t: Thread) {
 function handleRowKeyDown(
   event: ReactKeyboardEvent<HTMLElement>,
   onOpen: () => void,
-  onContext: (x: number, y: number) => void,
+  onContext: (x: number, y: number, opener: HTMLElement) => void,
 ) {
   if (event.target !== event.currentTarget) return;
   if (isPrimaryActivationKey(event.key)) {
@@ -137,7 +137,7 @@ function handleRowKeyDown(
   if (isKeyboardContextMenu(event.nativeEvent)) {
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
-    onContext(rect.left + 24, rect.top + 24);
+    onContext(rect.left + 24, rect.top + 24, event.currentTarget);
   }
 }
 
@@ -150,8 +150,9 @@ export function Stream() {
   const coarsePointer = useCoarsePointer();
   const [sortMsg, setSortMsg] = useState("");
   const [syncMsg, setSyncMsg] = useState("");
-  const [ctx, setCtx] = useState<{ x: number; y: number; t: Thread } | null>(null);
+  const [ctx, setCtx] = useState<{ x: number; y: number; t: Thread; opener: HTMLElement } | null>(null);
   const [ctxSub, setCtxSub] = useState<null | "move">(null);
+  const ctxMenuRef = useRef<HTMLDivElement>(null);
   // Reset the scroll to the top when the view/folder/account changes, so you
   // never land mid-scroll on a half-clipped row.
   const listRef = useRef<HTMLDivElement>(null);
@@ -173,6 +174,40 @@ export function Stream() {
     setExpandedConvos(new Set());
   }, [view, selectedFolder, selectedAccountId]);
   const toggleGroup = (label: string) => setCollapsedGroups((s) => { const n = new Set(s); if (n.has(label)) n.delete(label); else n.add(label); return n; });
+
+  useEffect(() => {
+    if (!ctx) return;
+    ctxMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+  }, [ctx, ctxSub]);
+
+  const closeContextMenu = () => {
+    const opener = ctx?.opener;
+    setCtx(null);
+    setCtxSub(null);
+    if (opener?.isConnected) opener.focus();
+  };
+
+  const onContextMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const menu = ctxMenuRef.current;
+    if (!menu) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeContextMenu();
+      return;
+    }
+    const items = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')];
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next = -1;
+    if (event.key === "ArrowDown") next = current < 0 ? 0 : (current + 1) % items.length;
+    else if (event.key === "ArrowUp") next = current <= 0 ? items.length - 1 : current - 1;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = items.length - 1;
+    if (next >= 0) {
+      event.preventDefault();
+      items[next].focus();
+    }
+  };
 
   const doSync = async () => {
     if (syncing) return;
@@ -321,8 +356,8 @@ export function Stream() {
           )
         )}
         {(() => {
-          const openCtx = (t: Thread) => (x: number, y: number) =>
-            setCtx({ x: Math.max(8, Math.min(x, window.innerWidth - 224)), y: Math.max(8, Math.min(y, window.innerHeight - 580)), t });
+          const openCtx = (t: Thread) => (x: number, y: number, opener: HTMLElement) =>
+            setCtx({ x: Math.max(8, Math.min(x, window.innerWidth - 224)), y: Math.max(8, Math.min(y, window.innerHeight - 580)), t, opener });
           const renderRow = (r: Row) => {
             const count = r.t.messages.length;
             const isOpen = expandedConvos.has(r.t.id);
@@ -392,15 +427,14 @@ export function Stream() {
 
       {ctx && (() => {
         const t = ctx.t;
-        const close = () => { setCtx(null); setCtxSub(null); };
-        const run = (fn: () => void) => () => { fn(); close(); };
+        const run = (fn: () => void) => () => { fn(); closeContextMenu(); };
         const senderEmail = t.messages?.[0]?.from?.address ?? t.participants[0] ?? "";
         // Move targets: this account's real folders, minus the one it's already in.
         const moveTargets = folders.filter((f) => f.name !== t.folder);
         return (
           <>
-            <div className="ctx-backdrop" onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }} />
-            <div className="ctx-menu" style={{ left: ctx.x, top: ctx.y }} role="menu">
+            <div className="ctx-backdrop" onClick={closeContextMenu} onContextMenu={(e) => { e.preventDefault(); closeContextMenu(); }} />
+            <div ref={ctxMenuRef} className="ctx-menu" style={{ left: ctx.x, top: ctx.y }} role="menu" aria-label="Message actions" onKeyDown={onContextMenuKeyDown}>
               {ctxSub === "move" ? (
                 <>
                   <button role="menuitem" className="ctx-back" onClick={() => setCtxSub(null)}><Icon name="reply" size={13} /> Move to folder</button>
@@ -451,7 +485,7 @@ function MailRow({
   t, msg, selected, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, coarsePointer,
   convo, count, expanded, onToggleExpand,
 }: {
-  t: Thread; msg?: Message; selected: boolean; onOpen: () => void; onArchive: () => void; onSnooze: () => void; onContext: (x: number, y: number) => void; mailbox?: string; flagged?: boolean; coarsePointer: boolean;
+  t: Thread; msg?: Message; selected: boolean; onOpen: () => void; onArchive: () => void; onSnooze: () => void; onContext: (x: number, y: number, opener: HTMLElement) => void; mailbox?: string; flagged?: boolean; coarsePointer: boolean;
   convo?: boolean; count?: number; expanded?: boolean; onToggleExpand?: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
@@ -490,20 +524,7 @@ function MailRow({
       )}
       <motion.div
         className={`mail${t.unread ? " unread" : ""}${selected ? " sel" : ""}`}
-        role="button"
-        tabIndex={0}
-        aria-current={selected ? "true" : undefined}
-        aria-label={[
-          t.unread ? "Unread" : undefined,
-          rowFrom,
-          t.subject,
-          rowPreview,
-          shortTime(rowTime),
-          shield.show ? shield.label : undefined,
-        ].filter(Boolean).join(", ")}
-        onClick={onOpen}
-        onKeyDown={(event) => handleRowKeyDown(event, onOpen, onContext)}
-        onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY); }}
+        onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, e.currentTarget); }}
         drag={dragPolicy.drag}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={dragPolicy.dragElastic}
@@ -514,53 +535,70 @@ function MailRow({
           else if (info.offset.x >= 90) onSnooze();
         } : undefined}
       >
-        <div className="mail-av" style={{ background: avPaint.bg, color: avPaint.fg, boxShadow: `0 0 0 1.5px ${avPaint.ring}` }} aria-hidden>{initials(senderName)}</div>
-        <div className="mail-main">
-          <div className="mail-l1">
-            {t.unread && <span className="mail-unread" aria-label="Unread" />}
-            {convo && isReplyish && <Icon name="reply" size={12} weight="bold" className="mail-replyglyph" aria-hidden />}
-            <span className="from">{rowFrom}</span>
-            <span className="time">
-              {shield.show && (
-                <span className={`mail-trust trust-${shield.tone}`} title={`${shield.label} — ${shield.detail}`} aria-label={shield.label}>
-                  <Icon name={shield.icon} size={15} weight="duotone" />
-                </span>
-              )}
-              {flagged && <Icon name="priority" size={12} weight="fill" className="mail-flag" aria-label="Flagged" />}
-              {hasAttachments && <Icon name="attach" size={12} weight="duotone" aria-label="Has attachment" />}
-              {shortTime(rowTime)}
+        <button
+          type="button"
+          className="mail-open"
+          aria-current={selected ? "true" : undefined}
+          aria-label={[
+            t.unread ? "Unread" : undefined,
+            rowFrom,
+            t.subject,
+            rowPreview,
+            shortTime(rowTime),
+            shield.show ? shield.label : undefined,
+          ].filter(Boolean).join(", ")}
+          onClick={onOpen}
+          onKeyDown={(event) => handleRowKeyDown(event, onOpen, onContext)}
+        >
+          <span className="mail-av" style={{ background: avPaint.bg, color: avPaint.fg, boxShadow: `0 0 0 1.5px ${avPaint.ring}` }} aria-hidden>{initials(senderName)}</span>
+          <span className="mail-main">
+            <span className="mail-l1">
+              {t.unread && <span className="mail-unread" aria-label="Unread" />}
+              {convo && isReplyish && <Icon name="reply" size={12} weight="bold" className="mail-replyglyph" aria-hidden />}
+              <span className="from">{rowFrom}</span>
+              <span className="time">
+                {shield.show && (
+                  <span className={`mail-trust trust-${shield.tone}`} title={`${shield.label} — ${shield.detail}`} aria-label={shield.label}>
+                    <Icon name={shield.icon} size={15} weight="duotone" />
+                  </span>
+                )}
+                {flagged && <Icon name="priority" size={12} weight="fill" className="mail-flag" aria-label="Flagged" />}
+                {hasAttachments && <Icon name="attach" size={12} weight="duotone" aria-label="Has attachment" />}
+                {shortTime(rowTime)}
+              </span>
             </span>
-          </div>
-          <div className="subj-row">
-            <span className="subj">{t.subject}</span>
-            {multi && onToggleExpand && (
-              <button
-                className={`convo-toggle${expanded ? " open" : ""}`}
-                onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
-                title={`${count} messages`}
-                aria-label={`${count} messages, ${expanded ? "collapse" : "expand"}`}
-              >
-                <span className="convo-count">{count}</span>
-                <Icon name={expanded ? "caretDown" : "caretRight"} size={11} weight="bold" />
-              </button>
+            <span className="subj-row">
+              <span className="subj">{t.subject}</span>
+            </span>
+            {(convo || !msg) && t.aiSummary ? (
+              <span className="mail-ai">
+                <Icon name="ai" size={12} weight="duotone" />
+                <span className="mail-ai-text">{highlightInline(t.aiSummary)}</span>
+              </span>
+            ) : (
+              <span className="prev">{rowPreview}</span>
             )}
-          </div>
-          {(convo || !msg) && t.aiSummary ? (
-            <div className="mail-ai">
-              <Icon name="ai" size={12} weight="duotone" />
-              <span className="mail-ai-text">{highlightInline(t.aiSummary)}</span>
-            </div>
-          ) : (
-            <div className="prev">{rowPreview}</div>
-          )}
-          {(labelTag(t) || t.aiDraft || mailbox) && (
-            <div className="mail-foot">
-              {labelTag(t)}
-              {t.aiDraft && <Tag variant="ai" icon="ai">AI draft</Tag>}
-              {mailbox && <span className="mail-chip"><Icon name="folder" size={11} weight="duotone" /> {mailbox}</span>}
-            </div>
-          )}
-        </div>
+            {(labelTag(t) || t.aiDraft || mailbox) && (
+              <span className="mail-foot">
+                {labelTag(t)}
+                {t.aiDraft && <Tag variant="ai" icon="ai">AI draft</Tag>}
+                {mailbox && <span className="mail-chip"><Icon name="folder" size={11} weight="duotone" /> {mailbox}</span>}
+              </span>
+            )}
+          </span>
+        </button>
+        {multi && onToggleExpand && (
+          <button
+            type="button"
+            className={`convo-toggle${expanded ? " open" : ""}`}
+            onClick={onToggleExpand}
+            title={`${count} messages`}
+            aria-label={`${count} messages, ${expanded ? "collapse" : "expand"}`}
+          >
+            <span className="convo-count">{count}</span>
+            <Icon name={expanded ? "caretDown" : "caretRight"} size={11} weight="bold" />
+          </button>
+        )}
       </motion.div>
     </div>
   );
@@ -569,20 +607,19 @@ function MailRow({
 // A compact child row inside an expanded conversation accordion: one message,
 // indented under its conversation header, newest→oldest.
 function ChildRow({ t, m, selected, onOpen, onContext }: {
-  t: Thread; m: Message; selected: boolean; onOpen: () => void; onContext: (x: number, y: number) => void;
+  t: Thread; m: Message; selected: boolean; onOpen: () => void; onContext: (x: number, y: number, opener: HTMLElement) => void;
 }) {
   const sender = senderLabel(m.from.name, m.from.address);
   const av = avatarColor(m.from.address || sender);
   const hasAtt = !!(m.attachments && m.attachments.length);
   const isReplyish = /^\s*(re|aw|fwd|fw)\s*:/i.test(t.subject);
   return (
-    <div
+    <button
+      type="button"
       className={`convo-kid${selected ? " sel" : ""}`}
       onClick={onOpen}
       onKeyDown={(event) => handleRowKeyDown(event, onOpen, onContext)}
-      onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY); }}
-      role="button"
-      tabIndex={0}
+      onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, e.currentTarget); }}
       aria-current={selected ? "true" : undefined}
       aria-label={[
         sender,
@@ -591,18 +628,18 @@ function ChildRow({ t, m, selected, onOpen, onContext }: {
         hasAtt ? "Has attachment" : undefined,
       ].filter(Boolean).join(", ")}
     >
-      <div className="ck-av" style={{ background: av.bg, color: av.fg }} aria-hidden>{initials(m.from.name || m.from.address)}</div>
-      <div className="ck-main">
-        <div className="ck-l1">
+      <span className="ck-av" style={{ background: av.bg, color: av.fg }} aria-hidden>{initials(m.from.name || m.from.address)}</span>
+      <span className="ck-main">
+        <span className="ck-l1">
           {isReplyish && <Icon name="reply" size={11} weight="bold" className="mail-replyglyph" aria-hidden />}
           <span className="ck-from">{sender}</span>
           <span className="ck-time">
             {hasAtt && <Icon name="attach" size={11} weight="duotone" aria-label="Has attachment" />}
             {shortTime(m.when)}
           </span>
-        </div>
-        <div className="ck-prev">{previewText(t, m)}</div>
-      </div>
-    </div>
+        </span>
+        <span className="ck-prev">{previewText(t, m)}</span>
+      </span>
+    </button>
   );
 }

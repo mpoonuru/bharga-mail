@@ -1,6 +1,6 @@
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   ACCOUNT_DISCLOSURE_MOTION,
@@ -60,6 +60,37 @@ describe("mail account disclosure motion", () => {
     act(() => editOrderButton.click());
     expect(container.querySelector("#account-order-instructions")).toBeNull();
     expect(container.querySelectorAll(".acct-drag")).toHaveLength(0);
+    act(() => root.unmount());
+  });
+
+  it("reorders accounts from the keyboard and announces the new position", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const setAccountOrder = vi.fn();
+    useApp.setState({
+      accounts: [
+        { id: "a1", email: "one@example.test", provider: "imap", displayName: "One" },
+        { id: "a2", email: "two@example.test", provider: "gmail", displayName: "Two" },
+      ],
+      accountOrder: [],
+      setAccountOrder,
+      selectedAccountId: null,
+      threads: [],
+    });
+
+    act(() => root.render(createElement(Sidebar)));
+    const editOrderButton = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent?.trim() === "Edit order");
+    if (!(editOrderButton instanceof HTMLButtonElement)) throw new Error("Edit order button not found");
+    act(() => editOrderButton.click());
+    const handles = [...container.querySelectorAll<HTMLButtonElement>(".acct-drag")];
+
+    expect(container.querySelector("#account-order-instructions")?.textContent).toContain("Arrow Up or Arrow Down");
+    expect(handles[0]?.getAttribute("aria-keyshortcuts")).toBe("ArrowUp ArrowDown");
+    act(() => handles[0]?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
+
+    expect(setAccountOrder).toHaveBeenCalledWith(["a2", "a1"]);
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("One moved to position 2 of 2");
     act(() => root.unmount());
   });
 });

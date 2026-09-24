@@ -80,15 +80,6 @@
     letter-spacing: -0.01em;
   }
   button { font-family: var(--font); cursor: pointer; }
-  :is(button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-    box-shadow: 0 0 0 4px var(--accent-soft);
-  }
-  :is(button.danger, .danger[role="button"], .provider-remove):focus-visible {
-    outline-color: var(--danger);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 16%, transparent);
-  }
   ::-webkit-scrollbar { width: 10px; }
   ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
 }
@@ -196,7 +187,7 @@
   .nav-label-row { @apply flex items-center justify-between; }
   .order-toggle { @apply min-h-8 border-none bg-transparent text-[10.5px] text-text-3 cursor-pointer rounded-md px-1.5 py-1; transition: color var(--motion-instant) var(--ease), background-color var(--motion-instant) var(--ease); }
   .order-toggle:hover, .order-toggle:focus-visible, .order-toggle[aria-pressed="true"] { @apply text-text bg-surface; }
-  .account-order-instructions { @apply px-2 pb-1 text-[10.5px] leading-[1.35] text-text-3; }
+  .account-order-instructions { @apply px-2 pb-1 text-[11px] leading-[1.4] text-text-2; }
   /* Folder list nested under an account, with a tree connector line. */
   .folder-disclosure {
     display: grid;
@@ -227,18 +218,18 @@
   .folder-item { @apply py-[7px] text-[12.5px]; }
   .folder-item .ic { @apply w-[15px]; }
   /* Pin toggle on folders + pinned-section rows. */
-  .folder-pin { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] rounded-md text-text-3 opacity-0 bg-transparent border-none cursor-pointer; transition: var(--motion-standard) var(--ease); }
+  .folder-pin { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 opacity-0 bg-transparent border-none cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .folder-row:hover .folder-pin { @apply opacity-60; }
   .folder-pin:hover { @apply opacity-100 text-text bg-surface; }
   .folder-pin.pinned { @apply opacity-100; color: var(--accent); }
   /* Hover "⋯" button — the visible entry point to folder management. */
-  .folder-more { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] rounded-md text-text-3 opacity-0 bg-transparent border-none cursor-pointer; transition: var(--motion-standard) var(--ease); }
+  .folder-more { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-text-3 opacity-0 bg-transparent border-none cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .folder-row:hover .folder-more { @apply opacity-70; }
   .folder-more:hover, .folder-more.open { @apply opacity-100 text-text bg-surface; }
   /* Full-viewport transparent catcher so any click outside closes the menu. */
   .folder-menu-backdrop { @apply fixed inset-0 z-[69]; }
   /* Folder management: create / rename inline input, per-folder menu. */
-  .folder-edit { @apply flex-1 min-w-0 bg-surface border border-accent rounded-md px-2 py-[5px] text-[12.5px] text-text outline-none; font-family: var(--font); }
+  .folder-edit { @apply flex-1 min-w-0 bg-surface border border-accent rounded-md px-2 py-[5px] text-[12.5px] text-text; font-family: var(--font); }
   .folder-new { @apply flex items-center gap-[11px] px-[11px] py-[6px] mt-0.5 rounded-[9px] text-text-3 text-[12px] bg-transparent border-none cursor-pointer w-full text-left; transition: var(--motion-standard) var(--ease); }
   .folder-new:hover { @apply text-text bg-surface; }
   .folder-new .ic { @apply w-[15px] inline-flex justify-center; }
@@ -275,7 +266,7 @@
   .stream-status { @apply mx-[18px] mb-1.5 -mt-1 text-[11.5px] text-text-3 truncate; }
   .stream-status.err { color: var(--danger); }
   .search-box { @apply mx-2.5 mb-1 flex items-center gap-2 px-2.5 py-1.5 rounded-[10px] border border-border bg-bg-2 text-text-3; }
-  .search-box input { @apply flex-1 bg-transparent border-none outline-none text-text text-[13px]; font-family: var(--font); }
+  .search-box input { @apply flex-1 bg-transparent border-none text-text text-[13px]; font-family: var(--font); }
   .search-box input::placeholder { @apply text-text-3; }
   .search-clear { @apply text-text-3 border-none bg-transparent inline-flex items-center p-0; }
   .search-clear:hover { @apply text-text; }
@@ -283,7 +274,7 @@
   .smart-chips { @apply mx-2.5 mt-1.5 mb-0.5 flex items-center gap-1.5 overflow-x-auto pb-1; scrollbar-width: none; }
   .smart-chips::-webkit-scrollbar { display: none; }
   .smart-chips-lead { @apply inline-flex items-center shrink-0 pr-0.5; color: var(--accent); }
-  .chip { @apply shrink-0 inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-full border border-border bg-bg-2 text-text-2 text-[12px] font-medium cursor-pointer whitespace-nowrap; transition: var(--motion-standard) var(--ease); }
+  .chip { @apply shrink-0 inline-flex min-h-8 items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-full border border-border bg-bg-2 text-text-2 text-[12px] font-medium cursor-pointer whitespace-nowrap; transition: var(--motion-standard) var(--ease); }
   .chip:hover { @apply bg-surface text-text border-border-2; }
   .chip.on { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 40%, transparent); background: var(--accent-soft); font-weight: 600; }
   /* Security alert chip (possible phishing). */
@@ -295,7 +286,7 @@
   .chip-count { @apply text-[11px] text-text-3 tabular-nums; }
   .chip.on .chip-count { color: color-mix(in oklch, var(--accent) 80%, var(--text)); }
   .chip-new { @apply text-[10px] font-semibold leading-none text-white px-1.5 py-0.5 rounded-full; background: var(--accent); }
-  .chip-clear { @apply shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] p-0 rounded-full border border-border bg-bg-2 text-text-3 cursor-pointer; transition: var(--motion-standard) var(--ease); }
+  .chip-clear { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 p-0 rounded-full border border-border bg-bg-2 text-text-3 cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .chip-clear:hover { @apply text-text bg-surface border-border-2; }
   .list { @apply flex-1 min-h-0 overflow-y-auto px-2.5 pt-1 pb-4 flex flex-col; gap: var(--gap); scroll-behavior: smooth; }
   .load-older { @apply mx-auto mt-2 mb-3 px-4 py-1.5 rounded-full text-[12px] font-medium text-text-2 border border-border bg-bg-2 cursor-pointer shrink-0; transition: var(--motion-standard) var(--ease); }
@@ -303,9 +294,10 @@
   .load-older:disabled { @apply opacity-60 cursor-default; }
   .load-older--done { @apply text-text-3 border-transparent bg-transparent cursor-default; }
   /* Mail row — Design B: squircle avatar + sender/time, subject, AI summary line. */
-  .mail { @apply flex gap-3 rounded-xl cursor-pointer border border-transparent; padding: var(--row-pad); transition: background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), color var(--motion-standard) var(--ease); background: transparent; }
+  .mail { @apply flex items-center gap-2 rounded-xl border border-transparent; padding: var(--row-pad); transition: background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), color var(--motion-standard) var(--ease); background: transparent; }
   .mail:hover { @apply bg-surface; }
-  .mail:focus-visible, .convo-kid:focus-visible {
+  .mail-open { @apply flex min-w-0 flex-1 items-start gap-3 border-none bg-transparent p-0 text-left text-text; font: inherit; }
+  .mail:has(.mail-open:focus-visible), .convo-kid:focus-visible {
     outline-color: var(--accent);
     border-color: var(--accent);
     background-color: var(--accent-soft);
@@ -314,7 +306,7 @@
   /* Selected row carries the ambient "itopup" design over its surface. */
   .mail.sel { @apply border-border-2; background-color: var(--surface); background-image: var(--ambient); }
   .mail-av { @apply shrink-0 w-[38px] h-[38px] flex items-center justify-center text-[14px] font-semibold select-none; border-radius: 13px; }
-  .mail-main { @apply min-w-0 flex-1; }
+  .mail-main { @apply min-w-0 flex-1; display: block; }
   .mail-l1 { @apply flex items-center gap-2 mb-[2px]; }
   .mail-unread { @apply w-[7px] h-[7px] rounded-full shrink-0; background: var(--accent); }
   .acct-dot { @apply w-[7px] h-[7px] rounded-full shrink-0 inline-block; }
@@ -343,7 +335,7 @@
   .convo-kid:hover { @apply bg-surface; }
   .convo-kid.sel { @apply border-border-2; background-color: var(--surface); background-image: var(--ambient); }
   .ck-av { @apply shrink-0 w-7 h-7 flex items-center justify-center text-[11px] font-semibold select-none rounded-[9px]; }
-  .ck-main { @apply min-w-0 flex-1; }
+  .ck-main { @apply min-w-0 flex-1; display: block; }
   .ck-l1 { @apply flex items-center gap-1.5; }
   .ck-from { @apply text-[12.5px] font-semibold truncate; }
   .ck-time { @apply ml-auto text-[11px] text-text-3 shrink-0 inline-flex items-center gap-1; }
@@ -404,7 +396,7 @@
   .reply-bar { @apply flex gap-2 mt-2; }
   .reply-action { @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-[10px] border border-border-2 bg-surface text-text-2 text-[13px] font-medium; transition: var(--motion-standard) var(--ease); }
   .reply-action:hover { @apply text-text border-accent; }
-  .composer .recip { @apply w-full bg-transparent border-none outline-none text-[13.5px] text-text py-2 border-b border-border; font-family: var(--font); }
+  .composer .recip { @apply w-full bg-transparent border-none text-[13.5px] text-text py-2 border-b border-border; font-family: var(--font); }
   .composer .recip::placeholder { @apply text-text-3; }
   .composer .recip-subject { @apply text-[13.5px] font-semibold py-2 border-b border-border mb-2; }
   .recip-row { @apply flex items-start gap-2 border-b border-border py-1; }
@@ -417,7 +409,7 @@
   .recip-chip { @apply inline-flex items-center gap-1 text-[12.5px] text-text rounded-md pl-2 pr-1 py-[3px]; background: var(--surface); }
   .recip-chip button { @apply text-text-3 border-none bg-transparent cursor-pointer text-[15px] leading-none px-0.5; }
   .recip-chip button:hover { @apply text-danger; }
-  .chips-field { @apply flex-1 min-w-[120px] bg-transparent border-none outline-none text-[13.5px] text-text py-1; font-family: var(--font); }
+  .chips-field { @apply flex-1 min-w-[120px] bg-transparent border-none text-[13.5px] text-text py-1; font-family: var(--font); }
   .chips-field::placeholder { @apply text-text-3; }
   .chips-entry { @apply relative flex-1 min-w-[120px]; }
   .recip-suggest { @apply absolute left-0 top-full z-[90] mt-1 w-max min-w-[240px] max-w-[380px] rounded-xl border border-border-2 py-1 list-none overflow-hidden; background: var(--bg-2); box-shadow: var(--shadow); }
@@ -529,7 +521,7 @@
   .chip.solid { @apply bg-accent text-white; border-color: transparent; }
   .composer { @apply border border-border-2 rounded-card bg-surface px-4 py-[14px]; box-shadow: var(--shadow); }
   .composer .chead { @apply flex items-center gap-2 text-[11.5px] text-text-3 mb-2.5 pb-2.5 border-b border-border; }
-  .composer textarea { @apply w-full border-none bg-transparent text-text text-[14px] leading-[1.6] resize-none outline-none min-h-[90px]; font-family: var(--font); }
+  .composer textarea { @apply w-full border-none bg-transparent text-text text-[14px] leading-[1.6] resize-none min-h-[90px]; font-family: var(--font); }
   .composer .cfoot { @apply flex items-center gap-2 mt-[14px]; }
   .ghost-pill { @apply ml-auto text-[11px] text-accent flex items-center gap-1.5; }
   .kbd { @apply text-[10.5px] border border-border-2 rounded-[5px] px-[5px] py-px text-text-2 bg-bg-2; }
@@ -568,7 +560,7 @@
   /* ---- Command palette ---- */
   .cmd-overlay { @apply fixed inset-0 flex items-start justify-center z-50; background: rgba(0,0,0,.4); backdrop-filter: blur(6px); padding-top: 14vh; animation: fade .16s var(--ease); }
   .cmd { @apply w-[600px] max-w-[90vw] border border-border-2 rounded-2xl overflow-hidden; background: var(--glass); backdrop-filter: blur(28px) saturate(1.6); box-shadow: var(--shadow); animation: pop .22s var(--ease); }
-  .cmd input { @apply w-full border-none bg-transparent text-text text-[16.5px] px-5 py-[18px] outline-none; font-family: var(--font); }
+  .cmd input { @apply w-full border-none bg-transparent text-text text-[16.5px] px-5 py-[18px]; font-family: var(--font); }
   .cmd input::placeholder { color: var(--text-3); }
   .cmd .sec { @apply text-[10px] uppercase text-text-3 font-semibold border-t border-border pt-2.5 px-[18px] pb-1; letter-spacing: .08em; }
   .cmd .opt { @apply flex items-center gap-3 px-[18px] py-2.5 text-[13.5px]; }
@@ -597,14 +589,14 @@
   .richtext.rt-full { @apply fixed inset-4 z-50 flex flex-col; box-shadow: var(--shadow); background: var(--bg); }
   .rt-toolbar { @apply flex items-center gap-0.5 px-2 py-1.5 border-b border-border flex-wrap; }
   .rt-grow { @apply flex-1; }
-  .rt-select { @apply h-[26px] px-2 rounded-md text-text-2 text-[12px] border border-border-2 bg-surface outline-none; font-family: var(--font); }
-  .rt-btn { @apply min-w-[26px] h-[26px] px-1.5 rounded-md text-text-2 inline-flex items-center justify-center border-none bg-transparent; }
+  .rt-select { @apply h-8 px-2 rounded-md text-text-2 text-[12px] border border-border-2 bg-surface; font-family: var(--font); }
+  .rt-btn { @apply min-w-8 h-8 px-1.5 rounded-md text-text-2 inline-flex items-center justify-center border-none bg-transparent; }
   .rt-btn:hover { @apply bg-surface text-text; }
   .rt-btn.on { @apply bg-accent text-white; }
   .rt-sep { @apply w-px h-4 mx-1 bg-border-2 inline-block; }
   .rt-area { @apply px-3 py-2.5 text-[14px] leading-[1.6] text-text overflow-y-auto; }
   .richtext.rt-full .rt-area { @apply flex-1; }
-  .rt-area .ProseMirror { @apply outline-none min-h-[inherit]; }
+  .rt-area .ProseMirror { @apply min-h-[inherit]; }
   .rt-area .ProseMirror p { @apply mb-2; }
   .rt-area .ProseMirror h1 { @apply text-[24px] font-bold mt-2 mb-2; letter-spacing: -0.02em; }
   .rt-area .ProseMirror h2 { @apply text-[20px] font-bold mt-2 mb-1.5; }
@@ -626,7 +618,7 @@
 
   /* ---- Attachments ---- */
   .attach-row { @apply flex flex-wrap gap-2 w-full mt-2; }
-  .attach-chip { @apply inline-flex items-center gap-1.5 text-[11.5px] text-text-2 bg-bg-2 border border-border rounded-lg px-2 py-1 cursor-pointer; transition: var(--motion-standard) var(--ease); }
+  .attach-chip { @apply inline-flex min-h-8 items-center gap-1.5 text-[11.5px] text-text-2 bg-bg-2 border border-border rounded-lg px-2 py-1 cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .attach-chip:hover:not(:disabled) { @apply border-accent text-text; }
   .attach-chip:disabled { @apply opacity-60 cursor-default; }
   .attach-group { @apply inline-flex items-center; }
@@ -634,7 +626,7 @@
   .attach-preview:hover:not(:disabled) { @apply border-accent text-text; }
   .attach-preview:disabled { @apply opacity-60 cursor-default; }
   .attach-size { @apply text-text-3 text-[10.5px]; }
-  .attach-x { @apply text-text-3 border-none bg-transparent inline-flex items-center p-0 ml-0.5; }
+  .attach-x { @apply min-h-6 min-w-6 text-text-3 border-none bg-transparent inline-flex items-center justify-center p-0 ml-0.5; }
   .attach-x:hover { @apply text-danger; }
 
   /* ---- Kebab menu ---- */
@@ -725,7 +717,7 @@
   .provider-state { @apply h-2.5 w-2.5 rounded-full bg-text-3; box-shadow: 0 0 0 4px color-mix(in srgb, var(--text-3) 12%, transparent); }
   .provider-state.ready { @apply bg-good; box-shadow: 0 0 0 4px color-mix(in srgb, var(--good) 14%, transparent); }
   .provider-identity { @apply flex min-w-0 items-center gap-2; }
-  .provider-identity input { @apply min-w-0 max-w-[280px] border-0 bg-transparent p-0 text-[13px] font-semibold text-text outline-none; }
+  .provider-identity input { @apply min-h-8 min-w-0 max-w-[280px] border-0 bg-transparent p-0 text-[13px] font-semibold text-text; }
   .provider-identity span { @apply shrink-0 rounded-md px-1.5 py-0.5 text-[10px] text-accent; background: var(--accent-soft); }
   .provider-status { @apply text-[11px] text-text-3; }
   .provider-status.ready { @apply text-good; }
@@ -733,10 +725,10 @@
   .provider-remove:hover, .provider-remove:focus-visible { @apply border-danger text-danger; background: color-mix(in srgb, var(--danger) 8%, transparent); }
   .provider-fields { @apply mt-3 grid gap-2.5; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
   .provider-fields label { @apply grid gap-1 text-[10.5px] font-medium uppercase tracking-[.04em] text-text-3; }
-  .provider-fields input { @apply w-full rounded-lg border border-border-2 bg-bg-2 px-2.5 py-2 text-[12.5px] normal-case tracking-normal text-text outline-none; }
+  .provider-fields input { @apply min-h-8 w-full rounded-lg border border-border-2 bg-bg-2 px-2.5 py-2 text-[12.5px] normal-case tracking-normal text-text; }
   .provider-fields input:focus { @apply border-accent; box-shadow: 0 0 0 3px var(--accent-soft); }
   .provider-roles { @apply mt-3 flex flex-wrap gap-1.5; }
-  .provider-roles button { @apply rounded-full border border-border bg-transparent px-2.5 py-1.5 text-[11px] text-text-3; }
+  .provider-roles button { @apply min-h-8 rounded-full border border-border bg-transparent px-2.5 py-1.5 text-[11px] text-text-3; }
   .provider-roles button:hover, .provider-roles button:focus-visible { @apply border-accent text-text; }
   .provider-roles button.selected { @apply border-transparent text-white; background: var(--accent); }
   .provider-card-foot { @apply mt-3 flex min-h-9 items-center justify-end gap-3; }
@@ -763,6 +755,18 @@
   .util button:hover { @apply text-text; }
 }
 
+/* Keep the keyboard indicator outside Tailwind's layered component rules so
+   local input/button resets cannot silently override it. */
+:is(button, a[href], input, select, textarea, [contenteditable="true"], [role="button"], [tabindex]:not([tabindex^="-"])):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+:is(button.danger, .danger[role="button"], .provider-remove):focus-visible {
+  outline-color: var(--danger);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
 /* ---- keyframes & motion prefs (not expressible as utilities) ---- */
 @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes pop { from { transform: translateY(-12px) scale(.98); opacity: 0 } to { transform: none; opacity: 1 } }
@@ -778,10 +782,13 @@
   }
 }
 @media (max-width: 640px) {
-  :is(.topbar-btn, .rail-toggle, .compose-btn, .nav-item, .order-toggle, .acct-drag, .acct-more, .folder-pin, .folder-more, .mail, .convo-kid, .convo-toggle, .iconbtn, .reply-action, .af-btn, .ctx-menu button, .menu button, .ta-select-btn) {
+  button,
+  [role="button"],
+  a[href],
+  :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea, [contenteditable="true"]) {
     min-height: 44px;
   }
-  :is(.rail-toggle, .acct-drag, .acct-more, .folder-pin, .folder-more, .convo-toggle, .iconbtn) {
+  :is(.rail-toggle, .acct-drag, .acct-more, .folder-pin, .folder-more, .chip-clear, .search-clear, .convo-toggle, .iconbtn, .rt-btn, .attach-x, .provider-remove) {
     min-width: 44px;
   }
   .provider-manager-head { align-items: stretch; flex-direction: column; }

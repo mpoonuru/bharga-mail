@@ -72,7 +72,13 @@ const ACCOUNT_DISCLOSURE_STYLE: DisclosureStyle = {
 
 /** A single account row in the expanded sidebar: drag-handle to reorder, the
  *  account selector, refresh, and (when focused) its folders with pin toggles. */
-function AccountRow({ a, orderEditing, reordering, setReordering }: { a: Account; orderEditing: boolean; reordering: boolean; setReordering: (active: boolean) => void }) {
+function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove }: {
+  a: Account;
+  orderEditing: boolean;
+  reordering: boolean;
+  setReordering: (active: boolean) => void;
+  onKeyboardMove: (account: Account, direction: -1 | 1) => void;
+}) {
   const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads, createFolder, renameFolder, deleteFolder, removeAccount, renameAccount, syncOneFolder, markFolderRead } = useApp();
   const controls = useDragControls();
   const [busy, setBusy] = useState(false);
@@ -124,6 +130,12 @@ function AccountRow({ a, orderEditing, reordering, setReordering }: { a: Account
             title="Drag to reorder"
             aria-label={`Drag ${a.displayName?.trim() || a.email} to reorder`}
             aria-describedby="account-order-instructions"
+            aria-keyshortcuts="ArrowUp ArrowDown"
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+              event.preventDefault();
+              onKeyboardMove(a, event.key === "ArrowUp" ? -1 : 1);
+            }}
             onPointerDown={(e) => activateAccountReorder(
               () => setReordering(true),
               () => controls.start(e),
@@ -273,6 +285,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
   const { view, setView, setCompose, setModelPicker, threads, tasks, ai, accounts, selectedAccountId, setAccount, selectedFolder, setFolder, toggleSidebar, accountOrder, setAccountOrder, pinnedFolders, togglePinFolder } = useApp();
   const [reordering, setReordering] = useState(false);
   const [orderEditing, setOrderEditing] = useState(false);
+  const [orderAnnouncement, setOrderAnnouncement] = useState("");
   // Accounts in the user's saved order; any not yet in the order sort to the end.
   const ordered = [...accounts].sort((x, y) => {
     const ix = accountOrder.indexOf(x.id), iy = accountOrder.indexOf(y.id);
@@ -281,6 +294,16 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
     return ix - iy;
   });
   const orderedIds = ordered.map((a) => a.id);
+  const moveAccount = (account: Account, direction: -1 | 1) => {
+    const from = orderedIds.indexOf(account.id);
+    const to = Math.max(0, Math.min(from + direction, orderedIds.length - 1));
+    if (from < 0 || from === to) return;
+    const next = [...orderedIds];
+    next.splice(from, 1);
+    next.splice(to, 0, account.id);
+    setAccountOrder(next);
+    setOrderAnnouncement(`${account.displayName?.trim() || account.email} moved to position ${to + 1} of ${next.length}.`);
+  };
   const count = (v: View) => threads.filter((t) => t.view.includes(v) && t.unread).length || undefined;
   const draftModel = ai?.models.find((m) => m.roles.includes("draft"));
   const triageModel = ai?.models.find((m) => m.roles.includes("triage"));
@@ -369,9 +392,10 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                 </div>
                 {orderEditing && (
                   <p className="account-order-instructions" id="account-order-instructions">
-                    Drag the handles to reorder accounts.
+                    Drag the handles, or focus one and press Arrow Up or Arrow Down.
                   </p>
                 )}
+                <span className="sr-only" role="status" aria-live="polite">{orderAnnouncement}</span>
               </>
             )}
             {accounts.length > 1 && (
@@ -397,7 +421,16 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
               ))
             ) : (
               <Reorder.Group axis="y" values={orderedIds} onReorder={setAccountOrder} as="div" className="acct-list">
-                {ordered.map((a) => <AccountRow key={a.id} a={a} orderEditing={orderEditing} reordering={reordering} setReordering={setReordering} />)}
+                {ordered.map((a) => (
+                  <AccountRow
+                    key={a.id}
+                    a={a}
+                    orderEditing={orderEditing}
+                    reordering={reordering}
+                    setReordering={setReordering}
+                    onKeyboardMove={moveAccount}
+                  />
+                ))}
               </Reorder.Group>
             )}
           </>

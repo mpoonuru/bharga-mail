@@ -23,6 +23,8 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
   const overlayTransition = useMotionTransition(OVERLAY_FADE);
   const panelRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const titleId = useId();
   useEffect(() => {
     if (!open) return;
@@ -35,7 +37,7 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
       } else if (panelRef.current) {
         containTabKey(e, panelRef.current);
       }
@@ -50,7 +52,9 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
       if (opener?.isConnected) opener.focus();
       openerRef.current = null;
     };
-  }, [open, onClose]);
+  }, [open]);
+
+  const close = () => onCloseRef.current();
 
   return createPortal(
     <AnimatePresence>
@@ -61,7 +65,7 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={overlayTransition}
-          onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+          onClick={(e) => { if (e.target === e.currentTarget) close(); }}
         >
           <motion.div
             ref={panelRef}
@@ -80,7 +84,7 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
             {title && (
               <div className="modal-head">
                 <b id={titleId}>{title}</b>
-                <button className="iconbtn" type="button" aria-label="Close dialog" onClick={onClose} title="Close"><Icon name="close" /></button>
+                <button className="iconbtn" type="button" aria-label="Close dialog" onClick={close} title="Close"><Icon name="close" /></button>
               </div>
             )}
             <div className="modal-body">{children}</div>

@@ -10,6 +10,20 @@ describe("dialog focus helpers", () => {
     expect(focusableElements(host).map((node) => node.textContent)).toEqual(["First", "Last"]);
   });
 
+  it("excludes controls hidden by ancestors, inert regions, CSS, or negative tab order", () => {
+    const host = document.createElement("div");
+    host.innerHTML = `
+      <button>Visible</button>
+      <div hidden><button>Hidden ancestor</button></div>
+      <div inert><button>Inert ancestor</button></div>
+      <div style="display:none"><button>Display none</button></div>
+      <button style="visibility:hidden">Invisible</button>
+      <span tabindex="-2">Negative tab order</span>
+    `;
+
+    expect(focusableElements(host).map((node) => node.textContent?.trim())).toEqual(["Visible"]);
+  });
+
   it("wraps Shift+Tab from the first control to the last", () => {
     const host = document.createElement("div");
     host.innerHTML = '<button>First</button><button>Last</button>';

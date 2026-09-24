@@ -37,6 +37,22 @@ function DialogHarness({ labelOnly = false }: { labelOnly?: boolean }) {
   );
 }
 
+function ControlledDialogHarness() {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>Open editor</button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Edit signature">
+        <label>
+          Name
+          <input value={value} onInput={(event) => setValue(event.currentTarget.value)} />
+        </label>
+      </Modal>
+    </>
+  );
+}
+
 afterEach(() => {
   for (const root of roots.splice(0)) act(() => root.unmount());
   for (const host of hosts.splice(0)) host.remove();
@@ -117,5 +133,20 @@ describe("Modal accessibility", () => {
     const panel = document.querySelector<HTMLElement>(".modal-panel");
     expect(panel?.getAttribute("aria-label")).toBe("Attachment preview");
     expect(panel?.getAttribute("aria-labelledby")).toBeNull();
+  });
+
+  it("does not reset focus when a controlled field rerenders its parent", () => {
+    const { host, root } = hostRoot();
+    act(() => root.render(<ControlledDialogHarness />));
+    act(() => host.querySelector<HTMLButtonElement>("button")?.click());
+    const input = document.querySelector<HTMLInputElement>('.modal-panel input')!;
+
+    act(() => {
+      input.focus();
+      input.value = "W";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(document.activeElement).toBe(input);
   });
 });
