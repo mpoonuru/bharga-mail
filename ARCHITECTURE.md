@@ -33,7 +33,7 @@ Five differentiators, each a direct contrast with the incumbents:
 
 1. **Plug-and-play AI (the headline).** Every competitor hardwires you to *their* model and bills you per seat for it. We treat the AI like a browser treats search engines — a swappable engine. Bring any model: a cloud API (Claude, GPT, Gemini), any **OpenAI-compatible endpoint** (OpenRouter, Groq, Together, vLLM, your company's gateway), or a **fully local model** (Ollama, LM Studio, llama.cpp) running free and offline. Pay your own provider, or pay nothing. Assign different models to different jobs. This is detailed in §5.
 
-2. **Local-first & private by default.** Your mail lives encrypted on your device and works fully offline. No server sees your inbox unless *you* point a cloud model at it. For a German/EU audience especially, "private by default, your data never touches our servers" is not a feature — it's the reason to switch. The incumbents physically can't say this; their AI runs on their servers.
+2. **Local-first & private by default.** Your mail lives on your device and works fully offline. Credentials are encrypted with AES-256-GCM under one OS-Keychain master key; message bodies and contacts are currently local SQLite plaintext until the SQLCipher release gate is complete. No Bharga server sees your inbox unless *you* point a cloud model at it.
 
 3. **MCP-native agentic actions.** Most clients only *generate text*. We make the AI *act*: natively speak the Model Context Protocol so your chosen model can use tools and connected apps — create the calendar event, file the task in Linear/Asana, look something up, send the reply — with your approval. The inbox becomes an agent surface, not a suggestion box.
 
@@ -88,7 +88,7 @@ If mobile (iPad/iOS) becomes the dominant surface rather than a companion, **Flu
 │  ┌────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
 │  │ Sync Engine│  │ Local Store  │  │ Search & Index        │  │
 │  │ JMAP/Gmail │  │ SQLite +     │  │ FTS5 + vector (RAG)   │  │
-│  │ /Graph/IMAP│  │ encrypted    │  │                       │  │
+│  │ /Graph/IMAP│  │ local SQLite │  │                       │  │
 │  └─────┬──────┘  └──────┬───────┘  └──────────┬────────────┘  │
 │        │                │                      │               │
 │  ┌─────┴──────────────────────────────────────┴────────────┐ │
@@ -150,7 +150,7 @@ This is the differentiator, so it's designed as a first-class subsystem, not a w
 | **Local runtimes** | Ollama, llama.cpp, LM Studio | Free, offline, private. Auto-discover models the user has pulled. |
 | **Enterprise / custom** | Azure OpenAI, AWS Bedrock, a company's internal LLM | Custom base URL, auth header/scheme, and model list. |
 
-**Bring your own key (BYOK).** Users paste their own API keys (stored in the OS keychain, never our servers) or point at a local/self-hosted endpoint. They pay their provider directly, or pay nothing when running local. We can also offer an *optional* managed-key tier for people who don't want to deal with keys — but it's a convenience, never a requirement.
+**Bring your own key (BYOK).** Users paste their own API keys (encrypted locally under an OS-Keychain master key, never sent to Bharga servers) or point at a local/self-hosted endpoint. They pay their provider directly, or pay nothing when running local. We can also offer an *optional* managed-key tier for people who don't want to deal with keys — but it's a convenience, never a requirement.
 
 **Capability detection & graceful degradation.** On adding a model, the engine probes/looks up its capabilities — context window, tool-calling, vision, embedding support, streaming — and stores a capability profile. Features check capabilities and degrade gracefully (e.g. if a local model can't do tool-calling, the agent falls back to structured prompting; if it has no embedding endpoint, search uses a separate local embedding model).
 
@@ -255,7 +255,7 @@ WCAG 2.1 AA from day one: keyboard-navigable everything, visible focus, sufficie
 
 ## 8. Security & Privacy
 
-- **Local encryption at rest:** encrypt the SQLite store; keys in the OS keychain (macOS Keychain, Windows Credential Manager, iOS Keychain).
+- **Local encryption at rest release gate:** migrate the SQLite store to SQLCipher with verified backup, rollback, corrupt-key handling, and recovery; keep the database key in the platform credential manager.
 - **OAuth, never passwords:** OAuth 2.0 / OIDC for Gmail, Microsoft, and modern providers; tokens in the OS secure store; refresh handled in Rust.
 - **Least-privilege scopes** and clear consent screens.
 - **AI data disclosure:** explicit, legible disclosure of what content (if any) leaves the device, tied to the privacy dial. Default to not training on user data.
@@ -267,7 +267,7 @@ WCAG 2.1 AA from day one: keyboard-navigable everything, visible focus, sufficie
 ## 9. Build, Release & Ops
 
 - **Monorepo** — `core/` (Rust), `ui/` (React), `crates/` for shared Rust libs, `apps/` per-platform config.
-- **CI/CD:** GitHub Actions + `tauri-action` to build signed installers per platform. Code signing + notarization for macOS, signing for Windows, App Store pipeline for iPad/iOS.
+- **CI/CD target:** GitHub Actions + `tauri-action` with macOS Developer ID signing/notarization, Windows code signing, and an App Store pipeline for iPad/iOS. Current community builds are ad-hoc signed and must not be described as enterprise-ready.
 - **Auto-update:** Tauri updater for desktop; App Store for iPad.
 - **Crash/telemetry:** privacy-respecting, opt-in (Sentry or self-hosted), with PII scrubbing.
 - **Backend (thin):** you'll likely need a small cloud service for OAuth token exchange brokering, push notification fan-out, the cloud-AI proxy (to keep API keys server-side and meter usage), and licensing/billing. Keep it minimal — the heavy lifting stays on-device.

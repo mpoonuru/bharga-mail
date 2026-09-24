@@ -75,7 +75,7 @@ Requires the Rust toolchain and platform webview deps — see https://v2.tauri.a
 cd app
 bun install
 bun run tauri:dev    # launches the native window
-bun run tauri:build  # produces signed installers per platform
+bun run tauri:build  # produces local installers; production signing is a separate release step
 ```
 
 ## Try it
@@ -97,7 +97,7 @@ Uses OAuth 2.0 with PKCE via a loopback redirect (Google's desktop-app pattern �
    ```
 3. Settings → **Connect Gmail** → sign in. Messages sync into the local SQLite store and appear in the inbox.
 
-Tokens are stored in the OS keychain (never on disk in plaintext, never on our servers).
+The OS Keychain holds one master key. OAuth tokens are stored locally as AES-256-GCM ciphertext and are never sent to Bharga servers.
 
 ## Connect a Microsoft 365 account
 
@@ -120,7 +120,7 @@ IMAP fetch.)
 ## Connect a plain IMAP/SMTP account
 
 Settings → **IMAP / SMTP** → enter email, SMTP host/port, username, password, and
-IMAP host/port. Password is stored in the OS keychain. **Save & sync** fetches the
+IMAP host/port. The password is stored locally as AES-256-GCM ciphertext under the OS-Keychain master key. **Save & sync** fetches the
 inbox over IMAP (rustls TLS) and outgoing mail sends via SMTP — both without
 system OpenSSL.
 
@@ -130,7 +130,7 @@ Settings → AI engine. Either point the **local** model at Ollama (`http://loca
 
 ## What's wired vs. what's next
 
-**Wired now:** full UI + navigation, theme/density, command palette; the plug-and-play **AI engine** (provider trait + OpenAI-compatible/Anthropic/local adapters with real `reqwest` calls, per-role router, prompts); **SQLite store** (schema, migrations, FTS5 search, upserts, task persistence, first-run seed); **Gmail OAuth (PKCE) + initial sync** with MIME body parsing and keychain token storage; the full Tauri command surface. Rust has unit tests for the router, store round-trip, HTML stripping, and Gmail message parsing.
+**Wired now:** full UI + navigation, theme/density, command palette; the plug-and-play **AI engine** (provider trait + OpenAI-compatible/Anthropic/local adapters with real `reqwest` calls, per-role router, prompts); **SQLite store** (schema, migrations, FTS5 search, upserts, task persistence, first-run seed); **Gmail OAuth (PKCE) + initial sync** with MIME body parsing and encrypted token storage; the full Tauri command surface. Rust has unit tests for the router, store round-trip, HTML stripping, and Gmail message parsing. Message bodies and contacts remain local SQLite plaintext until the SQLCipher migration/recovery release gate is complete.
 
 **Incremental sync:** Gmail uses the History API (`startHistoryId`, falls back to full sync when the cursor expires); Microsoft 365 uses Graph delta queries (deltaLink/nextLink cursor). Both persist their cursor in the `accounts` table.
 

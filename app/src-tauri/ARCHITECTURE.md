@@ -40,7 +40,7 @@ transaction, before the runner starts.
 | `dead_letter` | terminal send failures | populated when retries are exhausted |
 | `folders` | mailboxes per account | `account_id → accounts(id)` ON DELETE CASCADE; `uid_validity`, `uid_next` |
 | `account_sync_state` | per-folder sync cursor | PK `(account_id, folder)` — IMAP UIDVALIDITY/UIDNEXT, Gmail historyId, Graph delta |
-| `imap_accounts` | IMAP/SMTP connection config | passwords are **not** here — they live in the OS keychain |
+| `imap_accounts` | IMAP/SMTP connection config | passwords are **not** here — encrypted secret records are keyed separately |
 | `tasks` | extracted to-dos | optional `source_thread_id` |
 
 ### Integrity guarantees
@@ -84,9 +84,10 @@ These are known, intentional gaps — not oversights — scoped out of this pass
   so moving to a read-pool + single-writer (`deadpool-sqlite`) is a drop-in
   improvement; deferred because it touches every method and needs runtime
   profiling to justify.
-- **At-rest encryption.** Message bodies/contacts are plaintext in SQLite;
-  passwords/tokens are already in the OS keychain. SQLCipher would close this and
-  matches the "your machine" positioning.
+- **At-rest encryption.** Message bodies/contacts are plaintext in SQLite.
+  Credentials and provider keys are AES-256-GCM ciphertext under one
+  OS-Keychain master key. SQLCipher remains a release gate and must include
+  verified migration, rollback, corrupt-key handling, and recovery.
 - **Folders/flags wiring.** The `folders`, `account_sync_state`, and message-flag
   columns exist and are indexed, but the sync engine still syncs inbox-only; the
   per-folder IMAP UIDVALIDITY/UIDNEXT loop (Sent / Drafts / Trash browsing) is the
@@ -113,5 +114,5 @@ These are known, intentional gaps — not oversights — scoped out of this pass
 - Folder browsing beyond inbox (above).
 - IMAP server-side mark-read/trash (needs the UID from folder sync; local persists,
   Gmail/Graph push works).
-- At-rest DB encryption (SQLCipher); connection pool.
+- At-rest DB encryption (SQLCipher with migration/recovery); connection pool.
 - POP3 / JMAP; real calendar sync; contacts/address book.

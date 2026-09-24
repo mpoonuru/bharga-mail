@@ -30,7 +30,7 @@ Downloads the right build for your Mac, installs it to **Applications**, and cle
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Bharga Mail.app"
 ```
-The build is **ad‑hoc signed, not Apple‑notarized** — that's what keeps it free. The quarantine step is only needed the first time.
+The current public build is **ad-hoc signed and not Apple-notarized**. The quarantine step is only needed the first time. This is suitable for development and community testing, not an enterprise distribution claim; enterprise releases require macOS Developer ID signing/notarization and Windows code signing.
 
 ### Windows
 Download the `.msi` and run it. On the **"Windows protected your PC"** screen, click **More info → Run anyway** (not paid‑code‑signed yet).
@@ -47,7 +47,8 @@ Most "AI email" lives in someone else's cloud — your messages and login tokens
 ## Privacy & security
 
 - **Your mail never leaves your device.** Bharga Mail connects straight to your IMAP / Gmail / Microsoft 365 servers. There is no Bharga server in the middle.
-- **Credentials in the OS keychain**, secrets sealed with AES‑256‑GCM. Mail is stored in a **local SQLite** database (full‑text search included) — on your disk, not ours.
+- **Encrypted credentials:** the OS Keychain holds one master key; account passwords, OAuth tokens, and provider keys are sealed with AES-256-GCM in the local secrets store.
+- **Local mail storage:** message bodies and contacts remain on your device in SQLite with full-text search. They are not yet encrypted at rest; SQLCipher migration, rollback, and recovery are release-gate work before Bharga claims full mailbox encryption.
 - **Reading mail doesn't mark it read by accident.** We fetch with `BODY.PEEK[]`, so syncing never silently flips your messages to *seen* on the server.
 - **AI is yours to choose.** Run triage/summaries fully **on‑device** (local model), or bring your own OpenAI/Anthropic key. Cloud AI is opt‑in, per‑role, and never required.
 - **Sandboxed rendering.** Email HTML is sanitized and rendered in a locked‑down, script‑free iframe with a strict CSP. Links are screened and obvious phishing is flagged.

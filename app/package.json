@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "check:open-source": "node ../scripts/check-open-source-hygiene.mjs",
+    "check:version": "bun ../scripts/check-version-integrity.mjs",
     "test": "vitest run",
     "preview": "vite preview",
     "tauri": "tauri",
