@@ -1,6 +1,7 @@
 // Verifies routine controls and overlays provide feedback without decorative transforms.
-import { act } from "react";
+import { act, useLayoutEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { flushSync } from "react-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CommandBar } from "@/components/CommandBar";
 import { ModelPicker } from "@/components/ModelPicker";
@@ -67,5 +68,26 @@ describe("routine motion contracts", () => {
     for (const selector of [".cmd", ".pop", ".modal-panel"]) {
       expect(document.querySelector<HTMLElement>(selector)?.style.transform).toBe("");
     }
+  });
+
+  it("closes a modal before a global Escape handler can rerender it", () => {
+    const onClose = vi.fn();
+    function Harness() {
+      const [, setRevision] = useState(0);
+      useLayoutEffect(() => {
+        const rerender = (event: KeyboardEvent) => {
+          if (event.key === "Escape") flushSync(() => setRevision((value) => value + 1));
+        };
+        window.addEventListener("keydown", rerender);
+        return () => window.removeEventListener("keydown", rerender);
+      }, []);
+      return <Modal open onClose={() => onClose()} title="Confirm">Body</Modal>;
+    }
+
+    const { root } = hostRoot();
+    act(() => root.render(<Harness />));
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

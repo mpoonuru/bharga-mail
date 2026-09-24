@@ -19,10 +19,12 @@ export function Modal({ open, onClose, title, children, maxWidth = 640 }: Props)
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
+    // Capture Escape before global shortcut handlers can synchronously rerender
+    // the tree and unregister this dialog's listener during the same event.
+    window.addEventListener("keydown", onKey, true);
     return () => {
       document.body.style.overflow = prev;
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
     };
   }, [open, onClose]);
 
