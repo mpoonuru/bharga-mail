@@ -28,4 +28,18 @@ describe("bridge desktop failures", () => {
       delaySeconds: 10,
     })).rejects.toThrow("desktop IPC unavailable");
   });
+
+  it("delegates validated web links to the native opener command", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {},
+    });
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("@tauri-apps/api/core", () => ({ invoke }));
+    const { api } = await import("@/lib/bridge");
+
+    await api.openExternalUrl("https://example.test/path");
+
+    expect(invoke).toHaveBeenCalledWith("open_external_url", { url: "https://example.test/path" });
+  });
 });

@@ -488,17 +488,23 @@
   .phish-host { @apply font-semibold; color: inherit; }
   .phish-hint { @apply text-text-3 text-[11px]; }
   /* Safe-click confirmation when opening a flagged link. */
-  .lc-backdrop { @apply absolute inset-0 z-50 flex items-center justify-center p-6; background: oklch(0 0 0 / 0.45); backdrop-filter: blur(2px); }
-  .lc-card { @apply max-w-[420px] w-full rounded-xl p-4 flex flex-col gap-2.5; background: var(--surface); border: 1px solid color-mix(in oklch, var(--warn) 45%, var(--border)); box-shadow: 0 18px 50px -12px oklch(0 0 0 / 0.5); }
-  .lc-card.danger { border-color: color-mix(in oklch, var(--danger) 55%, var(--border)); }
-  .lc-head { @apply flex items-center gap-2 text-[14px] font-semibold; color: var(--warn); }
-  .lc-card.danger .lc-head { color: var(--danger); }
-  .lc-card p { @apply text-[12.5px] text-text-2 m-0; }
+  .link-decision { @apply flex flex-col gap-3; }
+  .link-decision-summary { @apply flex items-start gap-2.5 text-[13px] text-text-2; }
+  .link-decision-summary > svg { @apply mt-0.5 shrink-0; color: var(--warn); }
+  .link-decision.danger .link-decision-summary > svg { color: var(--danger); }
+  .link-decision-summary p { @apply m-0 leading-relaxed; }
   .lc-url { @apply text-[11.5px] text-text-3 break-all px-2.5 py-1.5 rounded-md; background: var(--bg-2); border: 1px solid var(--border); font-family: var(--mono, monospace); }
-  .lc-actions { @apply flex justify-end gap-2 mt-1; }
-  .lc-actions button { @apply px-3 py-1.5 rounded-lg text-[12.5px] font-semibold cursor-pointer border border-border bg-bg-2 text-text; transition: var(--motion-standard) var(--ease); }
+  .lc-actions { @apply flex flex-wrap justify-end gap-2; }
+  .lc-actions button { @apply min-h-9 px-3 py-2 rounded-lg text-[12.5px] font-semibold cursor-pointer border border-border bg-bg-2 text-text; transition: var(--motion-standard) var(--ease); }
   .lc-actions button:hover { @apply bg-surface; }
   .lc-actions .lc-danger { color: var(--danger); border-color: color-mix(in oklch, var(--danger) 45%, transparent); }
+  .link-copy-status { @apply min-h-4 text-right text-[11.5px] text-text-3; }
+  .link-menu-backdrop { @apply fixed inset-0 z-[59] cursor-default border-0 bg-transparent p-0; }
+  .link-menu { @apply fixed z-[60] grid min-w-[160px] gap-0.5 rounded-xl border border-border-2 p-1.5; background: var(--surface); box-shadow: var(--shadow); }
+  .link-menu button { @apply min-h-9 rounded-lg border-0 bg-transparent px-3 py-2 text-left text-[12.5px] text-text-2; }
+  .link-menu button:hover, .link-menu button:focus-visible { @apply bg-bg-2 text-text; }
+  .link-copy-toast { @apply fixed bottom-6 left-1/2 z-[70] -translate-x-1/2 rounded-lg border border-border-2 px-3 py-2 text-[12.5px] font-medium text-text; background: var(--surface); box-shadow: var(--shadow); }
+  .link-copy-toast.error { color: var(--danger); border-color: color-mix(in oklch, var(--danger) 45%, var(--border)); }
   .msg .text {
     @apply text-[14px] leading-[1.65] min-w-0 max-w-full rounded-[10px] px-4 py-3.5;
     overflow-wrap: anywhere; word-break: break-word;

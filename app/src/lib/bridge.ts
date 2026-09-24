@@ -4,6 +4,7 @@
 
 import type { Thread, Task, CalEvent, AiProfile, Account, FolderInfo, SaveAiProviderInput } from "@/types";
 import dayjs from "dayjs";
+import { parseExternalWebUrl } from "@/lib/externalLinks";
 import {
   account as mockAccount,
   aiProfile as mockAiProfile,
@@ -143,6 +144,16 @@ export async function listenMail(handlers: { onSync?: () => void; onNew?: (count
 }
 
 export const api = {
+  async openExternalUrl(rawUrl: string): Promise<void> {
+    const destination = parseExternalWebUrl(rawUrl);
+    if (!destination) throw new Error("Blocked external link: only valid http and https URLs are allowed.");
+    if (!inTauri) {
+      window.open(destination.href, "_blank", "noopener,noreferrer");
+      return;
+    }
+    await invoke<void>("open_external_url", { url: destination.href });
+  },
+
   async getAppVersion(): Promise<string> {
     if (!inTauri) return __APP_VERSION__;
     const { getVersion } = await import("@tauri-apps/api/app");

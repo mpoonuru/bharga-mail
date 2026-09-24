@@ -14,8 +14,8 @@ import { assessLink, type LinkAssessment } from "@/lib/linkRisk";
 const SANITIZE_OPTS: Config = {
   ADD_TAGS: ["style"],
   ADD_ATTR: ["target"],
-  FORBID_TAGS: ["script", "iframe", "object", "embed", "base", "form", "noscript", "meta", "link"],
-  FORBID_ATTR: ["ping", "formaction", "form"],
+  FORBID_TAGS: ["script", "iframe", "object", "embed", "base", "form", "noscript", "meta", "link", "map", "area"],
+  FORBID_ATTR: ["ping", "formaction", "form", "xlink:href"],
   ALLOW_UNKNOWN_PROTOCOLS: false,
 };
 

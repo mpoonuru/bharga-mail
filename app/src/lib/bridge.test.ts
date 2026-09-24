@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { api, runtimeMode } from "@/lib/bridge";
+
+afterEach(() => vi.restoreAllMocks());
 
 // Outside Tauri, the bridge falls back to seed data — verify those paths.
 describe("bridge fallbacks (non-Tauri)", () => {
@@ -38,5 +40,14 @@ describe("bridge fallbacks (non-Tauri)", () => {
     const id = await api.queueSend({ accountId: "gmail:me", to: "x@y.z", subject: "s", body: "b", delaySeconds: 10 });
     expect(typeof id).toBe("string");
     expect(await api.cancelSend(id)).toBe(true);
+  });
+
+  it("opens a validated web link in a separate browser context", async () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    await api.openExternalUrl("https://example.test/path");
+
+    expect(open).toHaveBeenCalledWith("https://example.test/path", "_blank", "noopener,noreferrer");
+    await expect(api.openExternalUrl("javascript:alert(1)")).rejects.toThrow("Blocked external link");
   });
 });

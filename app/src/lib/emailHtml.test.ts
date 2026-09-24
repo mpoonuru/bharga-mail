@@ -37,3 +37,16 @@ describe("processEmail dark-mode colour adaptation", () => {
   });
 });
 
+describe("processEmail navigation isolation", () => {
+  it("removes image-map and SVG xlink navigation bypasses", () => {
+    const { html } = processEmail(
+      '<map name="actions"><area href="https://evil.test/map" shape="rect"></map><img usemap="#actions"><svg><a xlink:href="https://evil.test/svg"><text>Open</text></a></svg>',
+      { showImages: true, highlight: false },
+    );
+    const doc = new DOMParser().parseFromString(html, "text/html");
+
+    expect(doc.querySelector("map, area")).toBeNull();
+    expect(html.toLowerCase()).not.toContain("xlink:href");
+    expect(doc.querySelector('a[href="https://evil.test/svg"]')).toBeNull();
+  });
+});

@@ -1120,6 +1120,73 @@ fn open_store_resilient(dir: &std::path::Path) -> Store {
     Store::open(db).expect("failed to create a fresh local database")
 }
 
+/// Validate untrusted email links again at the native boundary before handing
+/// them to the operating system. The WebView is never allowed to navigate.
+fn normalized_external_web_url(raw: &str) -> Result<String, String> {
+    let value = raw.trim();
+    if value.chars().any(|character| character.is_control() || character == '\\') {
+        return Err("External link contains disallowed characters".into());
+    }
+    let (scheme, authority_and_path) = value
+        .split_once("://")
+        .ok_or_else(|| "External link must be an absolute web URL".to_string())?;
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return Err("External link scheme is not allowed".into());
+    }
+    let authority = authority_and_path
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    if authority.is_empty() || authority.chars().any(char::is_whitespace) {
+        return Err("External link host is invalid".into());
+    }
+    let url = reqwest::Url::parse(value).map_err(|_| "External link is malformed".to_string())?;
+    if url.host_str().is_none()
+        || !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err("External link host or scheme is invalid".into());
+    }
+    Ok(url.to_string())
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let destination = normalized_external_web_url(&url)?;
+    open::that(destination).map_err(|error| format!("Could not open link: {error}"))
+}
+
+#[cfg(test)]
+mod external_url_tests {
+    use super::normalized_external_web_url;
+
+    #[test]
+    fn accepts_only_absolute_http_and_https_urls() {
+        assert_eq!(
+            normalized_external_web_url("https://Example.com/path").unwrap(),
+            "https://example.com/path"
+        );
+        assert!(normalized_external_web_url("http://example.test/path").is_ok());
+        assert!(normalized_external_web_url("http://[::1]:8080/path").is_ok());
+        assert!(normalized_external_web_url("https://xn--bcher-kva.example/").is_ok());
+        for blocked in [
+            "javascript:alert(1)",
+            "data:text/html,hello",
+            "file:///tmp/private",
+            "mailto:person@example.test",
+            "/relative/path",
+            "not a URL",
+            "https://user:password@example.test/private",
+            "https://example.test\\@evil.test/path",
+            "https://exa\tmple.test/path",
+            "https://example.test/path\nfragment",
+        ] {
+            assert!(normalized_external_web_url(blocked).is_err(), "accepted {blocked}");
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1228,6 +1295,7 @@ pub fn run() {
             flagged_ids,
             download_attachment,
             preview_attachment,
+            open_external_url,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
