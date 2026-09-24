@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { motion } from "motion/react";
 import dayjs from "dayjs";
 import { useApp } from "@/store";
@@ -15,6 +15,7 @@ import { SmartChips } from "@/components/ui/SmartChips";
 import { senderTrust } from "@/lib/senderTrust";
 import { threadThreat, messageThreat } from "@/lib/threat";
 import { mailDragPolicy, useCoarsePointer } from "@/lib/pointer";
+import { isKeyboardContextMenu, isPrimaryActivationKey } from "@/lib/keyboard";
 
 const TITLES: Record<string, string> = {
   priority: "Priority",
@@ -120,6 +121,24 @@ function labelTag(t: Thread) {
   if (t.labels.includes("urgent")) return <Tag variant="urgent">Urgent</Tag>;
   if (t.labels.includes("meeting")) return <Tag variant="cal">Meeting</Tag>;
   return null;
+}
+
+function handleRowKeyDown(
+  event: ReactKeyboardEvent<HTMLElement>,
+  onOpen: () => void,
+  onContext: (x: number, y: number) => void,
+) {
+  if (event.target !== event.currentTarget) return;
+  if (isPrimaryActivationKey(event.key)) {
+    event.preventDefault();
+    onOpen();
+    return;
+  }
+  if (isKeyboardContextMenu(event.nativeEvent)) {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    onContext(rect.left + 24, rect.top + 24);
+  }
 }
 
 export function Stream() {
@@ -471,7 +490,19 @@ function MailRow({
       )}
       <motion.div
         className={`mail${t.unread ? " unread" : ""}${selected ? " sel" : ""}`}
+        role="button"
+        tabIndex={0}
+        aria-current={selected ? "true" : undefined}
+        aria-label={[
+          t.unread ? "Unread" : undefined,
+          rowFrom,
+          t.subject,
+          rowPreview,
+          shortTime(rowTime),
+          shield.show ? shield.label : undefined,
+        ].filter(Boolean).join(", ")}
         onClick={onOpen}
+        onKeyDown={(event) => handleRowKeyDown(event, onOpen, onContext)}
         onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY); }}
         drag={dragPolicy.drag}
         dragConstraints={{ left: 0, right: 0 }}
@@ -548,9 +579,17 @@ function ChildRow({ t, m, selected, onOpen, onContext }: {
     <div
       className={`convo-kid${selected ? " sel" : ""}`}
       onClick={onOpen}
+      onKeyDown={(event) => handleRowKeyDown(event, onOpen, onContext)}
       onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY); }}
       role="button"
       tabIndex={0}
+      aria-current={selected ? "true" : undefined}
+      aria-label={[
+        sender,
+        previewText(t, m),
+        shortTime(m.when),
+        hasAtt ? "Has attachment" : undefined,
+      ].filter(Boolean).join(", ")}
     >
       <div className="ck-av" style={{ background: av.bg, color: av.fg }} aria-hidden>{initials(m.from.name || m.from.address)}</div>
       <div className="ck-main">
