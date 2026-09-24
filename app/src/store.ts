@@ -2,12 +2,9 @@ import { create } from "zustand";
 import dayjs from "dayjs";
 import type { View, Thread, Task, AiProfile, AiRole, AiModel, Account, FolderInfo, SaveAiProviderInput } from "@/types";
 import { api, listenMail } from "@/lib/bridge";
-import { account } from "@/data/mock";
 import { SEND } from "@/config";
 import { loadFont, applyFont, loadLocale, applyLocale } from "@/lib/prefs";
-
-/** The account messages are sent from. Derived, never hardcoded at call sites. */
-const activeAccountId = `${account.provider === "imap" ? "gmail" : account.provider}:${account.email}`;
+import { resolveSendAccountId } from "@/lib/accountIdentity";
 
 /** Fire a desktop notification for newly-arrived mail, but only when the window
  *  is in the background (no point notifying about mail you're looking at). Uses
@@ -725,9 +722,13 @@ export const useApp = create<AppState>((set, get) => ({
     // Route from the right account: an explicit From (Compose picker) wins, else a
     // reply uses the thread's account, else the focused / first connected one.
     const thread = threadId ? get().threads.find((t) => t.id === threadId) : null;
-    const accountId =
-      fromId ?? thread?.accountId ?? get().selectedAccountId ?? get().accounts[0]?.id ?? activeAccountId;
-    const scheduled = typeof sendAt === "number" && sendAt * 1000 > Date.now();
+    const accountId = resolveSendAccountId({
+      accounts: get().accounts,
+      explicitId: fromId,
+      threadAccountId: thread?.accountId,
+      selectedId: get().selectedAccountId,
+    });
+    const scheduled = typeof sendAt === "number" && sendAt * 1000 > dayjs().valueOf();
     const id = await api.queueSend({
       accountId,
       threadId,

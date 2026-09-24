@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useApp } from "@/store";
 import { api, titlebarDoubleClick } from "@/lib/bridge";
-import { account } from "@/data/mock";
 import type { Thread } from "@/types";
 import { Icon } from "@/components/icons";
 import { IconButton } from "@/components/ui/IconButton";
@@ -20,6 +19,7 @@ import { initials, senderLabel, showAddressLine, folderLabel } from "@/lib/avata
 import { senderTrust } from "@/lib/senderTrust";
 import { messageThreat } from "@/lib/threat";
 import { processEmail } from "@/lib/emailHtml";
+import { accountAddress, replyRecipients } from "@/lib/accountIdentity";
 
 /**
  * Render an email body with the standard mail-client pipeline:
@@ -404,6 +404,7 @@ import { forwardRef, useImperativeHandle } from "react";
 
 const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thread: Thread }>(function Composer({ thread }, ref) {
   const queueSend = useApp((s) => s.queueSend);
+  const accounts = useApp((s) => s.accounts);
   const editorRef = useRef<RichTextHandle>(null);
   const [mode, setMode] = useState<Mode | null>(null);
   const [to, setTo] = useState("");
@@ -412,11 +413,12 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
   const [showCc, setShowCc] = useState(false);
   const [files, setFiles] = useState<Attach[]>([]);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   const last = thread.messages[thread.messages.length - 1];
-  const self = account.email.toLowerCase();
 
   const open = (m: Mode, draft = false) => {
+    setError("");
     setMode(m);
     const from = last?.from.address ?? "";
     const recips = (last?.to ?? []).map((p) => p.address);
@@ -426,11 +428,21 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
     else if (m === "replyAll") {
       // Reply-all: original sender + other To recipients on the To line,
       // original Cc carried into Cc — all minus yourself, de-duped.
-      const toLine = [from, ...recips].filter((a) => a && a.toLowerCase() !== self);
-      const ccLine = origCc.filter((a) => a && a.toLowerCase() !== self && !toLine.some((t) => t.toLowerCase() === a.toLowerCase()));
-      setTo(Array.from(new Set(toLine)).join(", "));
-      setCc(Array.from(new Set(ccLine)).join(", "));
-      setShowCc(ccLine.length > 0);
+      try {
+        const recipients = replyRecipients({
+          self: accountAddress(accounts, thread.accountId),
+          sender: from,
+          to: recips,
+          cc: origCc,
+        });
+        setTo(recipients.to);
+        setCc(recipients.cc);
+        setShowCc(Boolean(recipients.cc));
+      } catch (cause) {
+        setMode(null);
+        setError(cause instanceof Error ? cause.message : "The message account is no longer connected.");
+        return;
+      }
     } else { setTo(""); setCc(""); setShowCc(false); }
     setTimeout(() => {
       if (m === "forward") {
@@ -482,19 +494,27 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
 
   async function send(atTs?: number) {
     const html = editorRef.current?.getHtml() ?? "";
-    await queueSend({ to, cc, bcc, subject, body: html, threadId: thread.id, sendAt: atTs, attachments: files.map(({ name, mime, dataB64 }) => ({ name, mime, dataB64 })) });
-    // Collapse straight back to the reply bar — the global bottom toast ("Sending…
-    // / Scheduled · Undo") is the single confirmation, no inline card.
-    setMode(null);
+    setError("");
+    try {
+      await queueSend({ to, cc, bcc, subject, body: html, threadId: thread.id, sendAt: atTs, attachments: files.map(({ name, mime, dataB64 }) => ({ name, mime, dataB64 })) });
+      // Collapse straight back to the reply bar — the global bottom toast ("Sending…
+      // / Scheduled · Undo") is the single confirmation, no inline card.
+      setMode(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The message could not be queued.");
+    }
   }
 
   if (!mode) {
     return (
-      <div className="reply-bar">
-        <button className="reply-action" onClick={() => open("reply")}><Icon name="reply" size={15} weight="duotone" /> Reply</button>
-        <button className="reply-action" onClick={() => open("replyAll")}><Icon name="replyAll" size={15} weight="duotone" /> Reply all</button>
-        <button className="reply-action" onClick={() => open("forward")}><Icon name="forward" size={15} weight="duotone" /> Forward</button>
-      </div>
+      <>
+        {error && <div className="stream-status err" role="alert">{error}</div>}
+        <div className="reply-bar">
+          <button className="reply-action" onClick={() => open("reply")}><Icon name="reply" size={15} weight="duotone" /> Reply</button>
+          <button className="reply-action" onClick={() => open("replyAll")}><Icon name="replyAll" size={15} weight="duotone" /> Reply all</button>
+          <button className="reply-action" onClick={() => open("forward")}><Icon name="forward" size={15} weight="duotone" /> Forward</button>
+        </div>
+      </>
     );
   }
 
@@ -502,6 +522,7 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
 
   return (
     <div className="composer">
+      {error && <div className="stream-status err" role="alert">{error}</div>}
       <div className="chead">
         <Icon name={mode === "forward" ? "forward" : mode === "replyAll" ? "replyAll" : "reply"} size={13} /> {titleMap[mode]}
         <span style={{ marginLeft: "auto" }} />

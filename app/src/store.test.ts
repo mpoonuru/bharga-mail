@@ -1,11 +1,14 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useApp } from "@/store";
+import { api } from "@/lib/bridge";
 
 // The store is a singleton; reload mock data before each test for isolation.
 beforeEach(async () => {
   await useApp.getState().load();
   useApp.setState({ undo: null, view: "priority", composeOpen: false });
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("navigation", () => {
   it("selecting a thread opens the mobile stage", () => {
@@ -103,6 +106,30 @@ describe("undo send", () => {
     await useApp.getState().queueSend({ to: "a@b.c", subject: "Re: x", body: "hi" });
     expect(useApp.getState().undo).not.toBeNull();
     useApp.getState().cancelUndo();
+    expect(useApp.getState().undo).toBeNull();
+  });
+
+  it("routes a reply through its thread account", async () => {
+    const accounts = [
+      { id: "personal", email: "alex@example.com", provider: "imap" as const, displayName: "Personal" },
+      { id: "work", email: "alex@company.test", provider: "microsoft" as const, displayName: "Work" },
+    ];
+    const thread = { ...useApp.getState().threads[0], accountId: "work" };
+    useApp.setState({ accounts, threads: [thread], selectedAccountId: "personal" });
+    const send = vi.spyOn(api, "queueSend").mockResolvedValue("outbox-1");
+
+    await useApp.getState().queueSend({ threadId: thread.id, to: "person@example.net", subject: "Re: test", body: "Hello" });
+
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ accountId: "work" }));
+  });
+
+  it("refuses to send without a connected account", async () => {
+    useApp.setState({ accounts: [], threads: [], selectedAccountId: null, undo: null });
+    const send = vi.spyOn(api, "queueSend").mockResolvedValue("outbox-1");
+
+    await expect(useApp.getState().queueSend({ to: "person@example.net", subject: "test", body: "Hello" }))
+      .rejects.toThrow("Choose a connected account before sending.");
+    expect(send).not.toHaveBeenCalled();
     expect(useApp.getState().undo).toBeNull();
   });
 });
