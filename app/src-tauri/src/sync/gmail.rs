@@ -39,7 +39,8 @@ pub async fn connect(store: &Store) -> Result<String, SyncError> {
     let email = fetch_email(&tokens_set.access_token).await.unwrap_or_else(|| "me".into());
     let account_id = format!("gmail:{email}");
 
-    tokens::save(&account_id, &tokens_set.access_token, tokens_set.refresh_token.as_deref());
+    tokens::save(&account_id, &tokens_set.access_token, tokens_set.refresh_token.as_deref())
+        .map_err(SyncError::Transient)?;
     store
         .upsert_account(&account_id, &email, "gmail", &email)
         .map_err(|e| SyncError::Transient(e.to_string()))?;
@@ -58,7 +59,8 @@ async fn valid_token(account_id: &str) -> Result<String, SyncError> {
     let new: TokenSet = oauth::refresh(&config(), &refresh)
         .await
         .map_err(|e| SyncError::Transient(e.to_string()))?;
-    tokens::save(account_id, &new.access_token, new.refresh_token.as_deref());
+    tokens::save(account_id, &new.access_token, new.refresh_token.as_deref())
+        .map_err(SyncError::Transient)?;
     Ok(new.access_token)
 }
 

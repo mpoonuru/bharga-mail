@@ -601,10 +601,10 @@ fn save_imap_account(
         .map_err(|e| e.to_string())?;
     // On edit, an empty password means "keep the existing one" — don't overwrite.
     if !input.imap_password.is_empty() {
-        sync::tokens::save_secret(&account_id, "imap-pass", &input.imap_password);
+        sync::tokens::save_secret(&account_id, "imap-pass", &input.imap_password)?;
     }
     if !smtp_pass.is_empty() {
-        sync::tokens::save_secret(&account_id, "smtp-pass", &smtp_pass);
+        sync::tokens::save_secret(&account_id, "smtp-pass", &smtp_pass)?;
     }
     Ok(account_id)
 }
