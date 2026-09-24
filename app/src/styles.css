@@ -293,7 +293,7 @@
   .load-older:disabled { @apply opacity-60 cursor-default; }
   .load-older--done { @apply text-text-3 border-transparent bg-transparent cursor-default; }
   /* Mail row — Design B: squircle avatar + sender/time, subject, AI summary line. */
-  .mail { @apply flex gap-3 rounded-xl cursor-pointer border border-transparent; padding: var(--row-pad); transition: .14s var(--ease); background: transparent; }
+  .mail { @apply flex gap-3 rounded-xl cursor-pointer border border-transparent; padding: var(--row-pad); transition: background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), color var(--motion-standard) var(--ease); background: transparent; }
   .mail:hover { @apply bg-surface; }
   /* Selected row carries the ambient "itopup" design over its surface. */
   .mail.sel { @apply border-border-2; background-color: var(--surface); background-image: var(--ambient); }

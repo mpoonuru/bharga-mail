@@ -14,6 +14,7 @@ import { deriveChips } from "@/lib/smartChips";
 import { SmartChips } from "@/components/ui/SmartChips";
 import { senderTrust } from "@/lib/senderTrust";
 import { threadThreat, messageThreat } from "@/lib/threat";
+import { mailDragPolicy, useCoarsePointer } from "@/lib/pointer";
 
 const TITLES: Record<string, string> = {
   priority: "Priority",
@@ -127,6 +128,7 @@ export function Stream() {
   const acctEmail: Record<string, string> = Object.fromEntries(accounts.map((a) => [a.id, a.email]));
   const copyText = (s: string) => { try { void navigator.clipboard.writeText(s); } catch { /* ignore */ } };
   const [sorting, setSorting] = useState(false);
+  const coarsePointer = useCoarsePointer();
   const [sortMsg, setSortMsg] = useState("");
   const [syncMsg, setSyncMsg] = useState("");
   const [ctx, setCtx] = useState<{ x: number; y: number; t: Thread } | null>(null);
@@ -302,7 +304,7 @@ export function Stream() {
         {(() => {
           const openCtx = (t: Thread) => (x: number, y: number) =>
             setCtx({ x: Math.max(8, Math.min(x, window.innerWidth - 224)), y: Math.max(8, Math.min(y, window.innerHeight - 580)), t });
-          const renderRow = (r: Row, i: number) => {
+          const renderRow = (r: Row) => {
             const count = r.t.messages.length;
             const isOpen = expandedConvos.has(r.t.id);
             const kids = isOpen && count > 1
@@ -317,14 +319,13 @@ export function Stream() {
                   count={count}
                   expanded={isOpen}
                   onToggleExpand={count > 1 ? () => toggleConvo(r.t.id) : undefined}
-                  index={i}
                   selected={selectedThreadId === r.t.id && !selectedMessageId}
                   onOpen={() => selectThread(r.t.id, r.m.id)}
                   onArchive={() => archiveThread(r.t.id)}
                   onSnooze={() => snoozeThread(r.t.id)}
                   mailbox={!selectedAccountId ? acctEmail[r.t.accountId] : undefined}
                   flagged={flaggedIds.includes(r.t.id)}
-                  quiet={!!query}
+                  coarsePointer={coarsePointer}
                   onContext={openCtx(r.t)}
                 />
                 {kids.length > 0 && (
@@ -344,7 +345,7 @@ export function Stream() {
               </div>
             );
           };
-          if (!grouped) return rows.map((r, i) => renderRow(r, i));
+          if (!grouped) return rows.map((r) => renderRow(r));
           return groups.map((g) => {
             const open = !collapsedGroups.has(g.label);
             return (
@@ -354,7 +355,7 @@ export function Stream() {
                   <span>{g.label}</span>
                   <span className="date-count">{g.items.length}</span>
                 </button>
-                {open && g.items.map((r, i) => renderRow(r, i))}
+                {open && g.items.map((r) => renderRow(r))}
               </div>
             );
           });
@@ -428,13 +429,14 @@ export function Stream() {
 }
 
 function MailRow({
-  t, msg, index, selected, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, quiet,
+  t, msg, selected, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, coarsePointer,
   convo, count, expanded, onToggleExpand,
 }: {
-  t: Thread; msg?: Message; index: number; selected: boolean; onOpen: () => void; onArchive: () => void; onSnooze: () => void; onContext: (x: number, y: number) => void; mailbox?: string; flagged?: boolean; quiet?: boolean;
+  t: Thread; msg?: Message; selected: boolean; onOpen: () => void; onArchive: () => void; onSnooze: () => void; onContext: (x: number, y: number) => void; mailbox?: string; flagged?: boolean; coarsePointer: boolean;
   convo?: boolean; count?: number; expanded?: boolean; onToggleExpand?: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
+  const dragPolicy = mailDragPolicy(coarsePointer);
   // `convo`: the collapsed conversation header (msg = its newest message, but the
   // sender line shows the whole participant list + a message-count badge).
   const m = msg ?? t.messages[t.messages.length - 1];
@@ -471,18 +473,15 @@ function MailRow({
         className={`mail${t.unread ? " unread" : ""}${selected ? " sel" : ""}`}
         onClick={onOpen}
         onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY); }}
-        drag="x"
+        drag={dragPolicy.drag}
         dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.5}
-        onDragStart={() => setDragging(true)}
-        onDragEnd={(_e, info) => {
+        dragElastic={dragPolicy.dragElastic}
+        onDragStart={coarsePointer ? () => setDragging(true) : undefined}
+        onDragEnd={coarsePointer ? (_e, info) => {
           setDragging(false);
           if (info.offset.x <= -90) onArchive();
           else if (info.offset.x >= 90) onSnooze();
-        }}
-        initial={quiet ? { opacity: 0 } : { opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={quiet ? { duration: 0.13, ease: "easeOut" } : { delay: Math.min(index * 0.035, 0.3), ease: [0.2, 0.8, 0.2, 1] }}
+        } : undefined}
       >
         <div className="mail-av" style={{ background: avPaint.bg, color: avPaint.fg, boxShadow: `0 0 0 1.5px ${avPaint.ring}` }} aria-hidden>{initials(senderName)}</div>
         <div className="mail-main">
