@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Icon } from "@/components/icons";
 import { containTabKey, focusableElements } from "@/lib/focus";
+import { registerOpenModal } from "@/lib/modalStack";
 import { OVERLAY_FADE, useMotionTransition } from "@/lib/motion";
 
 interface CommonProps {
@@ -31,6 +32,7 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
     const prev = document.body.style.overflow;
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.body.style.overflow = "hidden";
+    const unregisterModal = registerOpenModal();
     const panel = panelRef.current;
     const initialFocus = panel ? focusableElements(panel)[0] ?? panel : null;
     initialFocus?.focus();
@@ -47,6 +49,7 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
     window.addEventListener("keydown", onKey, true);
     return () => {
       document.body.style.overflow = prev;
+      unregisterModal();
       window.removeEventListener("keydown", onKey, true);
       const opener = openerRef.current;
       if (opener?.isConnected) opener.focus();

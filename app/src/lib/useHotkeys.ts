@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useApp } from "@/store";
 import type { View } from "@/types";
+import { hasOpenModal } from "@/lib/modalStack";
 
 // Global keyboard control — the "Calm Command" gesture plus Superhuman-style
 // list navigation (j/k move, Enter open, e archive, s snooze, c compose, f focus).
@@ -22,6 +23,7 @@ export function useHotkeys() {
     }
 
     function onKey(e: KeyboardEvent) {
+      if (hasOpenModal()) return;
       const typing = ["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName) ||
         (e.target as HTMLElement)?.isContentEditable;
 
