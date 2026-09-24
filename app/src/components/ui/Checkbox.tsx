@@ -1,6 +1,6 @@
 import { forwardRef, useId, type InputHTMLAttributes } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { MOTION, MOTION_EASE } from "@/lib/motion";
+import { motionTransition, useMotionTransition } from "@/lib/motion";
 
 // Ported from the Topup Arena (iTopup) design system: a custom checkbox with an
 // animated SVG "draw" checkmark, sized variants, and an accessible hidden input.
@@ -19,6 +19,8 @@ const sizes = {
 };
 
 function CheckMark({ size, stroke }: { size: number; stroke: number }) {
+  const opacityTransition = useMotionTransition(motionTransition("instant"));
+  const pathTransition = useMotionTransition(motionTransition("standard"));
   const p = size * 0.25;
   const d = `M${p} ${size / 2} L${size * 0.42} ${size - p} L${size - p} ${p}`;
   return (
@@ -28,7 +30,7 @@ function CheckMark({ size, stroke }: { size: number; stroke: number }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: MOTION.instant, ease: MOTION_EASE }}
+      transition={opacityTransition}
     >
       <motion.path
         d={d}
@@ -40,7 +42,7 @@ function CheckMark({ size, stroke }: { size: number; stroke: number }) {
         initial={{ pathLength: 0 }}
         animate={{ pathLength: 1 }}
         exit={{ pathLength: 0 }}
-        transition={{ duration: MOTION.standard, ease: MOTION_EASE }}
+        transition={pathTransition}
       />
     </motion.svg>
   );

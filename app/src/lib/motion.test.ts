@@ -1,6 +1,6 @@
 // Protects Bharga's calm-motion timing and tween-only routine transition policy.
 import { describe, expect, it } from "vitest";
-import { motionTransition } from "@/lib/motion";
+import { motionTransition, motionTransitionForPreference, OVERLAY_FADE } from "@/lib/motion";
 
 describe("motionTransition", () => {
   it("builds the approved transition for each interaction class", () => {
@@ -33,5 +33,13 @@ describe("motionTransition", () => {
       duration: 0.12,
       ease: [0.2, 0.8, 0.2, 1],
     });
+  });
+
+  it("makes explicit Motion transitions instant when reduced motion is requested", () => {
+    expect(motionTransitionForPreference(OVERLAY_FADE, true)).toEqual({
+      ...OVERLAY_FADE,
+      duration: 0,
+    });
+    expect(motionTransitionForPreference(OVERLAY_FADE, false)).toBe(OVERLAY_FADE);
   });
 });

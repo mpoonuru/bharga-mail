@@ -4,11 +4,12 @@ import { useApp } from "@/store";
 import { api } from "@/lib/bridge";
 import type { View } from "@/types";
 import { Icon, type IconName } from "@/components/icons";
-import { OVERLAY_FADE } from "@/lib/motion";
+import { OVERLAY_FADE, useMotionTransition } from "@/lib/motion";
 
 interface Cmd { ic: IconName; label: string; hint?: string; run: () => void; }
 
 export function CommandBar() {
+  const overlayTransition = useMotionTransition(OVERLAY_FADE);
   const { cmdOpen, setCmd, setView, setCompose, setModelPicker, toggleFocus, createTask, requestAiReply, threads, selectedThreadId } = useApp();
   const [q, setQ] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
@@ -57,14 +58,14 @@ export function CommandBar() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={OVERLAY_FADE}
+          transition={overlayTransition}
         >
           <motion.div
             className="cmd"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={OVERLAY_FADE}
+            transition={overlayTransition}
           >
             <input
               ref={inputRef}

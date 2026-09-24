@@ -1,3 +1,5 @@
+import { useReducedMotion } from "motion/react";
+
 // Shared motion contract for every routine Bharga interaction.
 export const MOTION = {
   instant: 0.09,
@@ -25,3 +27,16 @@ export const THREAD_CROSSFADE = {
 
 export const OVERLAY_FADE = motionTransition("standard");
 export const STRUCTURAL_TRANSITION = motionTransition("structural");
+
+export function motionTransitionForPreference<T extends { duration: number }>(
+  transition: T,
+  prefersReducedMotion: boolean | null,
+): T {
+  if (!prefersReducedMotion) return transition;
+  return { ...transition, duration: 0 };
+}
+
+/** Applies the OS reduced-motion preference to explicit Motion transitions. */
+export function useMotionTransition<T extends { duration: number }>(transition: T): T {
+  return motionTransitionForPreference(transition, useReducedMotion());
+}

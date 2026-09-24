@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Icon } from "@/components/icons";
-import { OVERLAY_FADE } from "@/lib/motion";
+import { OVERLAY_FADE, useMotionTransition } from "@/lib/motion";
 
 interface Props {
   open: boolean;
@@ -14,6 +14,7 @@ interface Props {
 
 // Centered modal dialog with backdrop, scroll-lock, and Esc-to-close.
 export function Modal({ open, onClose, title, children, maxWidth = 640 }: Props) {
+  const overlayTransition = useMotionTransition(OVERLAY_FADE);
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -36,7 +37,7 @@ export function Modal({ open, onClose, title, children, maxWidth = 640 }: Props)
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={OVERLAY_FADE}
+          transition={overlayTransition}
           onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
           <motion.div
@@ -45,7 +46,7 @@ export function Modal({ open, onClose, title, children, maxWidth = 640 }: Props)
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={OVERLAY_FADE}
+            transition={overlayTransition}
           >
             {title && (
               <div className="modal-head">

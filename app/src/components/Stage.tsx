@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createRef, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useApp } from "@/store";
 import { api, titlebarDoubleClick } from "@/lib/bridge";
@@ -20,7 +20,7 @@ import { senderTrust } from "@/lib/senderTrust";
 import { messageThreat } from "@/lib/threat";
 import { processEmail } from "@/lib/emailHtml";
 import { accountAddress, replyRecipients } from "@/lib/accountIdentity";
-import { THREAD_CROSSFADE } from "@/lib/motion";
+import { THREAD_CROSSFADE, useMotionTransition } from "@/lib/motion";
 
 /**
  * Render an email body with the standard mail-client pipeline:
@@ -216,6 +216,7 @@ export function Stage() {
   const [dl, setDl] = useState<{ name: string; state: "busy" | "error" } | null>(null);
   const [preview, setPreview] = useState<{ name: string; url: string; mime: string } | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
+  const crossfadeTransition = useMotionTransition(THREAD_CROSSFADE);
 
   async function openPreview(messageId: string, a: { name: string; mime: string }, accountId: string) {
     setPreviewing(a.name);
@@ -230,7 +231,12 @@ export function Stage() {
     }
   }
   const canPreview = (mime: string) => mime.startsWith("image/") || mime === "application/pdf";
-  const composerRef = useRef<{ open: (m: Mode, draft?: boolean) => void } | null>(null);
+  // Each presence-keyed pane owns its own imperative composer handle. An
+  // outgoing pane must never clear the incoming thread's toolbar actions.
+  const composerRef = useMemo(
+    () => createRef<{ open: (m: Mode, draft?: boolean) => void }>(),
+    [thread?.id],
+  );
 
   async function downloadAttachment(messageId: string, name: string, accountId: string) {
     setDl({ name, state: "busy" });
@@ -249,8 +255,9 @@ export function Stage() {
 
   return (
     <section className="stage">
+      <div className="stage-presence" style={{ display: "grid" }}>
       <AnimatePresence initial={false}>
-        <motion.div className="stage-inner" key={thread.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={THREAD_CROSSFADE}>
+        <motion.div className="stage-inner" key={thread.id} style={{ gridArea: "1 / 1" }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={crossfadeTransition}>
           <div className="stage-bar" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
             <IconButton icon="focus" title="Focus mode (F)" onClick={toggleFocus} />
             <IconButton icon="reply" title="Reply" onClick={() => composerRef.current?.open("reply")} />
@@ -397,6 +404,7 @@ export function Stage() {
           </Modal>
         </motion.div>
       </AnimatePresence>
+      </div>
     </section>
   );
 }

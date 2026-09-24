@@ -17,7 +17,7 @@ import { useViewport } from "@/lib/useViewport";
 import { applyFont, applyLocale } from "@/lib/prefs";
 import { startWindowDrag, titlebarDoubleClick, expectedBuildId, setDockBadge, checkForUpdate, installUpdateAndRestart } from "@/lib/bridge";
 import logo from "@/assets/logo.png";
-import { OVERLAY_FADE, STRUCTURAL_TRANSITION } from "@/lib/motion";
+import { OVERLAY_FADE, STRUCTURAL_TRANSITION, useMotionTransition } from "@/lib/motion";
 
 export function App() {
   const { view, load, focusMode, composeOpen, theme, density } = useApp();
@@ -230,6 +230,8 @@ function TopBar() {
 
 // ---- Narrow (iPad portrait / phone) : single pane + drawer ----
 function NarrowLayout() {
+  const overlayTransition = useMotionTransition(OVERLAY_FADE);
+  const structuralTransition = useMotionTransition(STRUCTURAL_TRANSITION);
   const { view, composeOpen, mobileStage, drawerOpen, setDrawer, backToStream } = useApp();
   const full = isFull(view);
   const showStage = !full && (composeOpen || mobileStage);
@@ -260,13 +262,13 @@ function NarrowLayout() {
             <motion.div
               className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={OVERLAY_FADE}
+              transition={overlayTransition}
               onClick={() => setDrawer(false)}
             />
             <motion.div
               className="fixed inset-y-0 left-0 z-50 w-[264px]"
               initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
-              transition={STRUCTURAL_TRANSITION}
+              transition={structuralTransition}
             >
               <Sidebar />
             </motion.div>

@@ -45,5 +45,32 @@ describe("Stage motion", () => {
 
     act(() => useApp.setState({ selectedThreadId: threads[1].id }));
     expect(host.textContent).toContain(threads[1].subject);
+    const panes = [...host.querySelectorAll<HTMLElement>(".stage-inner")];
+    expect(panes).toHaveLength(2);
+    expect(panes[0].parentElement?.style.display).toBe("grid");
+    expect(panes.every((pane) => pane.style.gridArea === "1 / 1")).toBe(true);
+  });
+
+  it("keeps toolbar reply actions connected after the outgoing pane exits", async () => {
+    useApp.setState({
+      accounts: [account],
+      threads: threads.slice(0, 2),
+      selectedThreadId: threads[0].id,
+      selectedMessageId: null,
+    });
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    act(() => root?.render(<Stage />));
+
+    await act(async () => {
+      useApp.setState({ selectedThreadId: threads[1].id });
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+
+    const toolbarReply = host.querySelector<HTMLButtonElement>('.stage-bar button[aria-label="Reply"]');
+    if (!toolbarReply) throw new Error("Toolbar Reply button not found");
+    act(() => toolbarReply.click());
+    expect(host.querySelector(".composer")).not.toBeNull();
   });
 });
