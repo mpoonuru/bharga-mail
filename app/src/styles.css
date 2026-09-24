@@ -655,6 +655,11 @@
   /* ---- Modal dialog (ported from iTopup Dialog) ---- */
   .modal-overlay { @apply fixed inset-0 z-50 flex items-start justify-center p-6 pt-[10vh]; background: rgba(0,0,0,0.45); backdrop-filter: blur(6px); }
   .modal-panel { @apply w-full p-0 overflow-hidden; max-height: 85vh; display: flex; flex-direction: column; }
+  .modal-panel:focus-visible,
+  .modal-panel :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
   /* Solid surface + ambient design (not the muddy translucent glass). */
   .modal-panel.glass-card { background-color: var(--surface); background-image: var(--ambient); backdrop-filter: none; -webkit-backdrop-filter: none; }
   .modal-head { @apply flex items-center justify-between px-5 py-3.5 border-b border-border; }
