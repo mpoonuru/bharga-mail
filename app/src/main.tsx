@@ -4,10 +4,13 @@ import "@fontsource-variable/inter"; // bundled fonts users can pick from in Set
 import "@fontsource-variable/figtree";
 import "@fontsource-variable/jetbrains-mono";
 import { App } from "@/App";
+import { MotionProvider } from "@/components/ui/MotionProvider";
 import "@/styles.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <MotionProvider>
+      <App />
+    </MotionProvider>
   </StrictMode>
 );
