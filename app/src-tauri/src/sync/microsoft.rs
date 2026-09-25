@@ -42,7 +42,7 @@ pub async fn connect(store: &Store) -> Result<String, SyncError> {
         .upsert_account(&account_id, &email, "microsoft", &email)
         .map_err(|e| SyncError::Transient(e.to_string()))?;
 
-    initial_sync(store, &account_id, &tok.access_token).await?;
+    initial_sync(store, &account_id).await?;
     Ok(account_id)
 }
 
@@ -51,32 +51,51 @@ async fn valid_token(account_id: &str) -> Result<String, SyncError> {
         return Ok(t);
     }
     let refresh = tokens::refresh_token(account_id).ok_or(SyncError::AuthRequired)?;
-    let new: TokenSet = oauth::refresh(&config(), &refresh)
+    refresh_access(account_id, &refresh).await
+}
+
+async fn refresh_access(account_id: &str, refresh: &str) -> Result<String, SyncError> {
+    let new: TokenSet = oauth::refresh(&config(), refresh)
         .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?;
+        .map_err(super::refresh_error)?;
     tokens::save(account_id, &new.access_token, new.refresh_token.as_deref())
         .map_err(SyncError::Transient)?;
     Ok(new.access_token)
 }
 
-pub async fn initial_sync(store: &Store, account_id: &str, access: &str) -> Result<(), SyncError> {
+async fn authenticated_json(account_id: &str, url: &str, operation: &str) -> Result<Value, SyncError> {
+    let client = reqwest::Client::new();
+    let mut access = valid_token(account_id).await?;
+    for attempt in 0..2 {
+        let response = client
+            .get(url)
+            .bearer_auth(&access)
+            .send()
+            .await
+            .map_err(|error| SyncError::Transient(error.to_string()))?;
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED && attempt == 0 {
+            let refresh = tokens::refresh_token(account_id).ok_or(SyncError::AuthRequired)?;
+            access = refresh_access(account_id, &refresh).await?;
+            continue;
+        }
+        if !response.status().is_success() {
+            return Err(super::http_status_error(response.status(), operation));
+        }
+        return response.json().await.map_err(|error| SyncError::Transient(error.to_string()));
+    }
+    Err(SyncError::AuthRequired)
+}
+
+pub async fn initial_sync(store: &Store, account_id: &str) -> Result<(), SyncError> {
     let url = format!(
         "{GRAPH}/me/messages?$top=50&$select=id,conversationId,subject,from,bodyPreview,body,isRead,receivedDateTime"
     );
-    let v: Value = reqwest::Client::new()
-        .get(url)
-        .bearer_auth(access)
-        .send()
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?
-        .json()
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?;
+    let v = authenticated_json(account_id, &url, "Microsoft initial sync").await?;
 
     if let Some(items) = v["value"].as_array() {
         for msg in items {
             if let Some(thread) = parse_message(account_id, msg) {
-                let _ = store.upsert_thread(&thread);
+                super::store_write(store.upsert_thread(&thread), "persist Microsoft message")?;
             }
         }
     }
@@ -87,39 +106,28 @@ pub async fn initial_sync(store: &Store, account_id: &str, access: &str) -> Resu
 /// when present; otherwise starts a fresh delta enumeration. Persists the final
 /// deltaLink (or a nextLink to resume paging next time).
 pub async fn incremental(store: &Store, account_id: &str) -> Result<(), SyncError> {
-    let access = valid_token(account_id).await?;
-    let client = reqwest::Client::new();
-
     let mut url = store.sync_token(account_id).filter(|t| t.starts_with("http")).unwrap_or_else(|| {
         format!("{GRAPH}/me/mailFolders/inbox/messages/delta?$select=id,conversationId,subject,from,bodyPreview,body,isRead,receivedDateTime")
     });
 
     // Follow up to 5 pages per run to bound work; resume from the saved link next time.
     for _ in 0..5 {
-        let v: Value = client
-            .get(&url)
-            .bearer_auth(&access)
-            .send()
-            .await
-            .map_err(|e| SyncError::Transient(e.to_string()))?
-            .json()
-            .await
-            .map_err(|e| SyncError::Transient(e.to_string()))?;
+        let v = authenticated_json(account_id, &url, "Microsoft incremental sync").await?;
 
         if let Some(items) = v["value"].as_array() {
             for msg in items {
                 if let Some(thread) = parse_message(account_id, msg) {
-                    let _ = store.upsert_thread(&thread);
+                    super::store_write(store.upsert_thread(&thread), "persist Microsoft message")?;
                 }
             }
         }
 
         if let Some(delta) = v["@odata.deltaLink"].as_str() {
-            let _ = store.set_sync_token(account_id, delta); // caught up
+            super::store_write(store.set_sync_token(account_id, delta), "persist Microsoft sync cursor")?; // caught up
             break;
         } else if let Some(next) = v["@odata.nextLink"].as_str() {
             url = next.to_string();
-            let _ = store.set_sync_token(account_id, next); // resume here next run
+            super::store_write(store.set_sync_token(account_id, next), "persist Microsoft sync cursor")?; // resume here next run
         } else {
             break;
         }

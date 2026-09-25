@@ -1,5 +1,6 @@
 // Strict aggregation boundary for support exports: identifiers and content cannot cross it.
 import type { Account, AiModel, AiRole } from "@/types";
+import { FONTS, LOCALES } from "@/lib/prefs";
 
 export interface DiagnosticsInput {
   version: string;
@@ -26,11 +27,31 @@ export interface DiagnosticsSnapshot {
 }
 
 const AI_ROLES: AiRole[] = ["triage", "embeddings", "summarize", "draft", "agent"];
+const ACCOUNT_PROVIDERS = ["gmail", "microsoft", "jmap", "imap"] as const;
+const THEMES = new Set(["dark", "light"]);
+const DENSITIES = new Set(["compact", "cozy", "comfy"]);
+const FONTS_ALLOWED = new Set(FONTS.map((font) => font.value));
+const LOCALES_ALLOWED = new Set(LOCALES.map((locale) => locale.value));
+
+function allowlisted(value: string, allowed: Set<string>): string {
+  return allowed.has(value) ? value : "unknown";
+}
+
+function safeCount(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+}
+
+function safeVersion(value: string): string {
+  return /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value) ? value : "unknown";
+}
 
 export function buildRedactedDiagnostics(input: DiagnosticsInput): DiagnosticsSnapshot {
   const providerCounts = new Map<string, number>();
   for (const account of input.accounts) {
-    providerCounts.set(account.provider, (providerCounts.get(account.provider) ?? 0) + 1);
+    const provider = ACCOUNT_PROVIDERS.includes(account.provider as typeof ACCOUNT_PROVIDERS[number])
+      ? account.provider
+      : "unknown";
+    providerCounts.set(provider, (providerCounts.get(provider) ?? 0) + 1);
   }
   const byProvider = Object.fromEntries([...providerCounts.entries()].sort(([left], [right]) => left.localeCompare(right)));
   const roleCoverage = Object.fromEntries(AI_ROLES.map((role) => [
@@ -40,19 +61,24 @@ export function buildRedactedDiagnostics(input: DiagnosticsInput): DiagnosticsSn
 
   return {
     schemaVersion: 1,
-    app: { version: input.version, runtime: input.runtime },
+    app: { version: safeVersion(input.version), runtime: input.runtime },
     accounts: {
       total: input.accounts.length,
       byProvider,
-      synced: input.accounts.filter((account) => account.lastSyncAt !== undefined).length,
+      synced: input.accounts.filter((account) => typeof account.lastSyncAt === "number").length,
     },
     ai: {
-      providers: input.models.length,
-      ready: input.models.filter((model) => model.ready).length,
+      providers: safeCount(input.models.length),
+      ready: safeCount(input.models.filter((model) => model.ready).length),
       roleCoverage,
     },
-    preferences: { ...input.preferences },
-    localData: { threads: input.threadCount, tasks: input.taskCount },
+    preferences: {
+      theme: allowlisted(input.preferences.theme, THEMES),
+      density: allowlisted(input.preferences.density, DENSITIES),
+      font: allowlisted(input.preferences.font, FONTS_ALLOWED),
+      locale: allowlisted(input.preferences.locale, LOCALES_ALLOWED),
+    },
+    localData: { threads: safeCount(input.threadCount), tasks: safeCount(input.taskCount) },
   };
 }
 

@@ -1,5 +1,6 @@
 //! SMTP send for plain IMAP/SMTP accounts (via `lettre`, rustls TLS).
-//! Config comes from the store; the password from the OS keychain.
+//! Config and encrypted credentials come from the store; the OS keychain holds
+//! only the credential-database master key.
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use lettre::message::header::ContentType;

@@ -17,6 +17,7 @@ const portFor = (kind: "imap" | "smtp", sec: Sec) =>
   kind === "imap" ? (sec === "starttls" ? 143 : sec === "none" ? 143 : 993) : sec === "ssl" ? 465 : 587;
 
 interface AccountFormProps {
+  accountId?: string;
   onClose: () => void;
   onStatus: (s: string) => void;
   /** Pre-filled settings when editing an existing account (no password). */
@@ -24,11 +25,12 @@ interface AccountFormProps {
     email: string; displayName: string;
     imapHost: string; imapPort: number; imapSecurity: Sec; imapUsername: string;
     smtpHost: string; smtpPort: number; smtpSecurity: Sec; smtpUsername: string;
+    sameCredentials: boolean;
   }>;
   editing?: boolean;
 }
 
-export function AccountForm({ onClose, onStatus, initial, editing = false }: AccountFormProps) {
+export function AccountForm({ accountId, onClose, onStatus, initial, editing = false }: AccountFormProps) {
   const load = useApp((s) => s.load);
   const formId = useId();
   const fieldId = (name: string) => `${formId}-${name}`;
@@ -47,9 +49,9 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
     smtpUsername: initial?.smtpUsername ?? "",
     smtpPassword: "",
   });
-  // If the saved SMTP username differs from IMAP, the account uses separate creds.
+  const initialUsesSeparateSmtp = initial?.sameCredentials === false;
   const [sameCreds, setSameCreds] = useState(
-    !initial || !initial.smtpUsername || initial.smtpUsername === initial.imapUsername
+    initial?.sameCredentials ?? true
   );
   const [busy, setBusy] = useState<null | "test" | "save">(null);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
@@ -57,8 +59,26 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
 
   // When editing, the password may be left blank to keep the existing one.
   const validIdentity = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim());
-  const valid = validIdentity && !!f.imapHost.trim() && !!f.smtpHost.trim() && (editing || !!f.imapPassword);
+  const smtpIdentityValid = sameCreds || !!f.smtpUsername.trim();
+  const canPreserveSmtpPassword = editing
+    && initialUsesSeparateSmtp
+    && f.smtpUsername.trim() === initial?.smtpUsername?.trim();
+  const smtpPasswordValid = sameCreds || !!f.smtpPassword || canPreserveSmtpPassword;
+  const valid = validIdentity
+    && (!editing || !!accountId)
+    && !!f.imapHost.trim()
+    && !!f.smtpHost.trim()
+    && (editing || !!f.imapPassword)
+    && smtpIdentityValid
+    && smtpPasswordValid;
+  const validTest = validIdentity
+    && (!editing || !!accountId)
+    && !!f.imapHost.trim()
+    && !!f.smtpHost.trim()
+    && !!f.imapPassword
+    && (sameCreds || (!!f.smtpUsername.trim() && !!f.smtpPassword));
   const payload = () => ({
+    accountId: editing ? accountId : undefined,
     email: f.email,
     displayName: f.displayName || undefined,
     imapHost: f.imapHost,
@@ -69,13 +89,14 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
     smtpHost: f.smtpHost,
     smtpPort: f.smtpPort,
     smtpSecurity: f.smtpSecurity,
+    sameCredentials: sameCreds,
     smtpUsername: sameCreds ? undefined : f.smtpUsername || undefined,
     smtpPassword: sameCreds ? undefined : f.smtpPassword || undefined,
   });
   const errText = (e: unknown) => (typeof e === "string" ? e : (e as Error)?.message ?? String(e));
 
   async function test() {
-    if (!valid || busy) return;
+    if (!validTest || busy) return;
     setBusy("test");
     setStatus({ ok: true, text: "Testing connection…" });
     try {
@@ -116,14 +137,14 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
       {step === "details" ? (
         <div className="af-grid">
           <Field label="Email address" htmlFor={fieldId("email")} full>
-            <input id={fieldId("email")} aria-label="Email address" className="af-input" type="email" autoComplete="email" placeholder="you@example.com" value={f.email}
+            <input id={fieldId("email")} aria-label="Email address" className="af-input" type="email" autoComplete="email" placeholder="you@example.com" value={f.email} disabled={editing}
               onChange={(e) => set({ email: e.target.value })} />
           </Field>
           <Field label="Display name (optional)" htmlFor={fieldId("display-name")} full>
             <input id={fieldId("display-name")} aria-label="Display name" className="af-input" autoComplete="name" placeholder="Your name" value={f.displayName}
               onChange={(e) => set({ displayName: e.target.value })} />
           </Field>
-          <p className="af-privacy af-full">Credentials stay on this device and are protected by the operating system keychain.</p>
+          <p className="af-privacy af-full">Credentials are encrypted in the local database. Its unlocking key is stored in the operating system keychain.</p>
         </div>
       ) : (
         <>
@@ -132,7 +153,7 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
             <Field label="IMAP host" htmlFor={fieldId("imap-host")}><input id={fieldId("imap-host")} aria-label="IMAP host" className="af-input" placeholder="imap.example.com" value={f.imapHost} onChange={(e) => set({ imapHost: e.target.value })} /></Field>
             <Field label="Port" htmlFor={fieldId("imap-port")}><input id={fieldId("imap-port")} aria-label="IMAP port" className="af-input" type="number" value={f.imapPort} onChange={(e) => set({ imapPort: Number(e.target.value) })} /></Field>
             <Field label="Security" htmlFor={fieldId("imap-security")}>
-              <Select id={fieldId("imap-security")} fullWidth value={f.imapSecurity} options={SECURITY} onChange={(v) => { const s = v as Sec; set({ imapSecurity: s, imapPort: portFor("imap", s) }); }} />
+              <Select id={fieldId("imap-security")} ariaLabel="IMAP security" fullWidth value={f.imapSecurity} options={SECURITY} onChange={(v) => { const s = v as Sec; set({ imapSecurity: s, imapPort: portFor("imap", s) }); }} />
             </Field>
             <Field label="Username (optional)" htmlFor={fieldId("imap-username")}><input id={fieldId("imap-username")} aria-label="IMAP username" className="af-input" autoComplete="username" placeholder="Defaults to email" value={f.imapUsername} onChange={(e) => set({ imapUsername: e.target.value })} /></Field>
             <Field label={editing ? "Password (leave blank to keep saved password)" : "Password"} htmlFor={fieldId("imap-password")} full><input id={fieldId("imap-password")} aria-label="IMAP password" className="af-input" type="password" autoComplete="current-password" value={f.imapPassword} onChange={(e) => set({ imapPassword: e.target.value })} /></Field>
@@ -143,7 +164,7 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
             <Field label="SMTP host" htmlFor={fieldId("smtp-host")}><input id={fieldId("smtp-host")} aria-label="SMTP host" className="af-input" placeholder="smtp.example.com" value={f.smtpHost} onChange={(e) => set({ smtpHost: e.target.value })} /></Field>
             <Field label="Port" htmlFor={fieldId("smtp-port")}><input id={fieldId("smtp-port")} aria-label="SMTP port" className="af-input" type="number" value={f.smtpPort} onChange={(e) => set({ smtpPort: Number(e.target.value) })} /></Field>
             <Field label="Security" htmlFor={fieldId("smtp-security")}>
-              <Select id={fieldId("smtp-security")} fullWidth value={f.smtpSecurity} options={SECURITY} onChange={(v) => { const s = v as Sec; set({ smtpSecurity: s, smtpPort: portFor("smtp", s) }); }} />
+              <Select id={fieldId("smtp-security")} ariaLabel="SMTP security" fullWidth value={f.smtpSecurity} options={SECURITY} onChange={(v) => { const s = v as Sec; set({ smtpSecurity: s, smtpPort: portFor("smtp", s) }); }} />
             </Field>
           </div>
           <div className="mt-3">
@@ -152,7 +173,7 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
           {!sameCreds && (
             <div className="af-grid">
               <Field label="SMTP username" htmlFor={fieldId("smtp-username")}><input id={fieldId("smtp-username")} aria-label="SMTP username" className="af-input" autoComplete="username" value={f.smtpUsername} onChange={(e) => set({ smtpUsername: e.target.value })} /></Field>
-              <Field label={editing ? "SMTP password (optional)" : "SMTP password"} htmlFor={fieldId("smtp-password")}><input id={fieldId("smtp-password")} aria-label="SMTP password" className="af-input" type="password" autoComplete="current-password" value={f.smtpPassword} onChange={(e) => set({ smtpPassword: e.target.value })} /></Field>
+              <Field label={canPreserveSmtpPassword ? "SMTP password (leave blank to keep saved password)" : "SMTP password"} htmlFor={fieldId("smtp-password")}><input id={fieldId("smtp-password")} aria-label="SMTP password" className="af-input" type="password" autoComplete="current-password" value={f.smtpPassword} onChange={(e) => set({ smtpPassword: e.target.value })} /></Field>
             </div>
           )}
         </>
@@ -167,7 +188,7 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
 
       <div className="af-actions">
         {step === "servers" ? (
-          <button className="af-btn ghost" onClick={test} disabled={!valid || !!busy}>
+          <button className="af-btn ghost" onClick={test} disabled={!validTest || !!busy}>
             <Icon name="plug" size={14} /> {busy === "test" ? "Testing…" : "Test connection"}
           </button>
         ) : <span />}

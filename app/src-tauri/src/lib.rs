@@ -33,12 +33,14 @@ fn get_ai_profile(state: State<'_, AppState>) -> AiProfile {
 }
 
 #[tauri::command]
-fn set_ai_profile(mut profile: AiProfile, state: State<'_, AppState>) -> Result<(), String> {
-    // Persist to the durable settings store so the AI engine config survives
-    // restarts (UI prefs and AI config both live in the DB, not just in memory).
-    refresh_ai_readiness(&mut profile);
-    persist_ai_profile(&state.store, &profile)?;
-    *state.ai.lock().unwrap() = profile;
+fn set_ai_privacy(privacy: ai::Privacy, state: State<'_, AppState>) -> Result<(), String> {
+    // Every AI mutation holds the same lock through persistence. Privacy changes
+    // own only this field and therefore cannot overwrite concurrent providers.
+    let mut current = state.ai.lock().unwrap();
+    let mut next = current.clone();
+    next.privacy = privacy;
+    persist_ai_profile(&state.store, &next)?;
+    *current = next;
     Ok(())
 }
 
@@ -95,6 +97,8 @@ fn save_ai_provider(
     state: State<'_, AppState>,
 ) -> Result<AiProfile, String> {
     validate_provider(&input)?;
+    // Serialize the credential + profile transaction with every other AI write.
+    let mut current = state.ai.lock().unwrap();
     let previous_key = sync::tokens::ai_key(&input.id);
     let mut replaced_key = false;
     if let Some(key) = input
@@ -106,7 +110,7 @@ fn save_ai_provider(
         sync::tokens::save_ai_key(&input.id, key)?;
         replaced_key = true;
     }
-    let mut profile = state.ai.lock().unwrap().clone();
+    let mut profile = current.clone();
     let model = ModelConfig {
         id: input.id.clone(),
         label: input.label.trim().to_string(),
@@ -143,7 +147,7 @@ fn save_ai_provider(
         }
         return Err(error);
     }
-    *state.ai.lock().unwrap() = profile.clone();
+    *current = profile.clone();
     Ok(profile)
 }
 
@@ -182,15 +186,19 @@ fn remove_ai_provider(
     provider_id: String,
     state: State<'_, AppState>,
 ) -> Result<AiProfile, String> {
-    let mut profile = state.ai.lock().unwrap().clone();
+    let mut current = state.ai.lock().unwrap();
+    let previous_key = sync::tokens::ai_key(&provider_id);
     sync::tokens::delete_ai_key(&provider_id)?;
+    let mut profile = current.clone();
     profile.models.retain(|model| model.id != provider_id);
     if let Err(error) = persist_ai_profile(&state.store, &profile) {
-        let mut current = state.ai.lock().unwrap();
+        if let Some(previous) = previous_key {
+            let _ = sync::tokens::save_ai_key(&provider_id, &previous);
+        }
         refresh_ai_readiness(&mut current);
         return Err(error);
     }
-    *state.ai.lock().unwrap() = profile.clone();
+    *current = profile.clone();
     Ok(profile)
 }
 
@@ -508,9 +516,14 @@ async fn connect_microsoft(state: State<'_, AppState>) -> Result<String, String>
 
 /// Full IMAP/SMTP account setup with separate incoming/outgoing servers,
 /// security modes, and (optionally distinct) credentials.
+fn default_same_credentials() -> bool {
+    true
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ImapAccountInput {
+    account_id: Option<String>,
     email: String,
     display_name: Option<String>,
     imap_host: String,
@@ -521,6 +534,8 @@ struct ImapAccountInput {
     smtp_host: String,
     smtp_port: u16,
     smtp_security: String,
+    #[serde(default = "default_same_credentials")]
+    same_credentials: bool,
     smtp_username: Option<String>,
     smtp_password: Option<String>,
 }
@@ -528,6 +543,12 @@ struct ImapAccountInput {
 /// Test IMAP + SMTP connectivity with the entered settings, without saving.
 #[tauri::command]
 async fn test_imap_account(input: ImapAccountInput) -> Result<String, String> {
+    if !input.same_credentials
+        && (input.smtp_username.as_deref().map(str::trim).unwrap_or_default().is_empty()
+            || input.smtp_password.as_deref().map(str::trim).unwrap_or_default().is_empty())
+    {
+        return Err("Separate SMTP credentials require a username and password".into());
+    }
     let imap_user = input
         .imap_username
         .clone()
@@ -555,28 +576,149 @@ async fn test_imap_account(input: ImapAccountInput) -> Result<String, String> {
     Ok("IMAP login and SMTP connection OK".into())
 }
 
+fn plan_imap_secret_updates(
+    editing: bool,
+    previous_same_credentials: bool,
+    previous_smtp_username: Option<&str>,
+    same_credentials: bool,
+    smtp_username: &str,
+    imap_password: &str,
+    smtp_password: Option<&str>,
+    stored_imap_password: Option<&str>,
+    has_stored_smtp_password: bool,
+) -> Result<Vec<(&'static str, String)>, String> {
+    if !editing && imap_password.is_empty() {
+        return Err("An IMAP password is required".into());
+    }
+    if editing && imap_password.is_empty() && stored_imap_password.is_none() {
+        return Err("The saved IMAP credential is unavailable; enter it again".into());
+    }
+
+    let mut updates = Vec::new();
+    if !imap_password.is_empty() {
+        updates.push(("imap-pass", imap_password.to_string()));
+    }
+
+    if same_credentials {
+        if !imap_password.is_empty() || !previous_same_credentials || !has_stored_smtp_password {
+            let effective_imap = if imap_password.is_empty() {
+                stored_imap_password.ok_or("The saved IMAP credential is unavailable; enter it again")?
+            } else {
+                imap_password
+            };
+            updates.push(("smtp-pass", effective_imap.to_string()));
+        }
+    } else {
+        if smtp_username.trim().is_empty() {
+            return Err("A separate SMTP username is required".into());
+        }
+        if let Some(password) = smtp_password.map(str::trim).filter(|value| !value.is_empty()) {
+            updates.push(("smtp-pass", password.to_string()));
+        } else {
+            let can_preserve = editing
+                && !previous_same_credentials
+                && previous_smtp_username.is_some_and(|previous| previous == smtp_username.trim())
+                && has_stored_smtp_password;
+            if !can_preserve {
+                return Err("A separate SMTP password is required".into());
+            }
+        }
+    }
+
+    Ok(updates)
+}
+
+fn compare_legacy_imap_credentials(
+    imap_password: Option<&str>,
+    smtp_password: Option<&str>,
+) -> Result<bool, String> {
+    match (imap_password, smtp_password) {
+        (Some(imap), Some(smtp)) => Ok(imap == smtp),
+        _ => Err("Saved credentials could not be read safely; unlock the keychain and try again".into()),
+    }
+}
+
+fn resolve_imap_credential_mode(store: &Store, account: &mut ImapAccount) -> Result<(), String> {
+    if let Some(explicit) = store
+        .imap_same_credentials(&account.account_id)
+        .map_err(|error| error.to_string())?
+    {
+        account.same_credentials = explicit;
+        return Ok(());
+    }
+    let imap_password = sync::tokens::secret(&account.account_id, "imap-pass");
+    let smtp_password = sync::tokens::secret(&account.account_id, "smtp-pass");
+    let resolved = compare_legacy_imap_credentials(imap_password.as_deref(), smtp_password.as_deref())?;
+    store
+        .set_setting(
+            &format!("imap_same_credentials:{}", account.account_id),
+            &resolved.to_string(),
+        )
+        .map_err(|error| error.to_string())?;
+    account.same_credentials = resolved;
+    Ok(())
+}
+
 #[tauri::command]
 fn save_imap_account(
     input: ImapAccountInput,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let account_id = format!("imap:{}", input.email);
+    let existing = if let Some(existing_id) = input.account_id.as_deref() {
+        let mut account = state
+            .store
+            .imap_account(existing_id)
+            .ok_or_else(|| "The account being edited no longer exists".to_string())?;
+        resolve_imap_credential_mode(&state.store, &mut account)?;
+        if account.email != input.email {
+            return Err("An account email address cannot be changed in place".into());
+        }
+        Some(account)
+    } else {
+        None
+    };
+    let account_id = existing
+        .as_ref()
+        .map(|account| account.account_id.clone())
+        .unwrap_or_else(|| format!("imap:{}", input.email));
     let imap_user = input
         .imap_username
         .clone()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| input.email.clone());
-    let smtp_user = input
-        .smtp_username
-        .clone()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| imap_user.clone());
-    // SMTP password defaults to the IMAP password when not provided separately.
-    let smtp_pass = input
-        .smtp_password
-        .clone()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| input.imap_password.clone());
+    let smtp_user = if input.same_credentials {
+        imap_user.clone()
+    } else {
+        input
+            .smtp_username
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "A separate SMTP username is required".to_string())?
+            .to_string()
+    };
+    let previous_same_credentials = existing
+        .as_ref()
+        .map_or(true, |account| account.same_credentials);
+    let stored_imap_password = if existing.is_some() && input.imap_password.is_empty() {
+        sync::tokens::secret(&account_id, "imap-pass")
+    } else {
+        None
+    };
+    let has_stored_smtp_password = existing.is_some()
+        && input.smtp_password.as_deref().map(str::trim).unwrap_or_default().is_empty()
+        && sync::tokens::secret(&account_id, "smtp-pass").is_some();
+    let plain_updates = plan_imap_secret_updates(
+        existing.is_some(),
+        previous_same_credentials,
+        existing.as_ref().map(|account| account.smtp_username.as_str()),
+        input.same_credentials,
+        &smtp_user,
+        &input.imap_password,
+        input.smtp_password.as_deref(),
+        stored_imap_password.as_deref(),
+        has_stored_smtp_password,
+    )?;
 
     let acct = ImapAccount {
         account_id: account_id.clone(),
@@ -590,24 +732,21 @@ fn save_imap_account(
         smtp_port: input.smtp_port,
         smtp_security: Security::parse(&input.smtp_security),
         smtp_username: smtp_user,
+        same_credentials: input.same_credentials,
     };
-    // On edit, an empty password means "keep the existing one". Encrypt the
-    // complete update before the transaction, then commit config and ciphertexts
-    // together so a locked Keychain cannot partially mutate the account.
-    let mut plain_updates = Vec::new();
-    if !input.imap_password.is_empty() {
-        plain_updates.push(("imap-pass", input.imap_password.as_str()));
-    }
-    if !smtp_pass.is_empty() {
-        plain_updates.push(("smtp-pass", smtp_pass.as_str()));
-    }
-    let encrypted_updates = sync::tokens::prepare_secret_updates(&plain_updates)?;
+    // Encrypt the complete credential transition before committing config and
+    // ciphertext together, so the account can never retain a mismatched secret.
+    let update_refs = plain_updates
+        .iter()
+        .map(|(kind, value)| (*kind, value.as_str()))
+        .collect::<Vec<_>>();
+    let encrypted_updates = sync::tokens::prepare_secret_updates(&update_refs)?;
     state
         .store
         .save_imap_account_atomic(&acct, &encrypted_updates)
         .map_err(|e| e.to_string())?;
     for (kind, _) in &encrypted_updates {
-        sync::tokens::delete_legacy_secret(&account_id, kind);
+        let _ = sync::tokens::delete_legacy_secret(&account_id, kind);
     }
     Ok(account_id)
 }
@@ -615,8 +754,12 @@ fn save_imap_account(
 /// Saved IMAP/SMTP settings for an account (no password — used to pre-fill the
 /// edit form).
 #[tauri::command]
-fn get_imap_account(account_id: String, state: State<'_, AppState>) -> Option<ImapAccount> {
-    state.store.imap_account(&account_id)
+fn get_imap_account(account_id: String, state: State<'_, AppState>) -> Result<Option<ImapAccount>, String> {
+    let Some(mut account) = state.store.imap_account(&account_id) else {
+        return Ok(None);
+    };
+    resolve_imap_credential_mode(&state.store, &mut account)?;
+    Ok(Some(account))
 }
 
 /// Remove an account and all of its data (threads, messages, embeddings, config),
@@ -639,12 +782,36 @@ fn rename_account(
 
 #[tauri::command]
 fn remove_account(account_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    state
-        .store
+    remove_account_from_store(&state.store, &account_id, sync::tokens::clear)
+}
+
+fn remove_account_from_store<F>(
+    store: &store::Store,
+    account_id: &str,
+    clear_credentials: F,
+) -> Result<(), String>
+where
+    F: FnOnce(&str) -> Result<(), String>,
+{
+    // Credentials go first. If local-data cleanup later fails, the account row
+    // remains visible and removal can be retried; no orphaned secret is hidden.
+    clear_credentials(account_id)?;
+    store
         .delete_account(&account_id)
         .map_err(|e| e.to_string())?;
-    sync::tokens::clear(&account_id);
     Ok(())
+}
+
+fn sync_failure_status(error: &impl std::fmt::Display) -> &'static str {
+    let message = error.to_string().to_ascii_lowercase();
+    if ["auth", "unauthorized", "401", "credential", "login"]
+        .iter()
+        .any(|needle| message.contains(needle))
+    {
+        "Authentication required"
+    } else {
+        "Sync needs attention"
+    }
 }
 
 /// Sync an account's inbox. Returns the number of messages stored (so the UI can
@@ -673,8 +840,17 @@ async fn sync_now(
         sync::gmail::incremental(&state.store, &account_id)
             .await
             .map(|_| 0)
-    }
-    .map_err(|error| error.to_string())?;
+    };
+
+    let result = match result {
+        Ok(result) => result,
+        Err(error) => {
+            let _ = state
+                .store
+                .record_sync_failure(&account_id, sync_failure_status(&error));
+            return Err(error.to_string());
+        }
+    };
 
     state
         .store
@@ -802,16 +978,29 @@ async fn sync_folder(
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
     if account_id.starts_with("imap:") {
-        sync::imap::fetch_folder_async(
+        let result = sync::imap::fetch_folder_async(
             state.store.clone(),
-            account_id,
-            folder,
+            account_id.clone(),
+            folder.clone(),
             75,
             group.unwrap_or(true),
             false,
         )
-            .await
-            .map_err(|e| e.to_string())
+            .await;
+        let result = match result {
+            Ok(result) => result,
+            Err(error) => {
+                let _ = state
+                    .store
+                    .record_sync_failure(&account_id, sync_failure_status(&error));
+                return Err(error.to_string());
+            }
+        };
+        state
+            .store
+            .record_sync_success(&account_id, &folder, chrono::Utc::now().timestamp())
+            .map_err(|error| error.to_string())?;
+        Ok(result)
     } else {
         Err("Folder sync is currently available for IMAP accounts.".into())
     }
@@ -1191,6 +1380,95 @@ mod external_url_tests {
     }
 }
 
+#[cfg(test)]
+mod account_removal_tests {
+    use super::{compare_legacy_imap_credentials, plan_imap_secret_updates, remove_account_from_store};
+    use crate::store::Store;
+
+    #[test]
+    fn credential_failure_leaves_account_visible_for_retry() {
+        let store = Store::in_memory().unwrap();
+        store
+            .upsert_account("imap:test@example.test", "test@example.test", "imap", "Test")
+            .unwrap();
+
+        let result = remove_account_from_store(&store, "imap:test@example.test", |_| {
+            Err("credential cleanup failed".into())
+        });
+
+        assert!(result.is_err());
+        assert_eq!(store.accounts().len(), 1);
+    }
+
+    #[test]
+    fn verified_cleanup_allows_account_deletion() {
+        let store = Store::in_memory().unwrap();
+        store
+            .upsert_account("imap:test@example.test", "test@example.test", "imap", "Test")
+            .unwrap();
+
+        remove_account_from_store(&store, "imap:test@example.test", |_| Ok(())).unwrap();
+
+        assert!(store.accounts().is_empty());
+    }
+
+    #[test]
+    fn new_separate_smtp_credentials_require_a_password() {
+        let result = plan_imap_secret_updates(
+            false,
+            false,
+            None,
+            false,
+            "smtp-user",
+            "imap-password",
+            None,
+            None,
+            false,
+        );
+        assert_eq!(result.unwrap_err(), "A separate SMTP password is required");
+    }
+
+    #[test]
+    fn switching_to_shared_credentials_replaces_the_old_smtp_password() {
+        let updates = plan_imap_secret_updates(
+            true,
+            false,
+            Some("old-smtp-user"),
+            true,
+            "imap-user",
+            "",
+            None,
+            Some("saved-imap-password"),
+            true,
+        )
+        .unwrap();
+        assert_eq!(updates, vec![("smtp-pass", "saved-imap-password".to_string())]);
+    }
+
+    #[test]
+    fn changing_a_separate_smtp_username_requires_a_new_password() {
+        let result = plan_imap_secret_updates(
+            true,
+            false,
+            Some("old-smtp-user"),
+            false,
+            "new-smtp-user",
+            "",
+            None,
+            Some("saved-imap-password"),
+            true,
+        );
+        assert_eq!(result.unwrap_err(), "A separate SMTP password is required");
+    }
+
+    #[test]
+    fn legacy_same_username_with_distinct_passwords_remains_separate() {
+        assert!(!compare_legacy_imap_credentials(Some("incoming"), Some("outgoing")).unwrap());
+        assert!(compare_legacy_imap_credentials(Some("shared"), Some("shared")).unwrap());
+        assert!(compare_legacy_imap_credentials(Some("incoming"), None).is_err());
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1250,7 +1528,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_ai_profile,
-            set_ai_profile,
+            set_ai_privacy,
             save_ai_provider,
             test_ai_provider,
             remove_ai_provider,

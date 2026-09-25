@@ -20,6 +20,8 @@ export interface Account {
   unread?: number;
   /** Unix seconds for the most recent completed provider sync. */
   lastSyncAt?: number;
+  /** Non-sensitive persisted provider health status from the latest failure. */
+  syncError?: string;
 }
 
 export interface FolderInfo {

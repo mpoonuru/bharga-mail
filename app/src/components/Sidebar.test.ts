@@ -98,7 +98,9 @@ describe("mail account disclosure motion", () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
-    const deleteFolder = vi.fn().mockResolvedValue(undefined);
+    const deleteFolder = vi.fn().mockImplementation(async () => {
+      useApp.setState({ folders: [] });
+    });
     const nativeConfirm = vi.spyOn(window, "confirm");
     useApp.setState({
       accounts: [{ id: "a1", email: "one@example.test", provider: "imap", displayName: "One" }],
@@ -124,9 +126,14 @@ describe("mail account disclosure motion", () => {
     const confirmDelete = [...document.querySelectorAll<HTMLButtonElement>("button")]
       .find((button) => button.textContent?.trim() === "Delete folder");
     if (!confirmDelete) throw new Error("Delete folder confirmation not found");
-    await act(async () => confirmDelete.click());
+    await act(async () => {
+      confirmDelete.click();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
     expect(deleteFolder).toHaveBeenCalledWith("a1", "Projects");
+    expect(document.activeElement).toBe(container.querySelector<HTMLButtonElement>('button[title="Account options"]'));
 
+    await act(async () => new Promise<void>((resolve) => setTimeout(resolve, 180)));
     act(() => root.unmount());
     container.remove();
     nativeConfirm.mockRestore();

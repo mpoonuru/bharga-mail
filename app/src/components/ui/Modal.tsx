@@ -11,6 +11,8 @@ interface CommonProps {
   onClose: () => void;
   children: ReactNode;
   maxWidth?: number;
+  returnFocus?: HTMLElement | null;
+  fallbackFocus?: HTMLElement | null;
 }
 
 type AccessibleName =
@@ -20,7 +22,7 @@ type AccessibleName =
 type Props = CommonProps & AccessibleName;
 
 // Centered modal dialog with backdrop, scroll-lock, and Esc-to-close.
-export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 640 }: Props) {
+export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 640, returnFocus, fallbackFocus }: Props) {
   const overlayTransition = useMotionTransition(OVERLAY_FADE);
   const panelRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -30,7 +32,7 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
-    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    openerRef.current = returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     document.body.style.overflow = "hidden";
     const unregisterModal = registerOpenModal();
     const panel = panelRef.current;
@@ -38,6 +40,19 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
     initialFocus?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (e.target instanceof HTMLElement) {
+          const listbox = e.target.closest<HTMLElement>('[role="listbox"]');
+          const selectButton = listbox
+            ? document.getElementById(listbox.dataset.selectOwner ?? "")
+            : e.target.closest<HTMLElement>('[data-select-open="true"]');
+          if (selectButton) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            selectButton.click();
+            selectButton.focus();
+            return;
+          }
+        }
         e.preventDefault();
         onCloseRef.current();
       } else if (panelRef.current) {
@@ -53,9 +68,10 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
       window.removeEventListener("keydown", onKey, true);
       const opener = openerRef.current;
       if (opener?.isConnected) opener.focus();
+      else if (fallbackFocus?.isConnected) fallbackFocus.focus();
       openerRef.current = null;
     };
-  }, [open]);
+  }, [fallbackFocus, open, returnFocus]);
 
   const close = () => onCloseRef.current();
 

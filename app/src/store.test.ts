@@ -74,6 +74,32 @@ describe("AI engine config", () => {
     expect("apiKey" in m).toBe(false);
   });
 
+  it("merges out-of-order provider saves without discarding either result", async () => {
+    const original = structuredClone(useApp.getState().ai!);
+    const pending = new Map<string, (profile: typeof original) => void>();
+    vi.spyOn(api, "saveAiProvider").mockImplementation((input) => new Promise((resolve) => {
+      pending.set(input.id, resolve);
+    }));
+    const first = { ...original.models[0], label: "First updated" };
+    const second = { ...original.models[1], label: "Second updated" };
+
+    const firstSave = useApp.getState().saveModel(first);
+    const secondSave = useApp.getState().saveModel(second);
+    pending.get(second.id)?.({
+      ...original,
+      models: original.models.map((model) => model.id === second.id ? second : model),
+    });
+    await secondSave;
+    pending.get(first.id)?.({
+      ...original,
+      models: original.models.map((model) => model.id === first.id ? first : model),
+    });
+    await firstSave;
+
+    expect(useApp.getState().ai?.models.find((model) => model.id === first.id)?.label).toBe("First updated");
+    expect(useApp.getState().ai?.models.find((model) => model.id === second.id)?.label).toBe("Second updated");
+  });
+
   it("setPrivacy updates the preset", () => {
     useApp.getState().setPrivacy("local");
     expect(useApp.getState().ai!.privacy).toBe("local");

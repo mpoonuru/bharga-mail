@@ -3,7 +3,7 @@
 //!
 //! Flow: build the auth URL → open the system browser → run a tiny localhost
 //! server to catch the `?code=` redirect → exchange code+verifier for tokens.
-//! Tokens are stored in the OS keychain (see `tokens.rs`).
+//! Tokens are encrypted in the local store under a Keychain-held master key.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rand::Rng;
@@ -110,6 +110,9 @@ pub async fn refresh(cfg: &OAuthConfig, refresh_token: &str) -> Result<TokenSet,
         .send()
         .await
         .map_err(|e| OAuthError::Exchange(e.to_string()))?;
+    if !resp.status().is_success() {
+        return Err(OAuthError::Exchange(format!("HTTP {}", resp.status())));
+    }
     resp.json::<TokenSet>().await.map_err(|e| OAuthError::Exchange(e.to_string()))
 }
 

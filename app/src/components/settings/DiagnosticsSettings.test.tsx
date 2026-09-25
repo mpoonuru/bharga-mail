@@ -1,3 +1,4 @@
+// Behavioral coverage for explicit, redacted diagnostics copy and download actions.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

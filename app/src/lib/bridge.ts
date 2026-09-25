@@ -14,6 +14,7 @@ import {
 } from "@/data/mock";
 
 export interface ImapAccountInput {
+  accountId?: string;
   email: string;
   displayName?: string;
   imapHost: string;
@@ -24,6 +25,7 @@ export interface ImapAccountInput {
   smtpHost: string;
   smtpPort: number;
   smtpSecurity: "ssl" | "starttls" | "none";
+  sameCredentials: boolean;
   smtpUsername?: string;
   smtpPassword?: string;
 }
@@ -230,10 +232,10 @@ export const api = {
     return invoke<AiProfile>("get_ai_profile");
   },
 
-  /** Persist the AI profile (model/role assignment, keys, endpoints) to the core. */
-  async setAiProfile(profile: AiProfile): Promise<void> {
+  /** Persist only the privacy field; provider mutations use dedicated commands. */
+  async setAiPrivacy(privacy: AiProfile["privacy"]): Promise<void> {
     if (!inTauri) return;
-    await invoke<void>("set_ai_profile", { profile });
+    await invoke<void>("set_ai_privacy", { privacy });
   },
 
   async saveAiProvider(input: SaveAiProviderInput): Promise<AiProfile> {
@@ -378,7 +380,7 @@ export const api = {
     return invoke<string>("connect_microsoft");
   },
 
-  /** Register a full IMAP/SMTP account (passwords stored in the OS keychain). */
+  /** Register IMAP/SMTP config plus locally encrypted account-bound credentials. */
   async saveImapAccount(input: ImapAccountInput): Promise<string> {
     return invoke<string>("save_imap_account", { input });
   },
@@ -404,6 +406,7 @@ export const api = {
         smtpPort: a.smtpPort as number,
         smtpSecurity: a.smtpSecurity as ImapAccountInput["smtpSecurity"],
         smtpUsername: a.smtpUsername as string,
+        sameCredentials: a.sameCredentials as boolean,
       };
     } catch {
       return null;
@@ -412,11 +415,8 @@ export const api = {
 
   /** Remove an account and its data + stored credentials. */
   async removeAccount(accountId: string): Promise<void> {
-    try {
-      await invoke<void>("remove_account", { accountId });
-    } catch {
-      /* preview: no-op */
-    }
+    if (!inTauri) return;
+    await invoke<void>("remove_account", { accountId });
   },
 
   /** Set an account's friendly display name (shown instead of the raw address). */

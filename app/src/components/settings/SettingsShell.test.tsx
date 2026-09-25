@@ -1,3 +1,4 @@
+// Behavioral coverage for responsive settings navigation and keyboard destination selection.
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/icons";
 import { api } from "@/lib/bridge";
@@ -36,10 +36,30 @@ function draftFor(model: AiModel): Draft {
 export function AiProviderManager() {
   const { ai, addModel, saveModel, removeModel } = useApp();
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<AiModel | null>(null);
-  const [message, setMessage] = useState<{ id: string; tone: "error" | "success"; text: string } | null>(null);
+  const [removeReturnFocus, setRemoveReturnFocus] = useState<HTMLElement | null>(null);
+  const [messages, setMessages] = useState<Record<string, { tone: "error" | "success"; text: string }>>({});
+  const addProviderRef = useRef<HTMLButtonElement>(null);
+
+  function setBusy(id: string, busy: boolean) {
+    setBusyIds((current) => {
+      const next = new Set(current);
+      if (busy) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function setMessage(id: string, message: { tone: "error" | "success"; text: string } | null) {
+    setMessages((current) => {
+      if (message) return { ...current, [id]: message };
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!ai) return;
@@ -66,8 +86,8 @@ export function AiProviderManager() {
   async function save(model: AiModel) {
     const draft = drafts[model.id];
     if (!draft) return;
-    setBusyId(model.id);
-    setMessage(null);
+    setBusy(model.id, true);
+    setMessage(model.id, null);
     const input: SaveAiProviderInput = {
       ...model,
       label: draft.label,
@@ -79,23 +99,22 @@ export function AiProviderManager() {
     try {
       await saveModel(input);
       patch(model.id, { apiKey: "" });
-      setMessage({ id: model.id, tone: "success", text: "Provider saved securely." });
+      setMessage(model.id, { tone: "success", text: "Provider saved securely." });
     } catch (error) {
-      setMessage({
-        id: model.id,
+      setMessage(model.id, {
         tone: "error",
         text: error instanceof Error ? error.message : "Provider could not be saved.",
       });
     } finally {
-      setBusyId(null);
+      setBusy(model.id, false);
     }
   }
 
   async function testConnection(model: AiModel) {
     const draft = drafts[model.id];
     if (!draft) return;
-    setBusyId(model.id);
-    setMessage(null);
+    setBusy(model.id, true);
+    setMessage(model.id, null);
     try {
       const text = await api.testAiProvider({
         ...model,
@@ -105,36 +124,34 @@ export function AiProviderManager() {
         roles: draft.roles,
         apiKey: draft.apiKey || undefined,
       });
-      setMessage({ id: model.id, tone: "success", text });
+      setMessage(model.id, { tone: "success", text });
     } catch (error) {
-      setMessage({
-        id: model.id,
+      setMessage(model.id, {
         tone: "error",
         text: error instanceof Error ? error.message : "Connection test failed.",
       });
     } finally {
-      setBusyId(null);
+      setBusy(model.id, false);
     }
   }
 
   async function confirmRemove() {
     if (!removeTarget) return;
     const id = removeTarget.id;
-    setBusyId(id);
-    setMessage(null);
+    setBusy(id, true);
+    setMessage(id, null);
     try {
       await removeModel(id);
       setRemoveTarget(null);
       if (expandedId === id) setExpandedId(null);
     } catch (error) {
       setRemoveTarget(null);
-      setMessage({
-        id,
+      setMessage(id, {
         tone: "error",
         text: error instanceof Error ? error.message : "Provider could not be removed.",
       });
     } finally {
-      setBusyId(null);
+      setBusy(id, false);
     }
   }
 
@@ -148,9 +165,9 @@ export function AiProviderManager() {
       <div className="provider-manager-head">
         <div>
           <b>AI providers</b>
-          <p>Credentials stay in your OS keychain and are never shown again after saving.</p>
+          <p>Credentials are encrypted in the local database; its unlocking key stays in your OS keychain.</p>
         </div>
-        <button className="af-btn ghost" onClick={addProvider}>
+        <button ref={addProviderRef} className="af-btn ghost" onClick={addProvider}>
           <Icon name="plus" size={14} /> Add provider
         </button>
       </div>
@@ -161,6 +178,7 @@ export function AiProviderManager() {
           const keyBased = model.kind !== "local";
           const configurableEndpoint = model.kind === "openai-compatible" || model.kind === "custom" || model.kind === "local";
           const expanded = expandedId === model.id;
+          const message = messages[model.id];
           const editorId = `provider-editor-${model.id}`;
           const summaryId = `provider-summary-${model.id}`;
           return (
@@ -189,7 +207,10 @@ export function AiProviderManager() {
                 </button>
                 <button
                   className="provider-remove"
-                  onClick={() => setRemoveTarget(model)}
+                  onClick={(event) => {
+                    setRemoveReturnFocus(event.currentTarget);
+                    setRemoveTarget(model);
+                  }}
                   title={`Remove ${model.label}`}
                   aria-label={`Remove ${model.label}`}
                 >
@@ -266,15 +287,15 @@ export function AiProviderManager() {
                   </div>
 
                   <div className="provider-card-foot">
-                    {message?.id === model.id && (
+                    {message && (
                       <p className={`provider-message ${message.tone}`} role={message.tone === "error" ? "alert" : "status"}>
                         {message.text}
                       </p>
                     )}
-                    <Button variant="ghost" onClick={() => void testConnection(model)} disabled={busyId === model.id}>
+                    <Button variant="ghost" onClick={() => void testConnection(model)} disabled={busyIds.has(model.id)}>
                       Test connection
                     </Button>
-                    <Button onClick={() => void save(model)} loading={busyId === model.id}>
+                    <Button onClick={() => void save(model)} loading={busyIds.has(model.id)}>
                       Save changes
                     </Button>
                   </div>
@@ -285,7 +306,14 @@ export function AiProviderManager() {
         })}
       </div>
 
-      <Modal open={!!removeTarget} onClose={() => setRemoveTarget(null)} title="Remove AI provider" maxWidth={480}>
+      <Modal
+        open={!!removeTarget}
+        onClose={() => setRemoveTarget(null)}
+        title="Remove AI provider"
+        maxWidth={480}
+        returnFocus={removeReturnFocus}
+        fallbackFocus={addProviderRef.current}
+      >
         <div className="provider-confirm">
           <p>
             Remove <b>{removeTarget?.label}</b>? Its saved credential will be permanently deleted from this device.
@@ -297,7 +325,7 @@ export function AiProviderManager() {
           )}
           <div className="af-actions">
             <Button variant="ghost" onClick={() => setRemoveTarget(null)}>Cancel</Button>
-            <button className="af-btn danger" onClick={() => void confirmRemove()} disabled={busyId === removeTarget?.id}>
+            <button className="af-btn danger" onClick={() => void confirmRemove()} disabled={!!removeTarget && busyIds.has(removeTarget.id)}>
               <Icon name="trash" size={14} /> Remove provider
             </button>
           </div>

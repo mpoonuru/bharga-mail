@@ -45,7 +45,7 @@ pub async fn connect(store: &Store) -> Result<String, SyncError> {
         .upsert_account(&account_id, &email, "gmail", &email)
         .map_err(|e| SyncError::Transient(e.to_string()))?;
 
-    initial_sync(store, &account_id, &tokens_set.access_token).await?;
+    initial_sync(store, &account_id).await?;
     Ok(account_id)
 }
 
@@ -56,26 +56,52 @@ async fn valid_token(account_id: &str) -> Result<String, SyncError> {
         return Ok(t);
     }
     let refresh = tokens::refresh_token(account_id).ok_or(SyncError::AuthRequired)?;
-    let new: TokenSet = oauth::refresh(&config(), &refresh)
+    refresh_access(account_id, &refresh).await
+}
+
+async fn refresh_access(account_id: &str, refresh: &str) -> Result<String, SyncError> {
+    let new: TokenSet = oauth::refresh(&config(), refresh)
         .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?;
+        .map_err(super::refresh_error)?;
     tokens::save(account_id, &new.access_token, new.refresh_token.as_deref())
         .map_err(SyncError::Transient)?;
     Ok(new.access_token)
 }
 
-/// Pull the most recent messages and persist them.
-pub async fn initial_sync(store: &Store, account_id: &str, access: &str) -> Result<(), SyncError> {
+async fn authenticated_get(account_id: &str, url: String) -> Result<reqwest::Response, SyncError> {
     let client = reqwest::Client::new();
-    let list: Value = client
-        .get(format!("{GMAIL_API}/messages?maxResults=50"))
-        .bearer_auth(access)
-        .send()
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?
-        .json()
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?;
+    let mut access = valid_token(account_id).await?;
+    for attempt in 0..2 {
+        let response = client
+            .get(&url)
+            .bearer_auth(&access)
+            .send()
+            .await
+            .map_err(|error| SyncError::Transient(error.to_string()))?;
+        if response.status() != reqwest::StatusCode::UNAUTHORIZED || attempt == 1 {
+            return Ok(response);
+        }
+        let refresh = tokens::refresh_token(account_id).ok_or(SyncError::AuthRequired)?;
+        access = refresh_access(account_id, &refresh).await?;
+    }
+    Err(SyncError::AuthRequired)
+}
+
+async fn authenticated_json(account_id: &str, url: String, operation: &str) -> Result<Value, SyncError> {
+    let response = authenticated_get(account_id, url).await?;
+    if !response.status().is_success() {
+        return Err(super::http_status_error(response.status(), operation));
+    }
+    response.json().await.map_err(|error| SyncError::Transient(error.to_string()))
+}
+
+/// Pull the most recent messages and persist them.
+pub async fn initial_sync(store: &Store, account_id: &str) -> Result<(), SyncError> {
+    let list = authenticated_json(
+        account_id,
+        format!("{GMAIL_API}/messages?maxResults=50"),
+        "Gmail initial sync",
+    ).await?;
 
     let ids: Vec<String> = list["messages"]
         .as_array()
@@ -83,15 +109,14 @@ pub async fn initial_sync(store: &Store, account_id: &str, access: &str) -> Resu
         .unwrap_or_default();
 
     for id in ids {
-        if let Ok(full) = fetch_message(&client, access, &id).await {
-            if let Some(thread) = parse_message(account_id, &full) {
-                let _ = store.upsert_thread(&thread);
-            }
+        let full = fetch_message(account_id, &id).await?;
+        if let Some(thread) = parse_message(account_id, &full) {
+            super::store_write(store.upsert_thread(&thread), "persist Gmail message")?;
         }
     }
 
     if let Some(hid) = list["historyId"].as_str() {
-        let _ = store.set_sync_token(account_id, hid);
+        super::store_write(store.set_sync_token(account_id, hid), "persist Gmail sync cursor")?;
     }
     Ok(())
 }
@@ -173,21 +198,20 @@ fn http_ok(resp: reqwest::Response, what: &str) -> Result<(), SyncError> {
 /// stored historyId. Falls back to a full sync if there's no cursor or the
 /// cursor has expired (Gmail returns 404 for history older than ~1 week).
 pub async fn incremental(store: &Store, account_id: &str) -> Result<(), SyncError> {
-    let access = valid_token(account_id).await?;
     let Some(start) = store.sync_token(account_id) else {
-        return initial_sync(store, account_id, &access).await;
+        return initial_sync(store, account_id).await;
     };
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(format!("{GMAIL_API}/history?startHistoryId={start}&historyTypes=messageAdded"))
-        .bearer_auth(&access)
-        .send()
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?;
+    let resp = authenticated_get(
+        account_id,
+        format!("{GMAIL_API}/history?startHistoryId={start}&historyTypes=messageAdded"),
+    ).await?;
 
     if resp.status() == reqwest::StatusCode::NOT_FOUND {
-        return initial_sync(store, account_id, &access).await; // cursor expired
+        return initial_sync(store, account_id).await; // cursor expired
+    }
+    if !resp.status().is_success() {
+        return Err(super::http_status_error(resp.status(), "Gmail incremental sync"));
     }
     let v: Value = resp.json().await.map_err(|e| SyncError::Transient(e.to_string()))?;
 
@@ -208,15 +232,14 @@ pub async fn incremental(store: &Store, account_id: &str) -> Result<(), SyncErro
     ids.dedup();
 
     for id in ids {
-        if let Ok(full) = fetch_message(&client, &access, &id).await {
-            if let Some(thread) = parse_message(account_id, &full) {
-                let _ = store.upsert_thread(&thread);
-            }
+        let full = fetch_message(account_id, &id).await?;
+        if let Some(thread) = parse_message(account_id, &full) {
+            super::store_write(store.upsert_thread(&thread), "persist Gmail message")?;
         }
     }
 
     if let Some(h) = v["historyId"].as_str() {
-        let _ = store.set_sync_token(account_id, h);
+        super::store_write(store.set_sync_token(account_id, h), "persist Gmail sync cursor")?;
     }
     Ok(())
 }
@@ -234,16 +257,12 @@ async fn fetch_email(access: &str) -> Option<String> {
     v["email"].as_str().map(String::from)
 }
 
-async fn fetch_message(client: &reqwest::Client, access: &str, id: &str) -> Result<Value, SyncError> {
-    client
-        .get(format!("{GMAIL_API}/messages/{id}?format=full"))
-        .bearer_auth(access)
-        .send()
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?
-        .json()
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))
+async fn fetch_message(account_id: &str, id: &str) -> Result<Value, SyncError> {
+    authenticated_json(
+        account_id,
+        format!("{GMAIL_API}/messages/{id}?format=full"),
+        "Gmail message fetch",
+    ).await
 }
 
 /// Convert a Gmail `messages.get` payload into a store Thread (one message).

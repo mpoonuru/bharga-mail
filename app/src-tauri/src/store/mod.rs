@@ -3,12 +3,12 @@
 //!
 //! Threads/messages are persisted and full-text indexed (FTS5). Embeddings for
 //! semantic search are a Phase 1 add (sqlite-vec). The DB is opened once and
-//! lives in app data; encrypt at rest + keys in the OS keychain for production.
+//! lives in app data; credential rows are encrypted under a Keychain-held key.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 pub mod seed;
@@ -139,7 +139,8 @@ impl Security {
     }
 }
 
-/// IMAP/SMTP account configuration (passwords stored separately in the keychain).
+/// IMAP/SMTP account configuration. Credential ciphertext is stored in the
+/// local database under a master key protected by the operating-system keychain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImapAccount {
     #[serde(rename = "accountId")]
@@ -163,6 +164,12 @@ pub struct ImapAccount {
     pub smtp_security: Security,
     #[serde(rename = "smtpUsername")]
     pub smtp_username: String,
+    #[serde(rename = "sameCredentials", default = "default_true")]
+    pub same_credentials: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// A connected mail account, surfaced to the UI's account switcher.
@@ -180,6 +187,12 @@ pub struct AccountInfo {
         skip_serializing_if = "Option::is_none"
     )]
     pub last_sync_at: Option<i64>,
+    #[serde(
+        rename = "syncError",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub sync_error: Option<String>,
 }
 
 /// A mailbox/folder for the sidebar folder list.
@@ -412,6 +425,14 @@ impl Store {
         tx.execute("DELETE FROM outbox WHERE account_id=?1", params![account_id])?;
         tx.execute("DELETE FROM folders WHERE account_id=?1", params![account_id])?;
         tx.execute("DELETE FROM account_sync_state WHERE account_id=?1", params![account_id])?;
+        tx.execute(
+            "DELETE FROM settings WHERE key=?1",
+            [format!("account_sync_error:{account_id}")],
+        )?;
+        tx.execute(
+            "DELETE FROM settings WHERE key=?1",
+            [format!("imap_same_credentials:{account_id}")],
+        )?;
         tx.execute("DELETE FROM imap_accounts WHERE account_id=?1", params![account_id])?;
         tx.execute("DELETE FROM accounts WHERE id=?1", params![account_id])?;
         tx.commit()?;
@@ -599,6 +620,17 @@ impl Store {
             .unwrap_or_default()
     }
 
+    pub fn setting(&self, key: &str) -> rusqlite::Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row("SELECT value FROM settings WHERE key=?1", [key], |row| row.get(0))
+            .optional()
+    }
+
+    pub fn imap_same_credentials(&self, account_id: &str) -> rusqlite::Result<Option<bool>> {
+        self.setting(&format!("imap_same_credentials:{account_id}"))
+            .map(|value| value.map(|stored| stored == "true"))
+    }
+
     // ---- secret fallback (DB-backed; survives unsigned-app rebuilds) ----
 
     pub fn set_secret(&self, key: &str, value: &str) -> rusqlite::Result<()> {
@@ -627,9 +659,12 @@ impl Store {
         )
     }
 
-    pub fn delete_secret(&self, key: &str) {
+    /// Delete an encrypted credential row. Callers must handle failures so a
+    /// destructive flow cannot report success while ciphertext remains.
+    pub fn delete_secret(&self, key: &str) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
-        let _ = conn.execute("DELETE FROM secrets WHERE key=?1", [key]);
+        conn.execute("DELETE FROM secrets WHERE key=?1", [key])?;
+        Ok(())
     }
 
     // ---- folders (mailboxes) ----
@@ -768,7 +803,9 @@ impl Store {
             "SELECT a.id, a.email, a.provider, COALESCE(a.display_name,''),
                     (SELECT COUNT(*) FROM threads t WHERE t.account_id = a.id AND t.unread = 1 AND t.deleted = 0),
                     (SELECT NULLIF(MAX(s.last_sync_ts), 0)
-                     FROM account_sync_state s WHERE s.account_id = a.id)
+                     FROM account_sync_state s WHERE s.account_id = a.id),
+                    (SELECT NULLIF(value, '') FROM settings
+                     WHERE key = 'account_sync_error:' || a.id)
              FROM accounts a ORDER BY a.email",
         ) {
             Ok(s) => s,
@@ -782,6 +819,7 @@ impl Store {
                 display_name: r.get(3)?,
                 unread: r.get::<_, i64>(4)? as u32,
                 last_sync_at: r.get(5)?,
+                sync_error: r.get(6)?,
             })
         })
         .map(|it| it.filter_map(Result::ok).collect())
@@ -803,6 +841,17 @@ impl Store {
              DO UPDATE SET last_sync_ts=excluded.last_sync_ts",
             params![account_id, folder, timestamp],
         )?;
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, '')
+             ON CONFLICT(key) DO UPDATE SET value=''",
+            [format!("account_sync_error:{account_id}")],
+        )?;
+        Ok(())
+    }
+
+    /// Persist a non-sensitive sync status so background failures remain visible.
+    pub fn record_sync_failure(&self, account_id: &str, status: &str) -> rusqlite::Result<()> {
+        self.set_setting(&format!("account_sync_error:{account_id}"), status)?;
         Ok(())
     }
 
@@ -1128,6 +1177,14 @@ impl Store {
                 a.smtp_host, a.smtp_port as i64, a.smtp_security.as_str(), a.smtp_username,
             ],
         )?;
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            params![
+                format!("imap_same_credentials:{}", a.account_id),
+                a.same_credentials.to_string(),
+            ],
+        )?;
         Ok(())
     }
 
@@ -1169,6 +1226,14 @@ impl Store {
                 params![format!("{}:{kind}", a.account_id), encrypted],
             )?;
         }
+        tx.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            params![
+                format!("imap_same_credentials:{}", a.account_id),
+                a.same_credentials.to_string(),
+            ],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -1176,7 +1241,11 @@ impl Store {
     pub fn imap_account(&self, account_id: &str) -> Option<ImapAccount> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT account_id, email, display_name, imap_host, imap_port, imap_security, imap_username, smtp_host, smtp_port, smtp_security, smtp_username
+            "SELECT account_id, email, display_name, imap_host, imap_port, imap_security, imap_username, smtp_host, smtp_port, smtp_security, smtp_username,
+                    COALESCE(
+                        (SELECT value FROM settings WHERE key = 'imap_same_credentials:' || imap_accounts.account_id),
+                        CASE WHEN imap_username = smtp_username THEN 'true' ELSE 'false' END
+                    )
              FROM imap_accounts WHERE account_id=?1",
             [account_id],
             |r| {
@@ -1192,6 +1261,7 @@ impl Store {
                     smtp_port: r.get::<_, i64>(8)? as u16,
                     smtp_security: Security::parse(&r.get::<_, String>(9)?),
                     smtp_username: r.get(10)?,
+                    same_credentials: r.get::<_, String>(11)? == "true",
                 })
             },
         )
@@ -1219,7 +1289,7 @@ impl Store {
 /// retires the incompatible pre-redesign `imap_accounts` table.
 fn migrate_v1_baseline(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
     // Retire a pre-redesign imap_accounts (old `username` shape, missing
-    // imap_username). It holds only config — passwords live in the OS keychain.
+    // imap_username). It holds only config; passwords use the encrypted secrets table.
     let stale = {
         let exists = tx
             .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='imap_accounts'")
@@ -1351,7 +1421,7 @@ fn migrate_v1_baseline(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
             last_sync_ts INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (account_id, folder)
         );
-        -- IMAP/SMTP account config (passwords live in the OS keychain, not here).
+        -- IMAP/SMTP account config only; passwords use the encrypted secrets table.
         CREATE TABLE IF NOT EXISTS imap_accounts (
             account_id TEXT PRIMARY KEY,
             email TEXT NOT NULL,
@@ -1365,7 +1435,7 @@ fn migrate_v1_baseline(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
             smtp_security TEXT NOT NULL DEFAULT 'ssl',
             smtp_username TEXT NOT NULL
         );
-        -- Credential/token fallback (keychain is primary; see migrate_v5_secrets).
+        -- Encrypted credentials/tokens (master key lives in the OS keychain).
         CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         -- Durable UI/user settings (theme, density, font, locale, …).
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -1420,10 +1490,8 @@ fn migrate_v4_message_meta(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
     Ok(())
 }
 
-/// v5 — local fallback for credentials/tokens. The OS keychain is primary, but an
-/// unsigned app gets a new code signature on every rebuild and loses keychain
-/// access, which was wiping the account each build; this table (keyed off the
-/// stable app identifier) survives rebuilds.
+/// v5 — ciphertext storage for credentials/tokens. Values are encrypted with a
+/// master key held by the OS keychain, avoiding one Keychain prompt per account.
 fn migrate_v5_secrets(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
     let _ = tx.execute(
         "CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
@@ -1892,13 +1960,14 @@ mod tests {
         let acct = ImapAccount {
             account_id: "imap1".into(), email: "me@host.de".into(), display_name: "Me".into(),
             imap_host: "imap.host.de".into(), imap_port: 993, imap_security: Security::Ssl, imap_username: "me@host.de".into(),
-            smtp_host: "smtp.host.de".into(), smtp_port: 587, smtp_security: Security::Starttls, smtp_username: "me@host.de".into(),
+            smtp_host: "smtp.host.de".into(), smtp_port: 587, smtp_security: Security::Starttls, smtp_username: "me@host.de".into(), same_credentials: false,
         };
         s.upsert_imap_account(&acct).unwrap();
         let got = s.imap_account("imap1").unwrap();
         assert_eq!(got.display_name, "Me");
         assert_eq!(got.imap_port, 993);
         assert_eq!(got.smtp_security.as_str(), "starttls");
+        assert!(!got.same_credentials);
     }
 
     #[test]
@@ -1907,7 +1976,7 @@ mod tests {
         let acct = ImapAccount {
             account_id: "imap:me@host.de".into(), email: "me@host.de".into(), display_name: "Me".into(),
             imap_host: "imap.host.de".into(), imap_port: 993, imap_security: Security::Ssl, imap_username: "me@host.de".into(),
-            smtp_host: "smtp.host.de".into(), smtp_port: 587, smtp_security: Security::Starttls, smtp_username: "me@host.de".into(),
+            smtp_host: "smtp.host.de".into(), smtp_port: 587, smtp_security: Security::Starttls, smtp_username: "me@host.de".into(), same_credentials: true,
         };
         let secrets = vec![
             ("imap-pass".into(), "v1:encrypted-imap".into()),
@@ -1947,7 +2016,7 @@ mod tests {
         let acct = ImapAccount {
             account_id: "new".into(), email: "n@x.de".into(), display_name: "New".into(),
             imap_host: "imap.x.de".into(), imap_port: 993, imap_security: Security::Ssl, imap_username: "n@x.de".into(),
-            smtp_host: "smtp.x.de".into(), smtp_port: 465, smtp_security: Security::Ssl, smtp_username: "n@x.de".into(),
+            smtp_host: "smtp.x.de".into(), smtp_port: 465, smtp_security: Security::Ssl, smtp_username: "n@x.de".into(), same_credentials: true,
         };
         s.upsert_imap_account(&acct).unwrap();
         assert_eq!(s.imap_account("new").unwrap().display_name, "New");
@@ -1988,6 +2057,12 @@ mod tests {
             )
             .unwrap();
         assert_eq!(store.accounts()[0].last_sync_at, None);
+        assert_eq!(store.accounts()[0].sync_error, None);
+
+        store
+            .record_sync_failure("imap:test@example.test", "Authentication required")
+            .unwrap();
+        assert_eq!(store.accounts()[0].sync_error.as_deref(), Some("Authentication required"));
 
         store
             .record_sync_success("imap:test@example.test", "INBOX", 1_700_000_000)
@@ -1997,6 +2072,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(store.accounts()[0].last_sync_at, Some(1_700_000_100));
+        assert_eq!(store.accounts()[0].sync_error, None);
     }
 
     #[test]
@@ -2068,7 +2144,7 @@ mod tests {
         assert_eq!(s.get_secret("imap:me:imap-pass").as_deref(), Some("hunter2"));
         s.set_secret("imap:me:imap-pass", "newpass").unwrap(); // upsert
         assert_eq!(s.get_secret("imap:me:imap-pass").as_deref(), Some("newpass"));
-        s.delete_secret("imap:me:imap-pass");
+        s.delete_secret("imap:me:imap-pass").unwrap();
         assert_eq!(s.get_secret("imap:me:imap-pass"), None);
     }
 

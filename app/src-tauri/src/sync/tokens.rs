@@ -176,15 +176,28 @@ pub fn prepare_secret_updates(updates: &[(&str, &str)]) -> Result<Vec<(String, S
     prepare_secret_updates_with(updates, encrypt_secret)
 }
 
-fn delete_legacy(account_id: &str, kind: &str) {
-    if let Ok(entry) = entry(account_id, kind) {
-        let _ = entry.delete_credential();
+fn delete_legacy(account_id: &str, kind: &str) -> Result<(), String> {
+    let item = entry(account_id, kind)
+        .map_err(|_| "Credential keychain entry is unavailable".to_string())?;
+    match item.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(_) => Err("Credential could not be removed from the OS keychain".into()),
+    }
+}
+
+fn legacy_exists(account_id: &str, kind: &str) -> Result<bool, String> {
+    let item = entry(account_id, kind)
+        .map_err(|_| "Credential keychain entry is unavailable".to_string())?;
+    match item.get_password() {
+        Ok(_) => Ok(true),
+        Err(keyring::Error::NoEntry) => Ok(false),
+        Err(_) => Err("Credential removal could not be verified in the OS keychain".into()),
     }
 }
 
 /// Remove a migrated per-secret Keychain value after its encrypted DB batch commits.
-pub fn delete_legacy_secret(account_id: &str, kind: &str) {
-    delete_legacy(account_id, kind);
+pub fn delete_legacy_secret(account_id: &str, kind: &str) -> Result<(), String> {
+    delete_legacy(account_id, kind)
 }
 
 fn resolve_secret<FReadLegacy, FPersist, FDeleteLegacy>(
@@ -213,7 +226,7 @@ fn put(account_id: &str, kind: &str, value: &str) -> Result<(), String> {
     if !persist_encrypted(account_id, kind, value) {
         return Err("Secure credential storage is unavailable".into());
     }
-    delete_legacy(account_id, kind);
+    let _ = delete_legacy(account_id, kind);
     Ok(())
 }
 
@@ -227,7 +240,9 @@ fn get(account_id: &str, kind: &str) -> Option<String> {
         encrypted,
         || entry(account_id, kind).ok()?.get_password().ok(),
         |legacy| persist_encrypted(account_id, kind, legacy),
-        || delete_legacy(account_id, kind),
+        || {
+            let _ = delete_legacy(account_id, kind);
+        },
     )
 }
 
@@ -247,13 +262,46 @@ pub fn refresh_token(account_id: &str) -> Option<String> {
     get(account_id, "refresh")
 }
 
-pub fn clear(account_id: &str) {
-    for kind in ["access", "refresh", "imap-pass", "smtp-pass"] {
-        delete_legacy(account_id, kind);
-        if let Some(db) = DB.get() {
-            db.delete_secret(&db_key(account_id, kind));
-        }
+fn clear_kind_with<FDeleteEncrypted, FDeleteLegacy, FEncryptedExists, FLegacyExists>(
+    delete_encrypted: FDeleteEncrypted,
+    delete_legacy_value: FDeleteLegacy,
+    encrypted_exists: FEncryptedExists,
+    legacy_value_exists: FLegacyExists,
+) -> Result<(), String>
+where
+    FDeleteEncrypted: FnOnce() -> Result<(), String>,
+    FDeleteLegacy: FnOnce() -> Result<(), String>,
+    FEncryptedExists: FnOnce() -> Result<bool, String>,
+    FLegacyExists: FnOnce() -> Result<bool, String>,
+{
+    let encrypted_result = delete_encrypted();
+    let legacy_result = delete_legacy_value();
+    encrypted_result?;
+    legacy_result?;
+    if encrypted_exists()? || legacy_value_exists()? {
+        return Err("Credential cleanup could not be verified".into());
     }
+    Ok(())
+}
+
+/// Remove every credential for an account and verify both storage backends.
+/// Failures are propagated so the account row remains available for retry.
+pub fn clear(account_id: &str) -> Result<(), String> {
+    for kind in ["access", "refresh", "imap-pass", "smtp-pass"] {
+        let encrypted_key = db_key(account_id, kind);
+        clear_kind_with(
+            || match DB.get() {
+                Some(db) => db
+                    .delete_secret(&encrypted_key)
+                    .map_err(|_| "Encrypted credential could not be removed".into()),
+                None => Ok(()),
+            },
+            || delete_legacy(account_id, kind),
+            || Ok(DB.get().is_some_and(|db| db.get_secret(&encrypted_key).is_some())),
+            || legacy_exists(account_id, kind),
+        )?;
+    }
+    Ok(())
 }
 
 /// Store/read a password by kind (e.g. "imap-pass", "smtp-pass").
@@ -276,15 +324,18 @@ pub fn ai_key(provider_id: &str) -> Option<String> {
 }
 
 pub fn delete_ai_key(provider_id: &str) -> Result<(), String> {
-    delete_legacy(provider_id, "ai-api-key");
-    if let Some(db) = DB.get() {
-        db.delete_secret(&db_key(provider_id, "ai-api-key"));
-    }
-    if get(provider_id, "ai-api-key").is_some() {
-        Err("Could not remove the provider credential".into())
-    } else {
-        Ok(())
-    }
+    let encrypted_key = db_key(provider_id, "ai-api-key");
+    clear_kind_with(
+        || match DB.get() {
+            Some(db) => db
+                .delete_secret(&encrypted_key)
+                .map_err(|_| "Encrypted provider credential could not be removed".into()),
+            None => Ok(()),
+        },
+        || delete_legacy(provider_id, "ai-api-key"),
+        || Ok(DB.get().is_some_and(|db| db.get_secret(&encrypted_key).is_some())),
+        || legacy_exists(provider_id, "ai-api-key"),
+    )
 }
 
 #[cfg(test)]
@@ -293,8 +344,8 @@ mod tests {
     use std::sync::OnceLock;
 
     use super::{
-        cached_master_key, load_or_create_master_key_with, prepare_secret_updates_with,
-        resolve_secret,
+        cached_master_key, clear_kind_with, load_or_create_master_key_with,
+        prepare_secret_updates_with, resolve_secret,
     };
 
     #[test]
@@ -427,5 +478,27 @@ mod tests {
         );
         assert_eq!(value.as_deref(), Some("legacy"));
         assert_eq!(deletes.get(), 0);
+    }
+
+    #[test]
+    fn credential_cleanup_failure_is_reported() {
+        let result = clear_kind_with(
+            || Err("database unavailable".into()),
+            || Ok(()),
+            || Ok(true),
+            || Ok(false),
+        );
+        assert_eq!(result.unwrap_err(), "database unavailable");
+    }
+
+    #[test]
+    fn credential_cleanup_requires_verified_absence() {
+        let result = clear_kind_with(
+            || Ok(()),
+            || Ok(()),
+            || Ok(false),
+            || Ok(true),
+        );
+        assert!(result.is_err());
     }
 }

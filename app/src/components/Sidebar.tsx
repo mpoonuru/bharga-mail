@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 import { Reorder, useDragControls } from "motion/react";
 import { useApp } from "@/store";
@@ -96,9 +96,13 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
   const [acctMenu, setAcctMenu] = useState(false);
   const [acctRename, setAcctRename] = useState<string | null>(null);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [removeReturnFocus, setRemoveReturnFocus] = useState<HTMLElement | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ name: string; label: string } | null>(null);
+  const [deleteReturnFocus, setDeleteReturnFocus] = useState<HTMLElement | null>(null);
   const [deletingFolder, setDeletingFolder] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const accountMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const folderMenuButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const run = async (fn: () => Promise<void>) => {
     setFolderErr("");
     try { await fn(); } catch (e) { setFolderErr(String(e).replace(/^Error:\s*/, "")); }
@@ -184,7 +188,7 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
           </button>
         )}
         {acctRename === null && (
-          <button className={`acct-more${acctMenu ? " open" : ""}`} title={busy ? "Refreshing folders" : "Account options"}
+          <button ref={accountMenuButtonRef} className={`acct-more${acctMenu ? " open" : ""}`} title={busy ? "Refreshing folders" : "Account options"}
             aria-haspopup="menu" aria-expanded={acctMenu}
             disabled={busy}
             onClick={(e) => { e.stopPropagation(); setAcctMenu((o) => !o); }}>
@@ -198,7 +202,11 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
               {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); setAccount(a.id); setNewName(""); }}><Icon name="compose" size={12} /> New folder</button>}
               {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); setBusy(true); void refreshFolders(a.id).finally(() => setBusy(false)); }}><Icon name="cloud" size={12} /> Refresh folders</button>}
               <button role="menuitem" onClick={() => { setAcctMenu(false); setAcctRename(a.displayName?.trim() || ""); }}><Icon name="reply" size={12} /> Rename</button>
-              <button role="menuitem" className="danger" onClick={() => { setAcctMenu(false); setRemoveOpen(true); }}><Icon name="trash" size={12} /> Remove account</button>
+              <button role="menuitem" className="danger" onClick={() => {
+                setRemoveReturnFocus(accountMenuButtonRef.current);
+                setAcctMenu(false);
+                setRemoveOpen(true);
+              }}><Icon name="trash" size={12} /> Remove account</button>
             </div>
           </>
         )}
@@ -240,7 +248,10 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
                 {/* Visible affordance — a hover "⋯" button so folder management
                     doesn't depend on a (non-obvious, WebView-flaky) right-click. */}
                 {!editing && isImap && (
-                  <button className={`folder-more${menu === f.name ? " open" : ""}`} title="Folder options"
+                  <button ref={(node) => {
+                    if (node) folderMenuButtonRefs.current.set(f.name, node);
+                    else folderMenuButtonRefs.current.delete(f.name);
+                  }} className={`folder-more${menu === f.name ? " open" : ""}`} title="Folder options"
                     aria-haspopup="menu" aria-expanded={menu === f.name}
                     onClick={(e) => { e.stopPropagation(); setMenu(menu === f.name ? null : f.name); }}>
                     <Icon name="more" size={15} weight="bold" />
@@ -257,14 +268,19 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
                     <div className="folder-menu-backdrop" onClick={() => setMenu(null)} aria-hidden="true" />
                     <div className="folder-menu" role="menu">
                       <button role="menuitem" onClick={() => { setMenu(null); void setFolder(f.name); }}><Icon name="inbox" size={12} /> Open</button>
-                      <button role="menuitem" onClick={() => { setMenu(null); void syncOneFolder(a.id, f.name); }}><Icon name="cloud" size={12} /> Sync now</button>
+                      <button role="menuitem" onClick={() => { setMenu(null); void run(() => syncOneFolder(a.id, f.name)); }}><Icon name="cloud" size={12} /> Sync now</button>
                       <button role="menuitem" onClick={() => { setMenu(null); void markFolderRead(a.id, f.name); }}><Icon name="envelopeOpen" size={12} /> Mark all as read</button>
                       <button role="menuitem" onClick={() => { setMenu(null); setNewParent(f.name); setNewName(""); }}><Icon name="compose" size={12} /> New subfolder</button>
                       <button role="menuitem" onClick={() => { setMenu(null); togglePinFolder(a.id, f.name); }}><Icon name="pin" size={12} /> {pinned ? "Unpin from top" : "Pin to top"}</button>
                       {manageable && <div className="folder-menu-sep" aria-hidden="true" />}
                       {manageable && <button role="menuitem" onClick={() => { setEdit({ name: f.name, val: leaf }); setMenu(null); }}><Icon name="reply" size={12} /> Rename</button>}
                       {canDelete && (
-                        <button role="menuitem" className="danger" onClick={() => { setMenu(null); setDeleteError(""); setDeleteTarget({ name: f.name, label: leaf }); }}><Icon name="trash" size={12} /> Delete</button>
+                        <button role="menuitem" className="danger" onClick={() => {
+                          setDeleteReturnFocus(folderMenuButtonRefs.current.get(f.name) ?? null);
+                          setMenu(null);
+                          setDeleteError("");
+                          setDeleteTarget({ name: f.name, label: leaf });
+                        }}><Icon name="trash" size={12} /> Delete</button>
                       )}
                     </div>
                   </>
@@ -297,13 +313,24 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
         </div>
       </div>
       {removeOpen && (
-        <AccountRemovalDialog account={a} onClose={() => setRemoveOpen(false)} onRemoved={() => setFolder(null)} />
+        <AccountRemovalDialog
+          account={a}
+          returnFocus={removeReturnFocus}
+          fallbackFocus={document.querySelector<HTMLElement>(".compose-btn")}
+          onClose={() => setRemoveOpen(false)}
+          onRemoved={() => {
+            setFolder(null);
+            requestAnimationFrame(() => document.querySelector<HTMLElement>(".compose-btn")?.focus());
+          }}
+        />
       )}
       <Modal
         open={deleteTarget !== null}
         onClose={() => { if (!deletingFolder) setDeleteTarget(null); }}
         title="Delete folder"
         maxWidth={500}
+        returnFocus={deleteReturnFocus}
+        fallbackFocus={accountMenuButtonRef.current}
       >
         <div className="remove-account-dialog">
           <p>Delete <b>{deleteTarget?.label}</b> and its locally synced mail?</p>

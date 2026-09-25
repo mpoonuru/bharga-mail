@@ -1,3 +1,4 @@
+// Security-boundary tests ensure hostile state is bucketed rather than exported verbatim.
 import { describe, expect, it } from "vitest";
 
 import { buildRedactedDiagnostics, serializeDiagnostics } from "@/lib/diagnostics";
@@ -27,5 +28,25 @@ describe("redacted diagnostics", () => {
     for (const secret of ["secret-id", "person@company.test", "Finance", "private-provider", "Company endpoint", "private.test"]) {
       expect(json).not.toContain(secret);
     }
+  });
+
+  it("buckets hostile categorical values and bounds numeric values", () => {
+    const hostile = "private-value@example.test";
+    const snapshot = buildRedactedDiagnostics({
+      version: hostile,
+      runtime: "desktop",
+      accounts: [{ id: "id", email: "mail", provider: hostile as "imap", displayName: "", unread: 0 }],
+      models: [],
+      preferences: { theme: hostile, density: hostile, font: hostile, locale: hostile },
+      threadCount: -10,
+      taskCount: Number.NaN,
+    });
+    const json = serializeDiagnostics(snapshot);
+
+    expect(snapshot.app.version).toBe("unknown");
+    expect(snapshot.accounts.byProvider).toEqual({ unknown: 1 });
+    expect(snapshot.preferences).toEqual({ theme: "unknown", density: "unknown", font: "unknown", locale: "unknown" });
+    expect(snapshot.localData).toEqual({ threads: 0, tasks: 0 });
+    expect(json).not.toContain(hostile);
   });
 });

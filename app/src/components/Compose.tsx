@@ -118,6 +118,7 @@ export function Compose() {
             <div className="recip-row">
               <span className="recip-lbl">From</span>
               <Select
+                ariaLabel="From account"
                 value={from}
                 onChange={setFrom}
                 options={accounts.map((a) => ({ value: a.id, label: a.email }))}

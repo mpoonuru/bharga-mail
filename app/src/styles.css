@@ -586,6 +586,7 @@
   }
   .account-health-dot { width: 8px; height: 8px; margin-top: 6px; border-radius: 999px; background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 14%, transparent); }
   .account-health-dot.error { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent); }
+  .account-health-dot.neutral { background: var(--text-3); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-3) 14%, transparent); }
   .account-card-copy { min-width: 0; }
   .account-card-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .account-card-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
@@ -730,7 +731,7 @@
   .ta-select-btn:hover { @apply border-accent; }
   .ta-ph { @apply text-text-3; }
   .ta-caret { @apply text-text-3; }
-  .ta-select-backdrop { @apply fixed inset-0 z-40; }
+  .ta-select-backdrop { @apply fixed inset-0 z-40 border-0 bg-transparent; }
   .ta-select-menu { @apply absolute left-0 right-0 mt-1 z-50 rounded-lg p-1 max-h-60 overflow-y-auto; background: var(--glass); backdrop-filter: blur(24px); border: 1px solid var(--border-2); box-shadow: var(--shadow); animation: pop .15s var(--ease); }
   .ta-select-opt { @apply w-full flex items-center gap-2 relative pl-7 pr-3 py-2 rounded-md text-[13px] text-text-2 border-none bg-transparent text-left; }
   .ta-select-opt:hover { background: var(--accent-soft); @apply text-text; }

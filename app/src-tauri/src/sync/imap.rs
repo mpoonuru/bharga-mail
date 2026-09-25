@@ -7,6 +7,18 @@ use mailparse::MailHeaderMap;
 use super::{tokens, SyncError};
 use crate::store::{Message, MessageMeta, Party, Security, Store, Thread};
 
+fn finish_imap_persistence<F>(errors: usize, persist_cursor: F) -> Result<(), SyncError>
+where
+    F: FnOnce() -> rusqlite::Result<()>,
+{
+    if errors > 0 {
+        return Err(SyncError::Transient(format!(
+            "fetched mail but {errors} local updates failed to save"
+        )));
+    }
+    super::store_write(persist_cursor(), "persist IMAP sync cursor")
+}
+
 /// Connect, select a folder, fetch the most recent messages, persist them.
 /// Runs blocking IMAP I/O; call via [`fetch_folder_async`] from async code.
 pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, group: bool, force_full: bool) -> Result<usize, SyncError> {
@@ -66,9 +78,10 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
     } else {
         let total = mailbox.exists;
         if total == 0 {
-            if let (Some(uv), Some(next)) = (uid_validity, uid_next) {
-                let _ = store.set_imap_folder_cursor(account_id, folder, uv, next);
-            }
+            finish_imap_persistence(0, || match (uid_validity, uid_next) {
+                (Some(uv), Some(next)) => store.set_imap_folder_cursor(account_id, folder, uv, next),
+                _ => Ok(()),
+            })?;
             let _ = session.logout();
             return Ok(0);
         }
@@ -81,9 +94,10 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
             let have = store.message_count_for_folder(account_id, folder) as u32;
             if have >= total {
                 // Already cached the whole mailbox — nothing older to fetch.
-                if let (Some(uv), Some(next)) = (uid_validity, uid_next) {
-                    let _ = store.set_imap_folder_cursor(account_id, folder, uv, next);
-                }
+                finish_imap_persistence(0, || match (uid_validity, uid_next) {
+                    (Some(uv), Some(next)) => store.set_imap_folder_cursor(account_id, folder, uv, next),
+                    _ => Ok(()),
+                })?;
                 let _ = session.logout();
                 return Ok(0);
             }
@@ -106,35 +120,46 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
     for f in fetches.iter() {
         let unread = !f.flags().iter().any(|fl| matches!(fl, imap::types::Flag::Seen));
         let flagged = f.flags().iter().any(|fl| matches!(fl, imap::types::Flag::Flagged));
-        if let Some(raw) = f.body() {
-            if let Some(thread) = parse_rfc822(account_id, raw, unread, group, folder) {
-                // Count only messages that actually persisted, and surface failures
-                // (a silently-swallowed upsert error was hiding emails before).
-                match store.upsert_thread(&thread) {
-                    Ok(()) => {
-                        n += 1;
-                        // Mirror the server's \Flagged keyword into the local flag set.
-                        if flagged { let _ = store.set_thread_flag(&thread.id, true); }
-                    }
-                    Err(e) => {
-                        errors += 1;
-                        log::error!("imap: failed to store message: {e}");
+        match f.body() {
+            Some(raw) => match parse_rfc822(account_id, raw, unread, group, folder) {
+                Ok(thread) => {
+                    // Count only messages that actually persisted, and surface failures
+                    // (a silently-swallowed upsert error was hiding emails before).
+                    match store.upsert_thread(&thread) {
+                        Ok(()) => {
+                            n += 1;
+                            // Mirror the server's \Flagged keyword into the local flag set.
+                            if flagged && store.set_thread_flag(&thread.id, true).is_err() {
+                                errors += 1;
+                            }
+                        }
+                        Err(e) => {
+                            errors += 1;
+                            log::error!("imap: failed to store message: {e}");
+                        }
                     }
                 }
+                Err(error) => {
+                    errors += 1;
+                    log::error!("imap: failed to parse fetched message: {error}");
+                }
+            },
+            None => {
+                errors += 1;
+                log::error!("imap: fetched message did not contain an RFC822 body");
             }
         }
     }
     let _ = session.logout();
 
-    // Advance the cursor to the mailbox's current UIDNEXT so the next sync is a delta.
-    if let (Some(uv), Some(next)) = (uid_validity, uid_next) {
-        let _ = store.set_imap_folder_cursor(account_id, folder, uv, next);
-    }
+    // Never advance past a message that failed local persistence. Otherwise the
+    // next delta would skip it permanently while health incorrectly reports success.
+    finish_imap_persistence(errors, || match (uid_validity, uid_next) {
+        (Some(uv), Some(next)) => store.set_imap_folder_cursor(account_id, folder, uv, next),
+        _ => Ok(()),
+    })?;
     store.prune_empty_threads(); // drop any thread rows left empty by id-scheme moves
     log::info!("imap: stored {n} messages ({errors} failed) from {folder} ({})", if incremental { "delta" } else { "initial" });
-    if n == 0 && errors > 0 {
-        return Err(SyncError::Transient(format!("fetched mail but {errors} messages failed to save")));
-    }
     Ok(n)
 }
 
@@ -545,8 +570,9 @@ pub async fn fetch_folder_async(store: std::sync::Arc<Store>, account_id: String
 
 /// Parse a raw RFC822 message into a store Thread (one message per thread,
 /// keyed by Message-ID). Pure + unit-tested.
-fn parse_rfc822(account_id: &str, raw: &[u8], unread: bool, group: bool, folder: &str) -> Option<Thread> {
-    let mail = mailparse::parse_mail(raw).ok()?;
+fn parse_rfc822(account_id: &str, raw: &[u8], unread: bool, group: bool, folder: &str) -> Result<Thread, SyncError> {
+    let mail = mailparse::parse_mail(raw)
+        .map_err(|error| SyncError::Transient(format!("invalid RFC822 message: {error}")))?;
     let h = |name: &str| mail.headers.get_first_value(name);
 
     let subject = h("Subject").filter(|s| !s.is_empty()).unwrap_or_else(|| "(no subject)".into());
@@ -599,7 +625,7 @@ fn parse_rfc822(account_id: &str, raw: &[u8], unread: bool, group: bool, folder:
         crate::store::strip_quoted(&raw).chars().take(140).collect::<String>()
     };
 
-    Some(Thread {
+    Ok(Thread {
         id: thread_id,
         account_id: account_id.to_string(),
         subject,
@@ -844,6 +870,30 @@ fn split_addr(raw: &str) -> (String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn partial_local_failure_blocks_cursor_advance() {
+        let cursor_called = Cell::new(false);
+        let result = finish_imap_persistence(1, || {
+            cursor_called.set(true);
+            Ok(())
+        });
+        assert!(matches!(result, Err(SyncError::Transient(_))));
+        assert!(!cursor_called.get());
+    }
+
+    #[test]
+    fn cursor_write_failure_fails_the_sync() {
+        let result = finish_imap_persistence(0, || Err(rusqlite::Error::InvalidQuery));
+        assert!(matches!(result, Err(SyncError::Transient(message)) if message.contains("IMAP sync cursor")));
+    }
+
+    #[test]
+    fn malformed_message_is_a_sync_failure_not_a_silent_skip() {
+        let raw = b" Subject: invalid-leading-space\r\n\r\nbody";
+        assert!(parse_rfc822("imap:me", raw, false, true, "INBOX").is_err());
+    }
 
     #[test]
     fn parses_plain_and_html() {

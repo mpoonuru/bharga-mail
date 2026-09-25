@@ -85,6 +85,7 @@ async fn run_idle(app: AppHandle, store: Arc<Store>, account_id: String) {
 pub async fn poll_once(app: &AppHandle, store: &Arc<Store>) {
     let before = store.unread_count();
     let mut synced = false;
+    let mut observed_status = false;
 
     for acct in store.accounts() {
         let id = acct.id;
@@ -96,12 +97,24 @@ pub async fn poll_once(app: &AppHandle, store: &Arc<Store>) {
             crate::sync::gmail::incremental(store, &id).await.map(|_| 0usize)
         };
         match result {
-            Ok(_) => synced = true,
-            Err(e) => log::warn!("live-sync: {id} poll failed: {e}"),
+            Ok(_) => {
+                observed_status = true;
+                if let Err(error) = store.record_sync_success(&id, "INBOX", chrono::Utc::now().timestamp()) {
+                    log::warn!("live-sync: {id} success timestamp could not be stored: {error}");
+                }
+                synced = true;
+            }
+            Err(e) => {
+                observed_status = true;
+                if let Err(error) = store.record_sync_failure(&id, crate::sync_failure_status(&e)) {
+                    log::warn!("live-sync: {id} failure status could not be stored: {error}");
+                }
+                log::warn!("live-sync: {id} poll failed: {e}");
+            }
         }
     }
 
-    if synced {
+    if synced || observed_status {
         let _ = app.emit("mail:sync", ());
     }
     let after = store.unread_count();

@@ -41,11 +41,11 @@ export function AppearanceSettings() {
         </div>
         <div className="settings-row">
           <div><b>Interface font</b><p>Bundled variable fonts or the system font.</p></div>
-          <div className="settings-control"><Select id="settings-font" fullWidth value={font} options={FONTS.map((option) => ({ value: option.value, label: option.label }))} onChange={setFont} /></div>
+          <div className="settings-control"><Select id="settings-font" ariaLabel="Interface font" fullWidth value={font} options={FONTS.map((option) => ({ value: option.value, label: option.label }))} onChange={setFont} /></div>
         </div>
         <div className="settings-row">
           <div><b>Language and formats</b><p>Controls date and number formatting.</p></div>
-          <div className="settings-control"><Select id="settings-locale" fullWidth value={locale} options={LOCALES} onChange={setLocale} /></div>
+          <div className="settings-control"><Select id="settings-locale" ariaLabel="Language and formats" fullWidth value={locale} options={LOCALES} onChange={setLocale} /></div>
         </div>
         <div className="settings-row">
           <div><b>Group into conversations</b><p>Thread IMAP replies together on the next sync.</p></div>

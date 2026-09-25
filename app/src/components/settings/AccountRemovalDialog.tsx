@@ -10,9 +10,11 @@ interface AccountRemovalDialogProps {
   account: Account;
   onClose: () => void;
   onRemoved: () => void;
+  returnFocus?: HTMLElement | null;
+  fallbackFocus?: HTMLElement | null;
 }
 
-export function AccountRemovalDialog({ account, onClose, onRemoved }: AccountRemovalDialogProps) {
+export function AccountRemovalDialog({ account, onClose, onRemoved, returnFocus, fallbackFocus }: AccountRemovalDialogProps) {
   const removeAccount = useApp((state) => state.removeAccount);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -36,7 +38,14 @@ export function AccountRemovalDialog({ account, onClose, onRemoved }: AccountRem
   }
 
   return (
-    <Modal open onClose={() => { if (!busy) onClose(); }} title="Remove mail account" maxWidth={520}>
+    <Modal
+      open
+      onClose={() => { if (!busy) onClose(); }}
+      title="Remove mail account"
+      maxWidth={520}
+      returnFocus={returnFocus}
+      fallbackFocus={fallbackFocus}
+    >
       <div className="remove-account-dialog">
         <p>Remove <b>{account.displayName?.trim() || account.email}</b> from Bharga Mail?</p>
         <p className="sub">Locally synced mail and saved credentials will be removed from this device. Mail on the server remains unchanged.</p>

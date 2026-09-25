@@ -1,3 +1,4 @@
+// Behavioral coverage for progressive account setup and credential-preservation contracts.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -46,6 +47,7 @@ describe("AccountForm", () => {
     const { host } = renderTest(
       <AccountForm
         editing
+        accountId="imap:me@example.test"
         initial={{
           email: "me@example.test",
           displayName: "Me",
@@ -59,9 +61,62 @@ describe("AccountForm", () => {
     const continueButton = [...host.querySelectorAll("button")]
       .find((button) => button.textContent?.trim() === "Continue");
     if (!continueButton) throw new Error("Continue button not found");
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Email address"]')?.disabled).toBe(true);
     act(() => continueButton.click());
     const save = [...host.querySelectorAll<HTMLButtonElement>("button")]
       .find((button) => button.textContent?.includes("Save & sync"));
+    expect(save?.disabled).toBe(false);
+  });
+
+  it("preserves explicit separate SMTP credentials when usernames match", () => {
+    const { host } = renderTest(
+      <AccountForm
+        editing
+        accountId="imap:me@example.test"
+        initial={{
+          email: "me@example.test",
+          imapHost: "mail.example.test",
+          imapUsername: "me@example.test",
+          smtpHost: "mail.example.test",
+          smtpUsername: "me@example.test",
+          sameCredentials: false,
+        }}
+        onClose={vi.fn()}
+        onStatus={vi.fn()}
+      />,
+    );
+    act(() => [...host.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "Continue")?.click());
+
+    expect(host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(false);
+    expect(host.querySelector<HTMLInputElement>('[aria-label="SMTP username"]')?.value).toBe("me@example.test");
+    expect([...host.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.includes("Save & sync"))?.disabled).toBe(false);
+  });
+
+  it("requires complete separate SMTP credentials for a new account", () => {
+    const { host } = renderTest(<AccountForm onClose={vi.fn()} onStatus={vi.fn()} />);
+    const email = host.querySelector<HTMLInputElement>('[aria-label="Email address"]');
+    if (!email) throw new Error("Email input not found");
+    setInputValue(email, "me@example.test");
+    act(() => [...host.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "Continue")?.click());
+    const setNamedInput = (label: string, value: string) => {
+      const input = host.querySelector<HTMLInputElement>(`[aria-label="${label}"]`);
+      if (!input) throw new Error(`${label} input not found`);
+      setInputValue(input, value);
+    };
+    setNamedInput("IMAP host", "imap.example.test");
+    setNamedInput("IMAP password", "local-test-password");
+    setNamedInput("SMTP host", "smtp.example.test");
+    const sameCredentials = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    act(() => sameCredentials?.click());
+    const save = [...host.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.includes("Save & sync"));
+    expect(save?.disabled).toBe(true);
+    setNamedInput("SMTP username", "smtp-user");
+    expect(save?.disabled).toBe(true);
+    setNamedInput("SMTP password", "smtp-test-password");
     expect(save?.disabled).toBe(false);
   });
 
@@ -93,6 +148,7 @@ describe("AccountForm", () => {
       imapHost: "imap.example.test",
       smtpHost: "smtp.example.test",
       imapPassword: "local-test-password",
+      sameCredentials: true,
     }));
   });
 });

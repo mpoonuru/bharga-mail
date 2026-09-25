@@ -101,7 +101,6 @@ interface AppState {
   addModel: () => string | null;
   saveModel: (input: SaveAiProviderInput) => Promise<void>;
   removeModel: (id: string) => Promise<void>;
-  saveAi: () => Promise<void>;
   connectGmail: () => Promise<string>;
   connectMicrosoft: () => Promise<string>;
   createTask: (title: string, sourceThreadId?: string) => Promise<void>;
@@ -342,7 +341,8 @@ export const useApp = create<AppState>((set, get) => ({
       onSync: async () => {
         // New mail (or any server change) landed in the local store — refresh the
         // visible list and the folder counts without the user pressing Sync.
-        set({ threads: await api.listThreads() });
+        const [threads, accounts] = await Promise.all([api.listThreads(), api.listAccounts()]);
+        set({ threads, accounts });
         const acct = get().selectedAccountId;
         if (acct) void get().loadFolders(acct);
         // Auto-organize newly-arrived mail (summarize + triage). Incremental and
@@ -355,9 +355,17 @@ export const useApp = create<AppState>((set, get) => ({
   // Enumerate folders from the server (IMAP LIST), then refresh counts.
   // Sync a single folder on demand (without changing the current selection).
   syncOneFolder: async (accountId, folder) => {
-    try { await api.syncFolder(accountId, folder, get().groupConversations); } catch { /* surfaced via counts */ }
-    set({ threads: await api.listThreads() });
-    if (get().selectedAccountId === accountId) await get().loadFolders(accountId);
+    let failure: unknown;
+    try {
+      await api.syncFolder(accountId, folder, get().groupConversations);
+    } catch (cause) {
+      failure = cause;
+    } finally {
+      const [threads, accounts] = await Promise.all([api.listThreads(), api.listAccounts()]);
+      set({ threads, accounts });
+      if (get().selectedAccountId === accountId) await get().loadFolders(accountId);
+    }
+    if (failure) throw failure;
   },
   // Mark every loaded thread in a folder as read (local now + best-effort \Seen).
   markFolderRead: async (accountId, folder) => {
@@ -533,9 +541,13 @@ export const useApp = create<AppState>((set, get) => ({
     const next = { ...previous, privacy };
     set({ ai: next });
     try {
-      await api.setAiProfile(next);
+      await api.setAiPrivacy(privacy);
     } catch (error) {
-      set({ ai: previous });
+      // Roll back only the field this request owns. Provider updates may have
+      // completed while persistence was in flight and must never be discarded.
+      set((state) => state.ai
+        ? { ai: { ...state.ai, privacy: previous.privacy } }
+        : {});
       throw error;
     }
   },
@@ -567,18 +579,27 @@ export const useApp = create<AppState>((set, get) => ({
     return id;
   },
   saveModel: async (input) => {
-    const ai = await api.saveAiProvider(input);
-    set({ ai });
+    const persisted = await api.saveAiProvider(input);
+    const saved = persisted.models.find((model) => model.id === input.id);
+    if (!saved) throw new Error("The saved provider was not returned by the core.");
+    // Merge only the provider this request owns. Out-of-order responses from
+    // concurrent providers must not roll back each other or the privacy field.
+    set((state) => state.ai
+      ? {
+          ai: {
+            ...state.ai,
+            models: state.ai.models.some((model) => model.id === saved.id)
+              ? state.ai.models.map((model) => model.id === saved.id ? saved : model)
+              : [...state.ai.models, saved],
+          },
+        }
+      : { ai: persisted });
   },
   removeModel: async (id) => {
     await api.removeAiProvider(id);
     const ai = get().ai;
     if (!ai) return;
     set({ ai: { ...ai, models: ai.models.filter((model) => model.id !== id) } });
-  },
-  saveAi: async () => {
-    const ai = get().ai;
-    if (ai) await api.setAiProfile(ai);
   },
   connectGmail: async () => {
     const accountId = await api.connectGmail(); // throws in browser preview

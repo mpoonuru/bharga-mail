@@ -39,7 +39,7 @@ export function ModelPicker() {
           );
         })}
         <div className="pf">
-          Profile: <b>{ai.name}</b> · keys in OS keychain ·{" "}
+          Profile: <b>{ai.name}</b> · credentials encrypted locally ·{" "}
           <button
             className="chip"
             style={{ padding: "2px 8px", fontSize: 11 }}
