@@ -37,6 +37,7 @@ export function AiProviderManager() {
   const { ai, addModel, saveModel, removeModel } = useApp();
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<AiModel | null>(null);
   const [message, setMessage] = useState<{ id: string; tone: "error" | "success"; text: string } | null>(null);
 
@@ -124,6 +125,7 @@ export function AiProviderManager() {
     try {
       await removeModel(id);
       setRemoveTarget(null);
+      if (expandedId === id) setExpandedId(null);
     } catch (error) {
       setRemoveTarget(null);
       setMessage({
@@ -136,6 +138,11 @@ export function AiProviderManager() {
     }
   }
 
+  function addProvider() {
+    const id = addModel();
+    if (id) setExpandedId(id);
+  }
+
   return (
     <div className="provider-manager">
       <div className="provider-manager-head">
@@ -143,7 +150,7 @@ export function AiProviderManager() {
           <b>AI providers</b>
           <p>Credentials stay in your OS keychain and are never shown again after saving.</p>
         </div>
-        <button className="af-btn ghost" onClick={addModel}>
+        <button className="af-btn ghost" onClick={addProvider}>
           <Icon name="plus" size={14} /> Add provider
         </button>
       </div>
@@ -153,21 +160,33 @@ export function AiProviderManager() {
           const draft = drafts[model.id] ?? draftFor(model);
           const keyBased = model.kind !== "local";
           const configurableEndpoint = model.kind === "openai-compatible" || model.kind === "custom" || model.kind === "local";
+          const expanded = expandedId === model.id;
+          const editorId = `provider-editor-${model.id}`;
+          const summaryId = `provider-summary-${model.id}`;
           return (
             <section className="provider-card" key={model.id}>
               <div className="provider-card-head">
-                <span className={`provider-state ${model.ready ? "ready" : ""}`} aria-hidden="true" />
-                <div className="provider-identity">
-                  <input
-                    aria-label="Provider name"
-                    value={draft.label}
-                    onChange={(event) => patch(model.id, { label: event.target.value })}
-                  />
-                  <span>{model.kind}</span>
-                </div>
-                <span className={`provider-status ${model.ready ? "ready" : ""}`}>
-                  {model.ready ? "Configured" : "Needs setup"}
-                </span>
+                <button
+                  id={summaryId}
+                  type="button"
+                  className="provider-summary"
+                  aria-label={`Edit ${draft.label}`}
+                  aria-expanded={expanded}
+                  aria-controls={editorId}
+                  onClick={() => setExpandedId(expanded ? null : model.id)}
+                >
+                  <span className={`provider-state ${model.ready ? "ready" : ""}`} aria-hidden="true" />
+                  <span className="provider-summary-copy">
+                    <span className="provider-summary-title"><b>{draft.label}</b><small>{model.kind}</small></span>
+                    <span className="provider-role-summary">
+                      {draft.roles.length ? draft.roles.map((role) => ROLES.find((entry) => entry.id === role)?.label ?? role).join(" · ") : "No roles assigned"}
+                    </span>
+                  </span>
+                  <span className={`provider-status ${model.ready ? "ready" : ""}`}>
+                    {model.ready ? "Configured" : "Needs setup"}
+                  </span>
+                  <Icon name={expanded ? "caretDown" : "caretRight"} size={13} />
+                </button>
                 <button
                   className="provider-remove"
                   onClick={() => setRemoveTarget(model)}
@@ -178,65 +197,88 @@ export function AiProviderManager() {
                 </button>
               </div>
 
-              <div className="provider-fields">
-                <label>
-                  <span>Model</span>
-                  <input
-                    value={draft.model}
-                    placeholder="Model identifier"
-                    onChange={(event) => patch(model.id, { model: event.target.value })}
-                  />
-                </label>
-                {configurableEndpoint && (
-                  <label>
-                    <span>Endpoint</span>
-                    <input
-                      value={draft.endpoint}
-                      placeholder={model.kind === "local" ? "http://localhost:11434" : "https://api.example.com/v1"}
-                      onChange={(event) => patch(model.id, { endpoint: event.target.value })}
-                    />
-                  </label>
-                )}
-                {keyBased && (
-                  <label>
-                    <span>API key</span>
-                    <input
-                      type="password"
-                      autoComplete="new-password"
-                      value={draft.apiKey}
-                      placeholder={model.ready ? "Stored securely — enter only to replace" : "Enter API key"}
-                      onChange={(event) => patch(model.id, { apiKey: event.target.value })}
-                    />
-                  </label>
-                )}
-              </div>
+              <div
+                id={editorId}
+                className={`provider-editor${expanded ? " expanded" : ""}`}
+                aria-hidden={!expanded}
+                inert={!expanded}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  event.preventDefault();
+                  setExpandedId(null);
+                  document.getElementById(summaryId)?.focus();
+                }}
+              >
+                <div className="provider-editor-clip">
+                  <div className="provider-fields">
+                    <label>
+                      <span>Provider name</span>
+                      <input
+                        aria-label="Provider name"
+                        value={draft.label}
+                        onChange={(event) => patch(model.id, { label: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      <span>Model</span>
+                      <input
+                        value={draft.model}
+                        placeholder="Model identifier"
+                        onChange={(event) => patch(model.id, { model: event.target.value })}
+                      />
+                    </label>
+                    {configurableEndpoint && (
+                      <label>
+                        <span>Endpoint</span>
+                        <input
+                          value={draft.endpoint}
+                          placeholder={model.kind === "local" ? "http://localhost:11434" : "https://api.example.com/v1"}
+                          onChange={(event) => patch(model.id, { endpoint: event.target.value })}
+                        />
+                      </label>
+                    )}
+                    {keyBased && (
+                      <label>
+                        <span>API key</span>
+                        <input
+                          type="password"
+                          autoComplete="new-password"
+                          value={draft.apiKey}
+                          placeholder={model.ready ? "Stored securely — enter only to replace" : "Enter API key"}
+                          onChange={(event) => patch(model.id, { apiKey: event.target.value })}
+                        />
+                      </label>
+                    )}
+                  </div>
 
-              <div className="provider-roles" aria-label={`Roles assigned to ${model.label}`}>
-                {ROLES.map((role) => (
-                  <button
-                    key={role.id}
-                    className={draft.roles.includes(role.id) ? "selected" : ""}
-                    title={role.hint}
-                    onClick={() => toggleRole(model.id, role.id)}
-                    type="button"
-                  >
-                    {role.label}
-                  </button>
-                ))}
-              </div>
+                  <div className="provider-roles" aria-label={`Roles assigned to ${model.label}`}>
+                    {ROLES.map((role) => (
+                      <button
+                        key={role.id}
+                        className={draft.roles.includes(role.id) ? "selected" : ""}
+                        title={role.hint}
+                        onClick={() => toggleRole(model.id, role.id)}
+                        type="button"
+                      >
+                        {role.label}
+                      </button>
+                    ))}
+                  </div>
 
-              <div className="provider-card-foot">
-                {message?.id === model.id && (
-                  <p className={`provider-message ${message.tone}`} role={message.tone === "error" ? "alert" : "status"}>
-                    {message.text}
-                  </p>
-                )}
-                <Button variant="ghost" onClick={() => void testConnection(model)} disabled={busyId === model.id}>
-                  Test connection
-                </Button>
-                <Button onClick={() => void save(model)} loading={busyId === model.id}>
-                  Save changes
-                </Button>
+                  <div className="provider-card-foot">
+                    {message?.id === model.id && (
+                      <p className={`provider-message ${message.tone}`} role={message.tone === "error" ? "alert" : "status"}>
+                        {message.text}
+                      </p>
+                    )}
+                    <Button variant="ghost" onClick={() => void testConnection(model)} disabled={busyId === model.id}>
+                      Test connection
+                    </Button>
+                    <Button onClick={() => void save(model)} loading={busyId === model.id}>
+                      Save changes
+                    </Button>
+                  </div>
+                </div>
               </div>
             </section>
           );

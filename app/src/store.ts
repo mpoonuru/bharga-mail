@@ -96,8 +96,9 @@ interface AppState {
   toggleTask: (id: string) => void;
   assignRole: (modelId: string, role: AiRole) => void;
   setPrivacy: (p: AiProfile["privacy"]) => void;
+  savePrivacy: (p: AiProfile["privacy"]) => Promise<void>;
   updateModel: (modelId: string, patch: Partial<AiModel>) => void;
-  addModel: () => void;
+  addModel: () => string | null;
   saveModel: (input: SaveAiProviderInput) => Promise<void>;
   removeModel: (id: string) => Promise<void>;
   saveAi: () => Promise<void>;
@@ -526,6 +527,18 @@ export const useApp = create<AppState>((set, get) => ({
     const ai = get().ai;
     if (ai) set({ ai: { ...ai, privacy } });
   },
+  savePrivacy: async (privacy) => {
+    const previous = get().ai;
+    if (!previous) return;
+    const next = { ...previous, privacy };
+    set({ ai: next });
+    try {
+      await api.setAiProfile(next);
+    } catch (error) {
+      set({ ai: previous });
+      throw error;
+    }
+  },
   updateModel: (modelId, patch) => {
     const ai = get().ai;
     if (!ai) return;
@@ -540,16 +553,18 @@ export const useApp = create<AppState>((set, get) => ({
   },
   addModel: () => {
     const ai = get().ai;
-    if (!ai) return;
+    if (!ai) return null;
     const n = ai.models.filter((model) => model.kind === "openai-compatible" || model.kind === "custom").length + 1;
+    const id = crypto.randomUUID();
     const model: AiModel = {
-      id: crypto.randomUUID(),
+      id,
       label: `Custom provider ${n}`,
       kind: "openai-compatible",
       roles: [],
       ready: false,
     };
     set({ ai: { ...ai, models: [...ai.models, model] } });
+    return id;
   },
   saveModel: async (input) => {
     const ai = await api.saveAiProvider(input);
