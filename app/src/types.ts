@@ -221,6 +221,24 @@ export interface CalendarCommandError {
   retryable: boolean;
 }
 
+export type InvitationState = "new" | "update" | "current" | "stale" | "cancelled";
+
+export interface InvitationInspection {
+  state: InvitationState;
+  method: "PUBLISH" | "REQUEST" | "REPLY" | "CANCEL" | null;
+  event: CalendarEvent;
+  conflicts: CalendarEvent[];
+  transport: "emailAttachment" | string;
+}
+
+export interface InvitationResponseInput {
+  accountId: string;
+  threadId?: string | null;
+  calendarId: string;
+  event: CalendarEvent;
+  status: Extract<ParticipationStatus, "accepted" | "tentative" | "declined">;
+}
+
 // ---- Plug-and-play AI engine (mirrors Rust `ai` module) ----
 
 export type AiProviderKind =

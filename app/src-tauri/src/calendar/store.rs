@@ -1,5 +1,7 @@
 //! Calendar persistence and atomic offline mutation queue.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 use uuid::Uuid;
@@ -10,7 +12,7 @@ use super::domain::{
     EventRange, EventReminder, EventStatus, EventSyncState, EventVisibility, OperationKind,
     ParticipationStatus, ReminderMethod, SeriesSplit, Transparency,
 };
-use crate::store::Store;
+use crate::store::{OutboxItem, Store};
 
 const MAX_TITLE_BYTES: usize = 512;
 const MAX_DESCRIPTION_BYTES: usize = 100_000;
@@ -669,6 +671,128 @@ impl Store {
 
     pub fn calendar_event(&self, id: &str) -> rusqlite::Result<Option<CalendarEvent>> {
         self.with_calendar_connection(|connection| read_event(connection, id))
+    }
+
+    pub fn calendar_event_by_uid(&self, uid: &str) -> rusqlite::Result<Option<CalendarEvent>> {
+        self.with_calendar_connection(|connection| {
+            let id = connection
+                .query_row(
+                    "SELECT id FROM calendar_events WHERE uid=?1 AND deleted=0 ORDER BY local_revision DESC LIMIT 1",
+                    [uid],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            id.map(|id| read_event(connection, &id)).transpose().map(Option::flatten)
+        })
+    }
+
+    pub fn import_calendar_events(
+        &self,
+        mut inputs: Vec<CalendarEvent>,
+    ) -> rusqlite::Result<Vec<CalendarEvent>> {
+        inputs.sort_by_key(|event| event.recurrence_id.is_some());
+        let inputs = inputs
+            .into_iter()
+            .map(|event| {
+                let input = validate_mutation(&EventMutation::from(&event))?;
+                Ok((input, event))
+            })
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        self.with_calendar_transaction(|tx| {
+            let mut events = Vec::with_capacity(inputs.len());
+            let mut masters = HashMap::<String, String>::new();
+            for (input, source) in &inputs {
+                let parent_id = source
+                    .recurrence_id
+                    .as_ref()
+                    .and_then(|_| masters.get(&source.uid))
+                    .map(String::as_str);
+                let (source_id, inserted) = insert_event(
+                    tx,
+                    input,
+                    Some(&source.uid),
+                    source.recurrence_id.as_deref(),
+                    parent_id,
+                )?;
+                tx.execute(
+                    "UPDATE calendar_events SET sequence=?2 WHERE id=?1",
+                    params![inserted.id, source.sequence],
+                )?;
+                if let (Some(recurrence_id), Some(parent_id)) =
+                    (source.recurrence_id.as_deref(), parent_id)
+                {
+                    tx.execute(
+                        "INSERT INTO calendar_event_exceptions
+                         (series_event_id, recurrence_id, event_id, cancelled)
+                         VALUES (?1, ?2, ?3, ?4)",
+                        params![
+                            parent_id,
+                            recurrence_id,
+                            inserted.id,
+                            source.status == EventStatus::Cancelled,
+                        ],
+                    )?;
+                }
+                let event = read_event(tx, &inserted.id)?
+                    .ok_or_else(|| invalid("imported event was not found"))?;
+                if source.recurrence_id.is_none() {
+                    masters.insert(source.uid.clone(), event.id.clone());
+                }
+                queue_operation(tx, &source_id, &event, OperationKind::Create)?;
+                events.push(event);
+            }
+            Ok(events)
+        })
+    }
+
+    /// Persist an RSVP and its outgoing iTIP reply in one SQLite transaction.
+    /// This prevents the local attendance state from diverging from the durable
+    /// outbox when the process exits between the two operations.
+    pub fn respond_to_calendar_invitation(
+        &self,
+        existing_id: Option<&str>,
+        input: EventMutation,
+        uid: &str,
+        sequence: i64,
+        outbox: &OutboxItem,
+    ) -> rusqlite::Result<CalendarEvent> {
+        let input = validate_mutation(&input)?;
+        self.with_calendar_transaction(|tx| {
+            let (source_id, event, operation) = if let Some(event_id) = existing_id {
+                let (source_id, event) = update_event(tx, event_id, &input)?;
+                (source_id, event, OperationKind::Update)
+            } else {
+                let (source_id, event) = insert_event(tx, &input, Some(uid), None, None)?;
+                (source_id, event, OperationKind::Create)
+            };
+            tx.execute(
+                "UPDATE calendar_events SET sequence=?2 WHERE id=?1",
+                params![event.id, sequence],
+            )?;
+            let event = read_event(tx, &event.id)?
+                .ok_or_else(|| invalid("responded event was not found"))?;
+            queue_operation(tx, &source_id, &event, operation)?;
+            tx.execute(
+                "INSERT INTO outbox
+                 (id, account_id, thread_id, recipient, subject, body, attachments,
+                  scheduled_ts, status, cc, bcc)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+                params![
+                    outbox.id,
+                    outbox.account_id,
+                    outbox.thread_id,
+                    outbox.to,
+                    outbox.subject,
+                    outbox.body,
+                    encode(&outbox.attachments)?,
+                    outbox.scheduled_ts,
+                    outbox.status,
+                    outbox.cc,
+                    outbox.bcc,
+                ],
+            )?;
+            Ok(event)
+        })
     }
 
     pub fn create_calendar_event(&self, input: EventMutation) -> rusqlite::Result<CalendarEvent> {

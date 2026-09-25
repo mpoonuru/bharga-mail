@@ -2,16 +2,50 @@
 //! multipart/mixed when there are attachments. base64url-encoded for Gmail's
 //! `messages.send`.
 
-use base64::{engine::general_purpose::URL_SAFE, Engine};
+use base64::{
+    engine::general_purpose::{STANDARD, URL_SAFE},
+    Engine,
+};
 
 use crate::store::Attachment;
+
+/// Construct the standards-shaped calendar part used by iTIP messages. The
+/// visible HTML remains the primary body while this part lets mail/calendar
+/// clients offer native RSVP actions.
+pub fn calendar_attachment(method: &str, calendar: &[u8]) -> Attachment {
+    let safe_method = match method {
+        "REQUEST" | "REPLY" | "CANCEL" | "PUBLISH" => method,
+        _ => "PUBLISH",
+    };
+    Attachment {
+        name: "invite.ics".into(),
+        mime: format!("text/calendar; method={safe_method}; charset=UTF-8"),
+        data_b64: STANDARD.encode(calendar),
+    }
+}
 
 /// Build a raw RFC822 message (with attachments if any) and base64url-encode it.
 /// `cc`/`bcc` are comma-separated address lists (empty string = omit the header).
 /// Gmail honours a `Bcc:` header and strips it from the delivered copy.
-pub fn build_raw(from: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[Attachment]) -> String {
-    let cc_hdr = if cc.trim().is_empty() { String::new() } else { format!("Cc: {cc}\r\n") };
-    let bcc_hdr = if bcc.trim().is_empty() { String::new() } else { format!("Bcc: {bcc}\r\n") };
+pub fn build_raw(
+    from: &str,
+    to: &str,
+    cc: &str,
+    bcc: &str,
+    subject: &str,
+    body_html: &str,
+    attachments: &[Attachment],
+) -> String {
+    let cc_hdr = if cc.trim().is_empty() {
+        String::new()
+    } else {
+        format!("Cc: {cc}\r\n")
+    };
+    let bcc_hdr = if bcc.trim().is_empty() {
+        String::new()
+    } else {
+        format!("Bcc: {bcc}\r\n")
+    };
     let raw = if attachments.is_empty() {
         format!(
             "From: {from}\r\nTo: {to}\r\n{cc_hdr}{bcc_hdr}Subject: {subject}\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n{body_html}"
@@ -23,7 +57,9 @@ pub fn build_raw(from: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_
              Content-Type: multipart/mixed; boundary=\"{boundary}\"\r\n\r\n"
         );
         // body part
-        s.push_str(&format!("--{boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n{body_html}\r\n"));
+        s.push_str(&format!(
+            "--{boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n{body_html}\r\n"
+        ));
         // attachment parts
         for a in attachments {
             s.push_str(&format!(
@@ -69,7 +105,15 @@ mod tests {
 
     #[test]
     fn cc_and_bcc_headers_present_when_set() {
-        let raw = build_raw("me@x.co", "you@y.io", "cc@y.io", "bcc@y.io", "Hi", "<p>hi</p>", &[]);
+        let raw = build_raw(
+            "me@x.co",
+            "you@y.io",
+            "cc@y.io",
+            "bcc@y.io",
+            "Hi",
+            "<p>hi</p>",
+            &[],
+        );
         let decoded = String::from_utf8(URL_SAFE.decode(raw).unwrap()).unwrap();
         assert!(decoded.contains("Cc: cc@y.io"));
         assert!(decoded.contains("Bcc: bcc@y.io"));
@@ -77,11 +121,33 @@ mod tests {
 
     #[test]
     fn with_attachment_is_multipart() {
-        let att = Attachment { name: "a.txt".into(), mime: "text/plain".into(), data_b64: "aGk=".into() };
+        let att = Attachment {
+            name: "a.txt".into(),
+            mime: "text/plain".into(),
+            data_b64: "aGk=".into(),
+        };
         let raw = build_raw("me@x.co", "you@y.io", "", "", "Hi", "<p>hi</p>", &[att]);
         let decoded = String::from_utf8(URL_SAFE.decode(raw).unwrap()).unwrap();
         assert!(decoded.contains("multipart/mixed"));
         assert!(decoded.contains("filename=\"a.txt\""));
         assert!(decoded.contains("aGk="));
+    }
+
+    #[test]
+    fn calendar_reply_has_html_and_method_qualified_calendar_part() {
+        let attachment = calendar_attachment("REPLY", b"BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n");
+        let raw = build_raw(
+            "me@x.co",
+            "organizer@y.io",
+            "",
+            "",
+            "Accepted: Planning",
+            "<p>Accepted</p>",
+            &[attachment],
+        );
+        let decoded = String::from_utf8(URL_SAFE.decode(raw).unwrap()).unwrap();
+        assert!(decoded.contains("<p>Accepted</p>"));
+        assert!(decoded.contains("Content-Type: text/calendar; method=REPLY; charset=UTF-8"));
+        assert!(decoded.contains("filename=\"invite.ics\""));
     }
 }

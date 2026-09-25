@@ -7,6 +7,8 @@ import type {
   CalendarSource,
   EventMutation,
   EventRange,
+  InvitationInspection,
+  InvitationResponseInput,
 } from "@/types";
 
 export type CalendarView = "month" | "week" | "day" | "agenda";
@@ -79,6 +81,22 @@ export interface CalendarApi {
   getEvent(eventId: string): Promise<CalendarEvent | undefined>;
   createEvent(input: EventMutation): Promise<CalendarEvent>;
   updateEvent(eventId: string, input: EventMutation): Promise<CalendarEvent>;
+  updateRecurringEvent?(
+    eventId: string,
+    recurrenceId: string,
+    scope: "occurrence" | "following" | "series",
+    input: EventMutation,
+  ): Promise<CalendarEvent[]>;
+  importIcs?(calendarId: string): Promise<CalendarEvent[]>;
+  exportIcs?(eventIds: string[]): Promise<number>;
+  inspectAttachment?(
+    accountId: string,
+    messageId: string,
+    name: string,
+  ): Promise<InvitationInspection[]>;
+  respondToInvitation?(input: InvitationResponseInput): Promise<CalendarEvent>;
+  scheduleFromThread?(threadId: string): Promise<EventMutation>;
+  takeScheduledDraft?(): EventMutation | null;
   deleteEvent(eventId: string): Promise<CalendarEvent>;
   createLocalCalendar(input: { name: string; color: string; timezone: string }): Promise<Calendar>;
   setVisibility(calendarId: string, visible: boolean): Promise<void>;
@@ -99,4 +117,13 @@ export interface CalendarStateSnapshot {
   error: CalendarCommandError | null;
 }
 
-export type { Calendar, CalendarCommandError, CalendarEvent, CalendarSource, EventMutation, EventRange };
+export type {
+  Calendar,
+  CalendarCommandError,
+  CalendarEvent,
+  CalendarSource,
+  EventMutation,
+  EventRange,
+  InvitationInspection,
+  InvitationResponseInput,
+};

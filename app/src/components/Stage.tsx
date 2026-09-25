@@ -1,9 +1,13 @@
 import { createRef, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
+import dayjs from "dayjs";
+import timezone from "dayjs/plugin/timezone";
+import utc from "dayjs/plugin/utc";
 import { useApp } from "@/store";
 import { api, titlebarDoubleClick } from "@/lib/bridge";
-import type { Thread } from "@/types";
+import type { AttachmentMeta, InvitationInspection, Thread } from "@/types";
+import { InvitationCard } from "@/calendar/InvitationCard";
 import { Icon } from "@/components/icons";
 import { IconButton } from "@/components/ui/IconButton";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -25,6 +29,9 @@ import { parseExternalWebUrl } from "@/lib/externalLinks";
 import { isKeyboardContextMenu } from "@/lib/keyboard";
 import { registerOpenModal } from "@/lib/modalStack";
 import { THREAD_CROSSFADE, useMotionTransition } from "@/lib/motion";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 type LinkDecision =
   | { kind: "warning"; href: string; host: string; level: string }
@@ -400,6 +407,54 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
 
 type Mode = "reply" | "replyAll" | "forward";
 
+function CalendarAttachmentPanel({
+  accountId,
+  threadId,
+  messageId,
+  attachment,
+}: {
+  accountId: string;
+  threadId: string;
+  messageId: string;
+  attachment: AttachmentMeta;
+}) {
+  const [inspections, setInspections] = useState<InvitationInspection[]>([]);
+  const isCalendar = attachment.mime.toLowerCase().startsWith("text/calendar")
+    || /\.ics$/i.test(attachment.name);
+
+  useEffect(() => {
+    let active = true;
+    if (!isCalendar || !api.calendar.inspectAttachment) return () => { active = false; };
+    void api.calendar.inspectAttachment(accountId, messageId, attachment.name)
+      .then((result) => { if (active) setInspections(result); })
+      .catch(() => { if (active) setInspections([]); });
+    return () => { active = false; };
+  }, [accountId, attachment.name, isCalendar, messageId]);
+
+  if (!isCalendar || inspections.length === 0) return null;
+  return (
+    <div className="invitation-card-stack">
+      {inspections.map((inspection) => (
+        <InvitationCard
+          key={`${inspection.event.uid}:${inspection.event.recurrenceId ?? "master"}`}
+          inspection={inspection}
+          timezone={dayjs.tz.guess()}
+          onRespond={async (status) => {
+            if (!api.calendar.respondToInvitation) throw new Error("Invitation responses are unavailable");
+            await api.calendar.respondToInvitation({
+              accountId,
+              threadId,
+              calendarId: inspection.event.calendarId,
+              event: inspection.event,
+              status,
+            });
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function Stage() {
   const { threads, accounts, selectedThreadId, selectedMessageId, toggleFocus, createTask, snoozeThread, archiveThread, toggleRead, deleteThread, setView, contentPx, setContentPx } = useApp();
   const thread = useMemo(() => threads.find((t) => t.id === selectedThreadId) ?? null, [threads, selectedThreadId]);
@@ -452,6 +507,15 @@ export function Stage() {
     return <section className="stage" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}><div className="empty" style={{ marginTop: 80 }}>Select a conversation</div></section>;
   }
   const makeTask = () => void createTask(`Follow up: ${thread.subject}`, thread.id);
+  const scheduleThread = () => {
+    if (!api.calendar.scheduleFromThread) {
+      setView("calendar");
+      return;
+    }
+    void api.calendar.scheduleFromThread(thread.id)
+      .then(() => setView("calendar"))
+      .catch(() => {});
+  };
 
   return (
     <section className="stage">
@@ -496,7 +560,7 @@ export function Stage() {
               <p>{thread.aiSummary}</p>
               <div className="chips">
                 <Chip solid icon="reply" onClick={() => composerRef.current?.open("reply", true)}>Use AI draft reply</Chip>
-                {thread.labels.includes("meeting") && <Chip icon="schedule" onClick={() => setView("calendar")}>Schedule from thread</Chip>}
+                {thread.labels.includes("meeting") && <Chip icon="schedule" onClick={scheduleThread}>Schedule from thread</Chip>}
                 <Chip icon="tasks" onClick={makeTask}>Create task</Chip>
               </div>
             </div>
@@ -560,8 +624,9 @@ export function Stage() {
                 )}
                 <EmailBody html={m.bodyHtml} sender={m.from.address} trimQuote={m.id !== oldestMessageId} />
                 {m.attachments && m.attachments.length > 0 && (
-                  <div className="attach-row" style={{ marginTop: 10 }}>
-                    {m.attachments.map((a) => {
+                  <>
+                    <div className="attach-row" style={{ marginTop: 10 }}>
+                      {m.attachments.map((a) => {
                       const busy = dl?.name === a.name && dl.state === "busy";
                       const failed = dl?.name === a.name && dl.state === "error";
                       const prev = previewing === a.name;
@@ -588,8 +653,18 @@ export function Stage() {
                           )}
                         </span>
                       );
-                    })}
-                  </div>
+                      })}
+                    </div>
+                    {m.attachments.map((attachment) => (
+                      <CalendarAttachmentPanel
+                        key={`calendar:${attachment.name}`}
+                        accountId={thread.accountId}
+                        threadId={thread.id}
+                        messageId={m.id}
+                        attachment={attachment}
+                      />
+                    ))}
+                  </>
                 )}
               </div>
             </div>

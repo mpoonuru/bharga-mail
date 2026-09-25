@@ -1481,6 +1481,8 @@ pub fn run() {
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let dir = app
                 .path()
@@ -1547,9 +1549,15 @@ pub fn run() {
             calendar::commands::get_calendar_event,
             calendar::commands::create_calendar_event,
             calendar::commands::update_calendar_event,
+            calendar::commands::update_recurring_calendar_event,
             calendar::commands::delete_calendar_event,
             calendar::commands::create_local_calendar,
             calendar::commands::set_calendar_visibility,
+            calendar::commands::import_ics,
+            calendar::commands::export_ics,
+            calendar::commands::inspect_calendar_attachment,
+            calendar::commands::respond_to_invitation,
+            calendar::commands::schedule_from_thread,
             set_task_done,
             create_task,
             queue_send,

@@ -31,6 +31,10 @@ impl CalendarError {
     pub fn code(&self) -> &'static str {
         self.code
     }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 fn invalid(message: impl Into<String>) -> CalendarError {

@@ -15,6 +15,8 @@
     "core:window:allow-set-badge-count",
     "core:window:allow-set-badge-label",
     "updater:default",
-    "process:default"
+    "process:default",
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

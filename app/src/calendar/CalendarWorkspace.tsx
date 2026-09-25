@@ -1,13 +1,14 @@
 /** Production calendar shell: navigation, source rail, views, and intent boundary. */
 
 import dayjs from "dayjs";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { AgendaView } from "@/calendar/AgendaView";
 import { CalendarSidebar } from "@/calendar/CalendarSidebar";
 import { CalendarToolbar } from "@/calendar/CalendarToolbar";
 import { calendarToday } from "@/calendar/date";
+import { EventDialog, type EventDialogInitial } from "@/calendar/EventDialog";
 import { MonthView } from "@/calendar/MonthView";
 import { createCalendarStore } from "@/calendar/store";
 import { TimeGrid } from "@/calendar/TimeGrid";
@@ -46,14 +47,15 @@ function shiftAnchor(anchor: string, view: CalendarView, direction: -1 | 1): str
 export function CalendarWorkspace({
   calendarApi = api.calendar,
   settingsApi = api,
-  onCreate = () => {},
-  onOpen = () => {},
+  onCreate,
+  onOpen,
 }: CalendarWorkspaceProps) {
   const storeRef = useRef<ReturnType<typeof createCalendarStore> | null>(null);
   if (!storeRef.current) storeRef.current = createCalendarStore(calendarApi);
   const store = storeRef.current;
   const snapshot = useStore(store);
   const viewport = useViewport();
+  const [editing, setEditing] = useState<EventDialogInitial | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -61,6 +63,8 @@ export function CalendarWorkspace({
       const settings = await settingsApi.getSettings();
       await store.getState().initialize();
       if (!active) return;
+      const scheduledDraft = calendarApi.takeScheduledDraft?.();
+      if (scheduledDraft) setEditing({ ...scheduledDraft, recurrenceId: null });
       const savedView = settings["calendar.view"] as CalendarView | undefined;
       if (savedView && VALID_VIEWS.has(savedView) && savedView !== store.getState().view) {
         await store.getState().setView(savedView);
@@ -110,6 +114,41 @@ export function CalendarWorkspace({
   const changeAnchor = (anchor: string) => {
     void store.getState().setAnchor(anchor).catch(() => {});
   };
+  const openCreate = (slot: CalendarSlot) => {
+    onCreate?.(slot);
+    const calendar = calendars.find((candidate) => candidate.writable && candidate.visible)
+      ?? calendars.find((candidate) => candidate.writable);
+    if (!calendar) return;
+    const startLocal = dayjs.tz(`${slot.date}T${slot.time ?? "09:00"}`, snapshot.timezone);
+    setEditing({
+      calendarId: calendar.id,
+      title: "",
+      description: "",
+      location: "",
+      conferenceUrl: null,
+      sourceThreadId: null,
+      start: slot.allDay
+        ? { kind: "allDay", date: slot.date }
+        : { kind: "timed", utc: startLocal.toISOString() },
+      end: slot.allDay
+        ? { kind: "allDay", date: dayjs(slot.date).add(1, "day").format("YYYY-MM-DD") }
+        : { kind: "timed", utc: startLocal.add(1, "hour").toISOString() },
+      timezone: snapshot.timezone,
+      recurrence: null,
+      recurrenceId: null,
+      status: "confirmed",
+      transparency: "busy",
+      visibility: "default",
+      organizer: null,
+      attendees: [],
+      reminders: [{ method: "display", minutesBefore: 10 }],
+    });
+  };
+  const openOccurrence = (occurrence: CalendarOccurrenceIntent) => {
+    onOpen?.(occurrence);
+    const event = snapshot.events[occurrence.eventId];
+    if (event) setEditing({ ...event, recurrenceId: event.recurrenceId ?? (event.recurrence ? occurrence.occurrenceStart : null) });
+  };
 
   return (
     <div className="calendar-workspace">
@@ -121,7 +160,18 @@ export function CalendarWorkspace({
         onPrevious={() => changeAnchor(shiftAnchor(snapshot.anchor, snapshot.view, -1))}
         onNext={() => changeAnchor(shiftAnchor(snapshot.anchor, snapshot.view, 1))}
         onView={chooseView}
-        onCreate={() => onCreate({ date: snapshot.anchor, allDay: false })}
+        onCreate={() => openCreate({ date: snapshot.anchor, allDay: false })}
+        onImport={calendarApi.importIcs ? () => {
+          const target = calendars.find((calendar) => calendar.writable && calendar.isDefault)
+            ?? calendars.find((calendar) => calendar.writable);
+          if (!target) return;
+          void calendarApi.importIcs!(target.id).then((events) => {
+            if (events.length > 0) void store.getState().loadRange();
+          }).catch(() => {});
+        } : undefined}
+        onExport={calendarApi.exportIcs && visibleEvents.length > 0 ? () => {
+          void calendarApi.exportIcs!(visibleEvents.map((event) => event.id)).catch(() => {});
+        } : undefined}
       />
       <div className="calendar-workspace-body">
         <CalendarSidebar
@@ -149,8 +199,8 @@ export function CalendarWorkspace({
               timezone={snapshot.timezone}
               events={visibleEvents}
               calendars={snapshot.calendars}
-              onCreate={onCreate}
-              onOpen={onOpen}
+              onCreate={openCreate}
+              onOpen={openOccurrence}
             />
           ) : snapshot.view === "week" || snapshot.view === "day" ? (
             <TimeGrid
@@ -159,20 +209,43 @@ export function CalendarWorkspace({
               timezone={snapshot.timezone}
               events={visibleEvents}
               calendars={snapshot.calendars}
-              onCreate={onCreate}
-              onOpen={onOpen}
+              onCreate={openCreate}
+              onOpen={openOccurrence}
             />
           ) : (
             <AgendaView
               events={visibleEvents}
               calendars={snapshot.calendars}
               timezone={snapshot.timezone}
-              onCreate={onCreate}
-              onOpen={onOpen}
+              onCreate={openCreate}
+              onOpen={openOccurrence}
             />
           )}
         </main>
       </div>
+      {editing && (
+        <EventDialog
+          open
+          initial={editing}
+          calendars={calendars}
+          onClose={() => setEditing(null)}
+          onDelete={editing.id ? async () => {
+            await store.getState().deleteEvent(editing.id!);
+          } : undefined}
+          onSave={async (input, options) => {
+            if (!editing.id) {
+              await store.getState().createEvent(input);
+              return;
+            }
+            if (editing.recurrenceId && options.scope && calendarApi.updateRecurringEvent) {
+              await calendarApi.updateRecurringEvent(editing.id, editing.recurrenceId, options.scope, input);
+              await store.getState().loadRange();
+              return;
+            }
+            await store.getState().updateEvent(editing.id, input);
+          }}
+        />
+      )}
     </div>
   );
 }

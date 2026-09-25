@@ -12,6 +12,8 @@ import type {
   EventMutation,
   EventRange,
   FolderInfo,
+  InvitationInspection,
+  InvitationResponseInput,
   SaveAiProviderInput,
   Task,
   Thread,
@@ -124,6 +126,7 @@ let previewCalendars: Calendar[] = [{
 }];
 let previewCalendarEvents: CalendarEvent[] = [];
 let previewCalendarSequence = 0;
+let pendingCalendarDraft: EventMutation | null = null;
 
 function copyCalendarEvent(event: CalendarEvent): CalendarEvent {
   return {
@@ -272,6 +275,106 @@ export const api = {
       previewCalendarEvents = previewCalendarEvents.map((candidate) =>
         candidate.id === eventId ? updated : candidate);
       return copyCalendarEvent(updated);
+    },
+
+    async updateRecurringEvent(
+      eventId: string,
+      recurrenceId: string,
+      scope: "occurrence" | "following" | "series",
+      input: EventMutation,
+    ): Promise<CalendarEvent[]> {
+      if (!inTauri) return [await this.updateEvent(eventId, input)];
+      const nativeScope = scope === "occurrence"
+        ? "thisOccurrence"
+        : scope === "following"
+          ? "thisAndFollowing"
+          : "entireSeries";
+      const result = await invoke<{
+        original: CalendarEvent;
+        following: CalendarEvent | null;
+        exception: CalendarEvent | null;
+      }>("update_recurring_calendar_event", { eventId, recurrenceId, scope: nativeScope, input });
+      return [result.original, result.following, result.exception].filter(
+        (event): event is CalendarEvent => event !== null,
+      );
+    },
+
+    async importIcs(calendarId: string): Promise<CalendarEvent[]> {
+      if (!inTauri) return [];
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const path = await open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "Calendar", extensions: ["ics", "ical"] }],
+      });
+      if (!path || Array.isArray(path)) return [];
+      return invoke<CalendarEvent[]>("import_ics", { path, calendarId });
+    },
+
+    async exportIcs(eventIds: string[]): Promise<number> {
+      if (!inTauri || eventIds.length === 0) return 0;
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const path = await save({
+        defaultPath: "calendar.ics",
+        filters: [{ name: "Calendar", extensions: ["ics"] }],
+      });
+      if (!path) return 0;
+      return invoke<number>("export_ics", { path, eventIds });
+    },
+
+    async inspectAttachment(
+      accountId: string,
+      messageId: string,
+      name: string,
+    ): Promise<InvitationInspection[]> {
+      if (!inTauri) return [];
+      return invoke<InvitationInspection[]>("inspect_calendar_attachment", {
+        accountId,
+        messageId,
+        name,
+      });
+    },
+
+    async respondToInvitation(input: InvitationResponseInput): Promise<CalendarEvent> {
+      return invoke<CalendarEvent>("respond_to_invitation", { input });
+    },
+
+    async scheduleFromThread(threadId: string): Promise<EventMutation> {
+      let draft: EventMutation;
+      if (inTauri) {
+        draft = await invoke<EventMutation>("schedule_from_thread", { threadId });
+      } else {
+        const thread = mockThreads.find((candidate) => candidate.id === threadId);
+        const calendar = previewCalendars.find((candidate) => candidate.writable);
+        if (!thread || !calendar) throw new Error("A writable calendar is required");
+        const start = dayjs().add(1, "hour").minute(0).second(0).millisecond(0);
+        draft = {
+          calendarId: calendar.id,
+          title: thread.subject,
+          description: thread.preview,
+          location: "",
+          conferenceUrl: null,
+          sourceThreadId: thread.id,
+          start: { kind: "timed", utc: start.toISOString() },
+          end: { kind: "timed", utc: start.add(1, "hour").toISOString() },
+          timezone: calendar.timezone,
+          recurrence: null,
+          status: "confirmed",
+          transparency: "busy",
+          visibility: "default",
+          organizer: null,
+          attendees: [],
+          reminders: [],
+        };
+      }
+      pendingCalendarDraft = draft;
+      return draft;
+    },
+
+    takeScheduledDraft(): EventMutation | null {
+      const draft = pendingCalendarDraft;
+      pendingCalendarDraft = null;
+      return draft;
     },
 
     async deleteEvent(eventId: string): Promise<CalendarEvent> {

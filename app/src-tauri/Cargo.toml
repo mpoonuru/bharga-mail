@@ -59,6 +59,8 @@ rrule = { version = "=0.14.0", features = ["serde"] }
 chrono-tz = "=0.10.4"
 quick-xml = { version = "=0.39.4", features = ["serialize"] }
 uuid = { version = "=1.11.0", features = ["v4", "serde"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

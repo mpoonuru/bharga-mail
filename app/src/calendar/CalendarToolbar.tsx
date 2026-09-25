@@ -42,6 +42,8 @@ interface CalendarToolbarProps {
   onNext(): void;
   onView(view: CalendarView): void;
   onCreate(): void;
+  onImport?(): void;
+  onExport?(): void;
 }
 
 export function CalendarToolbar({
@@ -53,6 +55,8 @@ export function CalendarToolbar({
   onNext,
   onView,
   onCreate,
+  onImport,
+  onExport,
 }: CalendarToolbarProps) {
   return (
     <header className="calendar-toolbar">
@@ -85,6 +89,12 @@ export function CalendarToolbar({
         <Icon name="plus" size={16} weight="bold" />
         New event
       </button>
+      {(onImport || onExport) && (
+        <div className="calendar-file-actions" aria-label="Calendar files">
+          {onImport && <button type="button" className="calendar-button calendar-button-quiet" onClick={onImport}>Import .ics</button>}
+          {onExport && <button type="button" className="calendar-button calendar-button-quiet" onClick={onExport}>Export .ics</button>}
+        </div>
+      )}
     </header>
   );
 }
