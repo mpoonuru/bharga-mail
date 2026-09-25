@@ -18,6 +18,8 @@ export interface Account {
   provider: "gmail" | "microsoft" | "jmap" | "imap";
   displayName: string;
   unread?: number;
+  /** Unix seconds for the most recent completed provider sync. */
+  lastSyncAt?: number;
 }
 
 export interface FolderInfo {

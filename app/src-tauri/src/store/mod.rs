@@ -174,6 +174,12 @@ pub struct AccountInfo {
     #[serde(rename = "displayName")]
     pub display_name: String,
     pub unread: u32,
+    #[serde(
+        rename = "lastSyncAt",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub last_sync_at: Option<i64>,
 }
 
 /// A mailbox/folder for the sidebar folder list.
@@ -760,7 +766,9 @@ impl Store {
         let conn = self.conn.lock().unwrap();
         let mut stmt = match conn.prepare(
             "SELECT a.id, a.email, a.provider, COALESCE(a.display_name,''),
-                    (SELECT COUNT(*) FROM threads t WHERE t.account_id = a.id AND t.unread = 1 AND t.deleted = 0)
+                    (SELECT COUNT(*) FROM threads t WHERE t.account_id = a.id AND t.unread = 1 AND t.deleted = 0),
+                    (SELECT NULLIF(MAX(s.last_sync_ts), 0)
+                     FROM account_sync_state s WHERE s.account_id = a.id)
              FROM accounts a ORDER BY a.email",
         ) {
             Ok(s) => s,
@@ -773,10 +781,29 @@ impl Store {
                 provider: r.get(2)?,
                 display_name: r.get(3)?,
                 unread: r.get::<_, i64>(4)? as u32,
+                last_sync_at: r.get(5)?,
             })
         })
         .map(|it| it.filter_map(Result::ok).collect())
         .unwrap_or_default()
+    }
+
+    /// Record an authoritative provider-sync completion for account health UI.
+    pub fn record_sync_success(
+        &self,
+        account_id: &str,
+        folder: &str,
+        timestamp: i64,
+    ) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO account_sync_state (account_id, folder, last_sync_ts)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(account_id, folder)
+             DO UPDATE SET last_sync_ts=excluded.last_sync_ts",
+            params![account_id, folder, timestamp],
+        )?;
+        Ok(())
     }
 
     // ---- reads (used by the UI) ----
@@ -1947,6 +1974,29 @@ mod tests {
         s.upsert_thread(&t).unwrap(); // re-sync must not duplicate the FTS row
         s.upsert_thread(&t).unwrap();
         assert_eq!(s.search("hello").len(), 1);
+    }
+
+    #[test]
+    fn account_info_reports_latest_successful_sync() {
+        let store = Store::in_memory().unwrap();
+        store
+            .upsert_account(
+                "imap:test@example.test",
+                "test@example.test",
+                "imap",
+                "Test",
+            )
+            .unwrap();
+        assert_eq!(store.accounts()[0].last_sync_at, None);
+
+        store
+            .record_sync_success("imap:test@example.test", "INBOX", 1_700_000_000)
+            .unwrap();
+        store
+            .record_sync_success("imap:test@example.test", "Archive", 1_700_000_100)
+            .unwrap();
+
+        assert_eq!(store.accounts()[0].last_sync_at, Some(1_700_000_100));
     }
 
     #[test]

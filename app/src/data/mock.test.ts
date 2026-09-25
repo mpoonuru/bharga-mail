@@ -11,5 +11,6 @@ describe("open-source demo data", () => {
 
   it("uses a reserved domain for the demo account", () => {
     expect(mock.account.email).toMatch(/@example\.(com|org|net)$/);
+    expect(mock.account.lastSyncAt).toBeTypeOf("number");
   });
 });

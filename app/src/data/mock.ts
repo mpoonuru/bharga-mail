@@ -8,6 +8,7 @@ export const account: Account = {
   email: "alex.morgan@example.com",
   provider: "imap",
   displayName: "Alex",
+  lastSyncAt: 1_779_984_000,
 };
 
 export const threads: Thread[] = [

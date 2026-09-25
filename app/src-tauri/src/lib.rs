@@ -655,28 +655,32 @@ async fn sync_now(
     group: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    if account_id.starts_with("ms:") {
+    let result = if account_id.starts_with("ms:") {
         sync::microsoft::incremental(&state.store, &account_id)
             .await
             .map(|_| 0)
-            .map_err(|e| e.to_string())
     } else if account_id.starts_with("imap:") {
         sync::imap::fetch_folder_async(
             state.store.clone(),
-            account_id,
+            account_id.clone(),
             "INBOX".into(),
             75,
             group.unwrap_or(true),
             false,
         )
             .await
-            .map_err(|e| e.to_string())
     } else {
         sync::gmail::incremental(&state.store, &account_id)
             .await
             .map(|_| 0)
-            .map_err(|e| e.to_string())
     }
+    .map_err(|error| error.to_string())?;
+
+    state
+        .store
+        .record_sync_success(&account_id, "INBOX", chrono::Utc::now().timestamp())
+        .map_err(|error| error.to_string())?;
+    Ok(result)
 }
 
 /// Backfill: pull OLDER messages for a folder by re-seeding the most-recent
