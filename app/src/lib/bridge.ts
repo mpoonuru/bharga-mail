@@ -321,6 +321,12 @@ export const api = {
       previewCalendars = previewCalendars.map((calendar) =>
         calendar.id === calendarId ? { ...calendar, visible } : calendar);
     },
+
+    async syncSource(sourceId: string): Promise<void> {
+      if (inTauri) {
+        await invoke<void>("sync_calendar_source", { sourceId });
+      }
+    },
   },
 
   async openExternalUrl(rawUrl: string): Promise<void> {
