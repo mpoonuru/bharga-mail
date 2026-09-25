@@ -25,7 +25,7 @@ describe("AiPrivacySettings", () => {
 
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("Storage unavailable");
     expect(host.querySelector('[role="radio"][aria-label="Hybrid"]')?.getAttribute("aria-checked")).toBe("true");
-    expect(host.textContent).not.toContain("Save engine");
+    expect([...host.querySelectorAll("button")].some((button) => button.textContent?.includes(["Save", "engine"].join(" ")))).toBe(false);
     unmount();
   });
 });

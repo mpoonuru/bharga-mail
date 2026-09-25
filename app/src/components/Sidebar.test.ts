@@ -93,6 +93,44 @@ describe("mail account disclosure motion", () => {
     expect(container.querySelector('[role="status"]')?.textContent).toContain("One moved to position 2 of 2");
     act(() => root.unmount());
   });
+
+  it("uses an in-app confirmation dialog for folder deletion", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const deleteFolder = vi.fn().mockResolvedValue(undefined);
+    const nativeConfirm = vi.spyOn(window, "confirm");
+    useApp.setState({
+      accounts: [{ id: "a1", email: "one@example.test", provider: "imap", displayName: "One" }],
+      accountOrder: [],
+      selectedAccountId: "a1",
+      selectedFolder: null,
+      folders: [{ name: "Projects", unread: 0, total: 0 }],
+      threads: [],
+      deleteFolder,
+    });
+
+    act(() => root.render(createElement(Sidebar)));
+    const menuButton = container.querySelector<HTMLButtonElement>('button[title="Folder options"]');
+    if (!menuButton) throw new Error("Folder options button not found");
+    act(() => menuButton.click());
+    const deleteButton = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+      .find((button) => button.textContent?.includes("Delete"));
+    if (!deleteButton) throw new Error("Delete folder button not found");
+    act(() => deleteButton.click());
+
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Delete folder");
+    expect(nativeConfirm).not.toHaveBeenCalled();
+    const confirmDelete = [...document.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "Delete folder");
+    if (!confirmDelete) throw new Error("Delete folder confirmation not found");
+    await act(async () => confirmDelete.click());
+    expect(deleteFolder).toHaveBeenCalledWith("a1", "Projects");
+
+    act(() => root.unmount());
+    container.remove();
+    nativeConfirm.mockRestore();
+  });
 });
 
 describe("mail account reorder motion", () => {

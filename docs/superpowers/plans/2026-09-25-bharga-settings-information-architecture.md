@@ -687,7 +687,8 @@ Confirm:
 ```bash
 git status --short
 git diff --check
-rg -n "window\.confirm|Save engine|itmanagement@pjtelesoft\.de" app/src app/src-tauri/src
+rg -n "window\.confirm|Save engine" app/src app/src-tauri/src
+cd app && bun run check:open-source
 ```
 
 Expected: only the user-owned untracked `AGENTS.md` remains; no browser-native confirmation, obsolete Save engine copy, or private organization default exists.

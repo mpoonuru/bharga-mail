@@ -9,6 +9,7 @@ import { accountColor } from "@/lib/colors";
 import { titlebarDoubleClick } from "@/lib/bridge";
 import { MOTION, MOTION_EASE } from "@/lib/motion";
 import { AccountRemovalDialog } from "@/components/settings/AccountRemovalDialog";
+import { Modal } from "@/components/ui/Modal";
 
 const NAV: { id: View; icon: IconName; label: string }[] = [
   { id: "priority", icon: "priority", label: "Priority" },
@@ -95,6 +96,9 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
   const [acctMenu, setAcctMenu] = useState(false);
   const [acctRename, setAcctRename] = useState<string | null>(null);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ name: string; label: string } | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const run = async (fn: () => Promise<void>) => {
     setFolderErr("");
     try { await fn(); } catch (e) { setFolderErr(String(e).replace(/^Error:\s*/, "")); }
@@ -110,6 +114,19 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
   // counts are a sync-time snapshot and don't react to marking a mail read).
   const acctUnread = threads.filter((t) => t.accountId === a.id && t.unread).length;
   const folderUnread = (name: string) => threads.filter((t) => t.accountId === a.id && t.folder === name && t.unread).length;
+  const confirmFolderDeletion = async () => {
+    if (!deleteTarget || deletingFolder) return;
+    setDeletingFolder(true);
+    setDeleteError("");
+    try {
+      await deleteFolder(a.id, deleteTarget.name);
+      setDeleteTarget(null);
+    } catch (cause) {
+      setDeleteError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setDeletingFolder(false);
+    }
+  };
   return (
     <Reorder.Item
       value={a.id}
@@ -247,7 +264,7 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
                       {manageable && <div className="folder-menu-sep" aria-hidden="true" />}
                       {manageable && <button role="menuitem" onClick={() => { setEdit({ name: f.name, val: leaf }); setMenu(null); }}><Icon name="reply" size={12} /> Rename</button>}
                       {canDelete && (
-                        <button role="menuitem" className="danger" onClick={() => { setMenu(null); if (window.confirm(`Delete folder “${leaf}” and the mail in it? This can't be undone.`)) void run(() => deleteFolder(a.id, f.name)); }}><Icon name="trash" size={12} /> Delete</button>
+                        <button role="menuitem" className="danger" onClick={() => { setMenu(null); setDeleteError(""); setDeleteTarget({ name: f.name, label: leaf }); }}><Icon name="trash" size={12} /> Delete</button>
                       )}
                     </div>
                   </>
@@ -282,6 +299,24 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
       {removeOpen && (
         <AccountRemovalDialog account={a} onClose={() => setRemoveOpen(false)} onRemoved={() => setFolder(null)} />
       )}
+      <Modal
+        open={deleteTarget !== null}
+        onClose={() => { if (!deletingFolder) setDeleteTarget(null); }}
+        title="Delete folder"
+        maxWidth={500}
+      >
+        <div className="remove-account-dialog">
+          <p>Delete <b>{deleteTarget?.label}</b> and its locally synced mail?</p>
+          <p className="sub">This also requests deletion from the connected IMAP server and cannot be undone.</p>
+          {deleteError && <div className="settings-alert error" role="alert">{deleteError}</div>}
+          <div className="dialog-actions">
+            <button type="button" className="af-btn ghost" disabled={deletingFolder} onClick={() => setDeleteTarget(null)}>Cancel</button>
+            <button type="button" className="af-btn danger" disabled={deletingFolder} onClick={() => void confirmFolderDeletion()}>
+              <Icon name="trash" size={14} /> {deletingFolder ? "Deleting…" : "Delete folder"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </Reorder.Item>
   );
 }
