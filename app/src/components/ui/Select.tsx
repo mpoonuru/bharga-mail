@@ -7,6 +7,7 @@ export interface SelectOption {
 }
 
 interface Props {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   options: SelectOption[];
@@ -17,13 +18,13 @@ interface Props {
 
 // Custom dropdown matching the Topup Arena Select (button + caret + checkmark
 // options), built without Headless UI to keep deps light. Themed to our tokens.
-export function Select({ value, onChange, options, placeholder = "Select…", fullWidth, className }: Props) {
+export function Select({ id, value, onChange, options, placeholder = "Select…", fullWidth, className }: Props) {
   const [open, setOpen] = useState(false);
   const sel = options.find((o) => o.value === value);
 
   return (
     <div className={`ta-select${fullWidth ? " w-full" : ""} ${className || ""}`} style={{ position: "relative" }}>
-      <button type="button" className="ta-select-btn" onClick={() => setOpen((v) => !v)}>
+      <button id={id} type="button" className="ta-select-btn" onClick={() => setOpen((v) => !v)}>
         <span className={sel ? "" : "ta-ph"}>{sel ? sel.label : placeholder}</span>
         <CaretUpDownIcon size={15} className="ta-caret" />
       </button>

@@ -1,20 +1,17 @@
 import { useEffect, useState } from "react";
 import { useApp } from "@/store";
 import { api, runtimeMode } from "@/lib/bridge";
-import { AccountForm } from "@/components/AccountForm";
-import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/icons";
 import { SignatureManager } from "@/components/SignatureManager";
 import { AiProviderManager } from "@/components/AiProviderManager";
 import { AboutSettings } from "@/components/settings/AboutSettings";
+import { AccountSettings } from "@/components/settings/AccountSettings";
 import { SettingsShell, type SettingsSection } from "@/components/settings/SettingsShell";
 import { FONTS, LOCALES } from "@/lib/prefs";
 export function Settings() {
-  const { ai, density, setDensity, theme, toggleTheme, setPrivacy, saveAi, connectGmail, connectMicrosoft, font, locale, setFont, setLocale, groupConversations, setGroupConversations, highlights, setHighlights, autoOrganize, setAutoOrganize, accounts, load, removeAccount } = useApp();
-  const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [editAccount, setEditAccount] = useState<{ id: string; initial: Partial<import("@/lib/bridge").ImapAccountInput> } | null>(null);
+  const { ai, density, setDensity, theme, toggleTheme, setPrivacy, saveAi, font, locale, setFont, setLocale, groupConversations, setGroupConversations, highlights, setHighlights, autoOrganize, setAutoOrganize } = useApp();
   const [appVersion, setAppVersion] = useState(__APP_VERSION__);
   const [activeSection, setActiveSection] = useState<SettingsSection>("accounts");
 
@@ -24,33 +21,9 @@ export function Settings() {
     return () => { active = false; };
   }, []);
 
-  async function openEdit(id: string) {
-    const initial = await api.getImapAccount(id);
-    if (initial) setEditAccount({ id, initial });
-  }
-  async function confirmRemove(id: string, email: string) {
-    if (!window.confirm(`Remove ${email}? This deletes its locally-synced mail and saved credentials.`)) return;
-    await removeAccount(id);
-    setAcctStatus(`Removed ${email}.`);
-  }
-
-  async function syncAccount(id: string) {
-    setSyncingId(id);
-    setAcctStatus("Syncing…");
-    try {
-      const n = await api.syncNow(id, groupConversations);
-      await load();
-      setAcctStatus(`Synced ${n} message${n === 1 ? "" : "s"}.`);
-    } catch (e) {
-      setAcctStatus(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setSyncingId(null);
-    }
-  }
   const [saved, setSaved] = useState(false);
   const [savingEngine, setSavingEngine] = useState(false);
   const [indexing, setIndexing] = useState(false);
-  const [acctStatus, setAcctStatus] = useState("");
 
   async function save() {
     setSavingEngine(true);
@@ -59,28 +32,6 @@ export function Settings() {
     setSaved(true);
     setTimeout(() => setSaved(false), 1600);
   }
-
-  async function addGmail() {
-    setAcctStatus("Opening Google sign-in…");
-    try {
-      const id = await connectGmail();
-      setAcctStatus(`Connected ${id} — synced.`);
-    } catch {
-      setAcctStatus("Connecting accounts requires the desktop app (bun run tauri:dev) with BHARGA_GMAIL_CLIENT_ID set.");
-    }
-  }
-
-  async function addMicrosoft() {
-    setAcctStatus("Opening Microsoft sign-in…");
-    try {
-      const id = await connectMicrosoft();
-      setAcctStatus(`Connected ${id} — synced.`);
-    } catch {
-      setAcctStatus("Connecting Microsoft 365 requires the desktop app (bun run tauri:dev) with BHARGA_MS_CLIENT_ID set.");
-    }
-  }
-
-  const [imapOpen, setImapOpen] = useState(false);
 
   const [indexStatus, setIndexStatus] = useState("");
   async function buildIndex() {
@@ -194,49 +145,7 @@ export function Settings() {
       </>}
 
       {activeSection === "accounts" && <>
-      <p className="sub" style={{ fontWeight: 600, color: "var(--text-2)", marginBottom: 8 }}>Accounts</p>
-      <div className="card">
-        {accounts.length === 0 && (
-          <div className="setting-row"><div className="info"><b>No account connected</b><p>Add one below to start syncing mail.</p></div></div>
-        )}
-        {accounts.map((a) => (
-          <div className="setting-row" key={a.id}>
-            <div className="info">
-              <b>{a.email}</b>
-              <p>{a.provider.toUpperCase()}{a.unread ? ` · ${a.unread} unread` : ""}</p>
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button className="af-btn ghost" disabled={syncingId === a.id} onClick={() => syncAccount(a.id)}>
-                <Icon name="ai" size={14} /> {syncingId === a.id ? "Syncing…" : "Sync"}
-              </button>
-              {a.provider === "imap" && (
-                <button className="af-btn ghost" onClick={() => openEdit(a.id)}><Icon name="compose" size={14} /> Edit</button>
-              )}
-              <button className="af-btn ghost" onClick={() => confirmRemove(a.id, a.email)}><Icon name="close" size={14} /> Remove</button>
-            </div>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-          <button className="af-btn ghost" onClick={addGmail}><Icon name="cloud" size={14} /> Connect Gmail</button>
-          <button className="af-btn ghost" onClick={addMicrosoft}><Icon name="cloud" size={14} /> Microsoft 365</button>
-          <button className="af-btn ghost" onClick={() => setImapOpen((v) => !v)}><Icon name="server" size={14} /> IMAP / SMTP</button>
-        </div>
-
-        <Modal open={imapOpen} onClose={() => setImapOpen(false)} title="Add IMAP / SMTP account">
-          <AccountForm onClose={() => setImapOpen(false)} onStatus={setAcctStatus} />
-        </Modal>
-        <Modal open={!!editAccount} onClose={() => setEditAccount(null)} title="Edit account">
-          {editAccount && (
-            <AccountForm
-              editing
-              initial={editAccount.initial}
-              onClose={() => setEditAccount(null)}
-              onStatus={setAcctStatus}
-            />
-          )}
-        </Modal>
-        {acctStatus && <p className="sub" style={{ marginTop: 10 }}>{acctStatus}</p>}
-      </div>
+        <AccountSettings runtime={runtimeMode()} />
       </>}
 
       {activeSection === "security-data" && (

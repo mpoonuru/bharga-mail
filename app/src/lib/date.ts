@@ -39,3 +39,8 @@ export function fullTime(raw: string): string {
   if (dayjs().diff(d, "hour") < 24) return d.fromNow(); // "3 hours ago"
   return d.format("MMM D, YYYY · HH:mm");
 }
+
+/** Human-readable account health timestamp from the core's Unix-seconds value. */
+export function relativeUnixTime(seconds: number): string {
+  return dayjs.unix(seconds).fromNow();
+}

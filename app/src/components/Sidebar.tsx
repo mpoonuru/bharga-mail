@@ -8,6 +8,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { accountColor } from "@/lib/colors";
 import { titlebarDoubleClick } from "@/lib/bridge";
 import { MOTION, MOTION_EASE } from "@/lib/motion";
+import { AccountRemovalDialog } from "@/components/settings/AccountRemovalDialog";
 
 const NAV: { id: View; icon: IconName; label: string }[] = [
   { id: "priority", icon: "priority", label: "Priority" },
@@ -79,7 +80,7 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
   setReordering: (active: boolean) => void;
   onKeyboardMove: (account: Account, direction: -1 | 1) => void;
 }) {
-  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads, createFolder, renameFolder, deleteFolder, removeAccount, renameAccount, syncOneFolder, markFolderRead } = useApp();
+  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads, createFolder, renameFolder, deleteFolder, renameAccount, syncOneFolder, markFolderRead } = useApp();
   const controls = useDragControls();
   const [busy, setBusy] = useState(false);
   const isFocused = selectedAccountId === a.id;
@@ -93,6 +94,7 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
   // Account-level "⋯" menu + inline rename.
   const [acctMenu, setAcctMenu] = useState(false);
   const [acctRename, setAcctRename] = useState<string | null>(null);
+  const [removeOpen, setRemoveOpen] = useState(false);
   const run = async (fn: () => Promise<void>) => {
     setFolderErr("");
     try { await fn(); } catch (e) { setFolderErr(String(e).replace(/^Error:\s*/, "")); }
@@ -179,7 +181,7 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
               {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); setAccount(a.id); setNewName(""); }}><Icon name="compose" size={12} /> New folder</button>}
               {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); setBusy(true); void refreshFolders(a.id).finally(() => setBusy(false)); }}><Icon name="cloud" size={12} /> Refresh folders</button>}
               <button role="menuitem" onClick={() => { setAcctMenu(false); setAcctRename(a.displayName?.trim() || ""); }}><Icon name="reply" size={12} /> Rename</button>
-              <button role="menuitem" className="danger" onClick={() => { setAcctMenu(false); if (window.confirm(`Remove ${a.email} from Bharga? Its locally-cached mail will be deleted — your mail stays on the server.`)) void run(() => removeAccount(a.id)); }}><Icon name="trash" size={12} /> Remove account</button>
+              <button role="menuitem" className="danger" onClick={() => { setAcctMenu(false); setRemoveOpen(true); }}><Icon name="trash" size={12} /> Remove account</button>
             </div>
           </>
         )}
@@ -277,6 +279,9 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
           </div>
         </div>
       </div>
+      {removeOpen && (
+        <AccountRemovalDialog account={a} onClose={() => setRemoveOpen(false)} onRemoved={() => setFolder(null)} />
+      )}
     </Reorder.Item>
   );
 }

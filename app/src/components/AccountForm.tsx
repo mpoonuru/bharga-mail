@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { api } from "@/lib/bridge";
 import { useApp } from "@/store";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -30,6 +30,9 @@ interface AccountFormProps {
 
 export function AccountForm({ onClose, onStatus, initial, editing = false }: AccountFormProps) {
   const load = useApp((s) => s.load);
+  const formId = useId();
+  const fieldId = (name: string) => `${formId}-${name}`;
+  const [step, setStep] = useState<"details" | "servers">("details");
   const [f, setF] = useState({
     email: initial?.email ?? "",
     displayName: initial?.displayName ?? "",
@@ -53,7 +56,8 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
   const set = (patch: Partial<typeof f>) => setF((p) => ({ ...p, ...patch }));
 
   // When editing, the password may be left blank to keep the existing one.
-  const valid = f.email.includes("@") && f.imapHost && f.smtpHost && (editing || !!f.imapPassword);
+  const validIdentity = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim());
+  const valid = validIdentity && !!f.imapHost.trim() && !!f.smtpHost.trim() && (editing || !!f.imapPassword);
   const payload = () => ({
     email: f.email,
     displayName: f.displayName || undefined,
@@ -104,44 +108,54 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
 
   return (
     <div className="acct-form">
-      <div className="af-grid">
-        <Field label="Email address" full>
-          <input className="af-input" type="email" placeholder="you@company.com" value={f.email}
-            onChange={(e) => set({ email: e.target.value })} />
-        </Field>
-        <Field label="Display name (optional)" full>
-          <input className="af-input" placeholder="Your Name" value={f.displayName}
-            onChange={(e) => set({ displayName: e.target.value })} />
-        </Field>
+      <div className="af-progress" aria-label="Account setup progress">
+        <span className={step === "details" ? "active" : "complete"}>1 <b>Account</b></span>
+        <span className={step === "servers" ? "active" : ""}>2 <b>Servers</b></span>
       </div>
 
-      <div className="af-section">Incoming mail · IMAP</div>
-      <div className="af-grid">
-        <Field label="IMAP host"><input className="af-input" placeholder="imap.company.com" value={f.imapHost} onChange={(e) => set({ imapHost: e.target.value })} /></Field>
-        <Field label="Port"><input className="af-input" type="number" value={f.imapPort} onChange={(e) => set({ imapPort: Number(e.target.value) })} /></Field>
-        <Field label="Security">
-          <Select fullWidth value={f.imapSecurity} options={SECURITY} onChange={(v) => { const s = v as Sec; set({ imapSecurity: s, imapPort: portFor("imap", s) }); }} />
-        </Field>
-        <Field label="Username (optional)"><input className="af-input" placeholder="defaults to email" value={f.imapUsername} onChange={(e) => set({ imapUsername: e.target.value })} /></Field>
-        <Field label="Password" full><input className="af-input" type="password" value={f.imapPassword} onChange={(e) => set({ imapPassword: e.target.value })} /></Field>
-      </div>
-
-      <div className="af-section">Outgoing mail · SMTP</div>
-      <div className="af-grid">
-        <Field label="SMTP host"><input className="af-input" placeholder="smtp.company.com" value={f.smtpHost} onChange={(e) => set({ smtpHost: e.target.value })} /></Field>
-        <Field label="Port"><input className="af-input" type="number" value={f.smtpPort} onChange={(e) => set({ smtpPort: Number(e.target.value) })} /></Field>
-        <Field label="Security">
-          <Select fullWidth value={f.smtpSecurity} options={SECURITY} onChange={(v) => { const s = v as Sec; set({ smtpSecurity: s, smtpPort: portFor("smtp", s) }); }} />
-        </Field>
-      </div>
-      <div className="mt-3">
-        <Checkbox size="sm" checked={sameCreds} onChange={setSameCreds} label="Use the same username & password as incoming" />
-      </div>
-      {!sameCreds && (
+      {step === "details" ? (
         <div className="af-grid">
-          <Field label="SMTP username"><input className="af-input" value={f.smtpUsername} onChange={(e) => set({ smtpUsername: e.target.value })} /></Field>
-          <Field label="SMTP password"><input className="af-input" type="password" value={f.smtpPassword} onChange={(e) => set({ smtpPassword: e.target.value })} /></Field>
+          <Field label="Email address" htmlFor={fieldId("email")} full>
+            <input id={fieldId("email")} aria-label="Email address" className="af-input" type="email" autoComplete="email" placeholder="you@example.com" value={f.email}
+              onChange={(e) => set({ email: e.target.value })} />
+          </Field>
+          <Field label="Display name (optional)" htmlFor={fieldId("display-name")} full>
+            <input id={fieldId("display-name")} aria-label="Display name" className="af-input" autoComplete="name" placeholder="Your name" value={f.displayName}
+              onChange={(e) => set({ displayName: e.target.value })} />
+          </Field>
+          <p className="af-privacy af-full">Credentials stay on this device and are protected by the operating system keychain.</p>
         </div>
+      ) : (
+        <>
+          <div className="af-section">Incoming mail · IMAP</div>
+          <div className="af-grid">
+            <Field label="IMAP host" htmlFor={fieldId("imap-host")}><input id={fieldId("imap-host")} aria-label="IMAP host" className="af-input" placeholder="imap.example.com" value={f.imapHost} onChange={(e) => set({ imapHost: e.target.value })} /></Field>
+            <Field label="Port" htmlFor={fieldId("imap-port")}><input id={fieldId("imap-port")} aria-label="IMAP port" className="af-input" type="number" value={f.imapPort} onChange={(e) => set({ imapPort: Number(e.target.value) })} /></Field>
+            <Field label="Security" htmlFor={fieldId("imap-security")}>
+              <Select id={fieldId("imap-security")} fullWidth value={f.imapSecurity} options={SECURITY} onChange={(v) => { const s = v as Sec; set({ imapSecurity: s, imapPort: portFor("imap", s) }); }} />
+            </Field>
+            <Field label="Username (optional)" htmlFor={fieldId("imap-username")}><input id={fieldId("imap-username")} aria-label="IMAP username" className="af-input" autoComplete="username" placeholder="Defaults to email" value={f.imapUsername} onChange={(e) => set({ imapUsername: e.target.value })} /></Field>
+            <Field label={editing ? "Password (leave blank to keep saved password)" : "Password"} htmlFor={fieldId("imap-password")} full><input id={fieldId("imap-password")} aria-label="IMAP password" className="af-input" type="password" autoComplete="current-password" value={f.imapPassword} onChange={(e) => set({ imapPassword: e.target.value })} /></Field>
+          </div>
+
+          <div className="af-section">Outgoing mail · SMTP</div>
+          <div className="af-grid">
+            <Field label="SMTP host" htmlFor={fieldId("smtp-host")}><input id={fieldId("smtp-host")} aria-label="SMTP host" className="af-input" placeholder="smtp.example.com" value={f.smtpHost} onChange={(e) => set({ smtpHost: e.target.value })} /></Field>
+            <Field label="Port" htmlFor={fieldId("smtp-port")}><input id={fieldId("smtp-port")} aria-label="SMTP port" className="af-input" type="number" value={f.smtpPort} onChange={(e) => set({ smtpPort: Number(e.target.value) })} /></Field>
+            <Field label="Security" htmlFor={fieldId("smtp-security")}>
+              <Select id={fieldId("smtp-security")} fullWidth value={f.smtpSecurity} options={SECURITY} onChange={(v) => { const s = v as Sec; set({ smtpSecurity: s, smtpPort: portFor("smtp", s) }); }} />
+            </Field>
+          </div>
+          <div className="mt-3">
+            <Checkbox size="sm" checked={sameCreds} onChange={setSameCreds} label="Use the same username & password as incoming" />
+          </div>
+          {!sameCreds && (
+            <div className="af-grid">
+              <Field label="SMTP username" htmlFor={fieldId("smtp-username")}><input id={fieldId("smtp-username")} aria-label="SMTP username" className="af-input" autoComplete="username" value={f.smtpUsername} onChange={(e) => set({ smtpUsername: e.target.value })} /></Field>
+              <Field label={editing ? "SMTP password (optional)" : "SMTP password"} htmlFor={fieldId("smtp-password")}><input id={fieldId("smtp-password")} aria-label="SMTP password" className="af-input" type="password" autoComplete="current-password" value={f.smtpPassword} onChange={(e) => set({ smtpPassword: e.target.value })} /></Field>
+            </div>
+          )}
+        </>
       )}
 
       {status && (
@@ -152,24 +166,37 @@ export function AccountForm({ onClose, onStatus, initial, editing = false }: Acc
       )}
 
       <div className="af-actions">
-        <button className="af-btn ghost" onClick={test} disabled={!valid || !!busy}>
-          <Icon name="plug" size={14} /> {busy === "test" ? "Testing…" : "Test connection"}
-        </button>
-        <div className="af-actions-right">
-          <button className="af-btn ghost" onClick={onClose}><Icon name="close" size={14} /> Cancel</button>
-          <button className="af-btn primary" onClick={save} disabled={!valid || !!busy}>
-            <Icon name="send" size={14} weight="fill" /> {busy === "save" ? "Connecting…" : "Save & sync"}
+        {step === "servers" ? (
+          <button className="af-btn ghost" onClick={test} disabled={!valid || !!busy}>
+            <Icon name="plug" size={14} /> {busy === "test" ? "Testing…" : "Test connection"}
           </button>
+        ) : <span />}
+        <div className="af-actions-right">
+          {step === "servers" && (
+            <button className="af-btn ghost" onClick={() => setStep("details")} disabled={!!busy}>
+              <Icon name="caretLeft" size={14} /> Back
+            </button>
+          )}
+          <button className="af-btn ghost" onClick={onClose}><Icon name="close" size={14} /> Cancel</button>
+          {step === "details" ? (
+            <button className="af-btn primary" onClick={() => setStep("servers")} disabled={!validIdentity}>
+              Continue <Icon name="caretRight" size={14} />
+            </button>
+          ) : (
+            <button className="af-btn primary" onClick={save} disabled={!valid || !!busy}>
+              <Icon name="send" size={14} weight="fill" /> {busy === "save" ? "Connecting…" : "Save & sync"}
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function Field({ label, full, children }: { label: string; full?: boolean; children: React.ReactNode }) {
+function Field({ label, htmlFor, full, children }: { label: string; htmlFor: string; full?: boolean; children: React.ReactNode }) {
   return (
     <div className={`af-field${full ? " af-full" : ""}`}>
-      <label>{label}</label>
+      <label htmlFor={htmlFor}>{label}</label>
       {children}
     </div>
   );

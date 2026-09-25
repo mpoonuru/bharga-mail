@@ -580,6 +580,44 @@
   }
   .settings-section h2 { margin-bottom: 4px; font-size: 18px; font-weight: 680; letter-spacing: -0.015em; }
   .settings-empty { border-top: 1px solid var(--border); padding: 18px 0; color: var(--text-3); font-size: 13px; }
+  .settings-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 14px; }
+  .settings-section-head .sub { margin-bottom: 0; }
+  .account-card-list { display: grid; gap: 8px; }
+  .account-card {
+    position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start; gap: 12px; padding: 15px 14px; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--surface);
+  }
+  .account-health-dot { width: 8px; height: 8px; margin-top: 6px; border-radius: 999px; background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 14%, transparent); }
+  .account-health-dot.error { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent); }
+  .account-card-copy { min-width: 0; }
+  .account-card-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .account-card-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+  .account-card-title span { flex: 0 0 auto; border: 1px solid var(--border); border-radius: 999px; padding: 2px 7px; color: var(--text-3); font-size: 10px; font-weight: 650; }
+  .account-card-copy > p { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-size: 12px; }
+  .account-health-meta { display: flex; flex-wrap: wrap; gap: 5px 14px; margin-top: 8px; color: var(--text-3); font-size: 11.5px; }
+  .account-operation { margin-top: 8px; color: var(--text-2); font-size: 11.5px; }
+  .account-operation.success { color: var(--good); }
+  .account-operation.error { color: var(--danger); }
+  .account-card-actions { position: relative; display: flex; align-items: center; gap: 5px; }
+  .settings-menu-backdrop { position: fixed; inset: 0; z-index: 48; border: 0; background: transparent; }
+  .settings-menu { position: absolute; z-index: 49; top: calc(100% + 5px); right: 0; display: grid; min-width: 190px; gap: 2px; padding: 5px; border: 1px solid var(--border-2); border-radius: 11px; background: var(--surface); box-shadow: var(--shadow); }
+  .settings-menu button { display: flex; align-items: center; gap: 8px; min-height: 34px; border: 0; border-radius: 7px; padding: 7px 9px; background: transparent; color: var(--text-2); text-align: left; font-size: 12px; }
+  .settings-menu button:hover, .settings-menu button:focus-visible { background: var(--bg-2); color: var(--text); }
+  .settings-menu button.danger { color: var(--danger); }
+  .account-empty { display: grid; justify-items: start; gap: 5px; padding-block: 26px; }
+  .account-empty b { color: var(--text); }
+  .account-connector-list { display: grid; gap: 8px; }
+  .account-connector-list > button { display: flex; align-items: center; gap: 13px; min-height: 62px; border: 1px solid var(--border); border-radius: 11px; padding: 11px 13px; background: transparent; color: var(--text); text-align: left; }
+  .account-connector-list > button:not(:disabled):hover { border-color: var(--accent); background: var(--accent-soft); }
+  .account-connector-list > button:disabled { opacity: .55; cursor: not-allowed; }
+  .account-connector-list span { display: grid; gap: 2px; }
+  .account-connector-list small { color: var(--text-3); font-size: 11.5px; }
+  .settings-alert { margin-top: 12px; border-radius: 9px; padding: 9px 11px; background: var(--accent-soft); color: var(--text-2); font-size: 12px; }
+  .settings-alert.error { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+  .remove-account-dialog > p { line-height: 1.55; }
+  .remove-account-dialog > .sub { margin-top: 8px; margin-bottom: 0; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 
   /* ---- Command palette ---- */
   .cmd-overlay { @apply fixed inset-0 flex items-start justify-center z-50; background: rgba(0,0,0,.4); backdrop-filter: blur(6px); padding-top: 14vh; animation: fade .16s var(--ease); }
@@ -708,6 +746,11 @@
 
   /* ---- Account setup form (inside a modal) ---- */
   .acct-form { @apply flex flex-col; }
+  .af-progress { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 18px; }
+  .af-progress span { display: flex; align-items: center; gap: 7px; border-bottom: 2px solid var(--border); padding: 0 2px 8px; color: var(--text-3); font-size: 11px; }
+  .af-progress span.active, .af-progress span.complete { border-color: var(--accent); color: var(--text); }
+  .af-progress b { font-size: 12px; }
+  .af-privacy { color: var(--text-3); font-size: 11.5px; line-height: 1.5; }
   .af-section { @apply text-[11px] uppercase text-text-3 font-semibold mt-4 mb-2; letter-spacing: .08em; }
   .af-grid { @apply grid gap-3; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .af-field { @apply flex flex-col min-w-0; }
@@ -831,4 +874,12 @@
   .provider-manager-head { align-items: stretch; flex-direction: column; }
   .provider-card-head { grid-template-columns: auto minmax(0, 1fr) auto; }
   .provider-status { display: none; }
+  .settings-section-head { align-items: stretch; flex-direction: column; }
+  .settings-section-head > .af-btn { align-self: flex-start; }
+  .account-card { grid-template-columns: auto minmax(0, 1fr); }
+  .account-card-actions { grid-column: 2; justify-content: flex-start; }
+  .af-grid { grid-template-columns: minmax(0, 1fr); }
+  .af-field.af-full { grid-column: auto; }
+  .af-actions { align-items: stretch; flex-direction: column; }
+  .af-actions-right { flex-wrap: wrap; justify-content: flex-end; }
 }
