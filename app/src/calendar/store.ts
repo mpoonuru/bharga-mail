@@ -102,6 +102,7 @@ function calendarState(calendarApi: CalendarApi): StateCreator<CalendarState> {
     sources: {},
     calendars: {},
     events: {},
+    syncHealth: {},
     visibleCalendarIds: [],
     anchor: calendarToday(timezone),
     view: "month",
@@ -114,14 +115,16 @@ function calendarState(calendarApi: CalendarApi): StateCreator<CalendarState> {
     async initialize() {
       set({ loading: true, error: null });
       try {
-        const [sources, calendars] = await Promise.all([
+        const [sources, calendars, health] = await Promise.all([
           calendarApi.listSources(),
           calendarApi.listCalendars(),
+          calendarApi.listSyncHealth?.() ?? Promise.resolve([]),
         ]);
         const normalizedCalendars = recordById(calendars);
         set({
           sources: recordById(sources),
           calendars: normalizedCalendars,
+          syncHealth: Object.fromEntries(health.map((item) => [item.sourceId, item])),
           visibleCalendarIds: visibleCalendarIds(normalizedCalendars),
         });
         await get().loadRange();
@@ -251,15 +254,17 @@ function calendarState(calendarApi: CalendarApi): StateCreator<CalendarState> {
 
     async syncSource(sourceId) {
       try {
-        await calendarApi.syncSource(sourceId);
-        const [sources, calendars] = await Promise.all([
+        const result = await calendarApi.syncSource(sourceId);
+        const [sources, calendars, health] = await Promise.all([
           calendarApi.listSources(),
           calendarApi.listCalendars(),
+          calendarApi.listSyncHealth?.() ?? Promise.resolve(result ? [result] : []),
         ]);
         const normalizedCalendars = recordById(calendars);
         set({
           sources: recordById(sources),
           calendars: normalizedCalendars,
+          syncHealth: Object.fromEntries(health.map((item) => [item.sourceId, item])),
           visibleCalendarIds: visibleCalendarIds(normalizedCalendars),
           error: null,
         });

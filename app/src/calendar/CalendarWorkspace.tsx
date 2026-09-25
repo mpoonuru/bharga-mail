@@ -7,6 +7,7 @@ import { useStore } from "zustand";
 import { AgendaView } from "@/calendar/AgendaView";
 import { CalendarSidebar } from "@/calendar/CalendarSidebar";
 import { CalendarToolbar } from "@/calendar/CalendarToolbar";
+import { ConflictDialog } from "@/calendar/ConflictDialog";
 import { calendarToday } from "@/calendar/date";
 import { EventDialog, type EventDialogInitial } from "@/calendar/EventDialog";
 import { MonthView } from "@/calendar/MonthView";
@@ -18,6 +19,7 @@ import type {
   CalendarSlot,
   CalendarView,
 } from "@/calendar/types";
+import type { CalendarConflict, ConflictResolution } from "@/types";
 import { api } from "@/lib/bridge";
 import { useViewport } from "@/lib/useViewport";
 
@@ -56,12 +58,15 @@ export function CalendarWorkspace({
   const snapshot = useStore(store);
   const viewport = useViewport();
   const [editing, setEditing] = useState<EventDialogInitial | null>(null);
+  const [conflicts, setConflicts] = useState<CalendarConflict[]>([]);
+  const [conflictIndex, setConflictIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
     void (async () => {
       const settings = await settingsApi.getSettings();
       await store.getState().initialize();
+      if (calendarApi.listConflicts) setConflicts(await calendarApi.listConflicts());
       if (!active) return;
       const scheduledDraft = calendarApi.takeScheduledDraft?.();
       if (scheduledDraft) setEditing({ ...scheduledDraft, recurrenceId: null });
@@ -101,6 +106,9 @@ export function CalendarWorkspace({
   const calendars = Object.values(snapshot.calendars)
     .sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id));
   const sources = Object.values(snapshot.sources).sort((left, right) => left.label.localeCompare(right.label));
+  const health = Object.values(snapshot.syncHealth);
+  const pendingCount = health.reduce((total, item) => total + item.pendingCount, 0);
+  const conflictCount = Math.max(conflicts.length, health.reduce((total, item) => total + item.conflictCount, 0));
 
   const chooseView = (view: CalendarView) => {
     void settingsApi.setSetting("calendar.view", view);
@@ -172,6 +180,10 @@ export function CalendarWorkspace({
         onExport={calendarApi.exportIcs && visibleEvents.length > 0 ? () => {
           void calendarApi.exportIcs!(visibleEvents.map((event) => event.id)).catch(() => {});
         } : undefined}
+        pendingCount={pendingCount}
+        conflictCount={conflictCount}
+        hasSyncError={sources.some((source) => !!source.syncError || source.authState !== "ready")}
+        onOpenConflicts={conflicts.length > 0 ? () => setConflictIndex(0) : undefined}
       />
       <div className="calendar-workspace-body">
         <CalendarSidebar
@@ -180,8 +192,13 @@ export function CalendarWorkspace({
           visibleCalendarIds={snapshot.visibleCalendarIds}
           loading={snapshot.loading}
           onVisibility={changeVisibility}
-          onSync={(sourceId) => { void store.getState().syncSource(sourceId).catch(() => {}); }}
+          onSync={(sourceId) => {
+            void store.getState().syncSource(sourceId).then(async () => {
+              if (calendarApi.listConflicts) setConflicts(await calendarApi.listConflicts());
+            }).catch(() => {});
+          }}
           onSourceAdded={() => { void store.getState().initialize().catch(() => {}); }}
+          health={snapshot.syncHealth}
         />
         <main className="calendar-canvas" aria-busy={snapshot.loading}>
           {snapshot.error && (
@@ -247,6 +264,19 @@ export function CalendarWorkspace({
           }}
         />
       )}
+      <ConflictDialog
+        conflict={conflictIndex === null ? null : conflicts[conflictIndex] ?? null}
+        onClose={() => setConflictIndex(null)}
+        onResolve={async (resolution: ConflictResolution) => {
+          const conflict = conflictIndex === null ? undefined : conflicts[conflictIndex];
+          if (!conflict || !calendarApi.resolveConflict) return;
+          await calendarApi.resolveConflict(conflict.eventId, resolution);
+          const next = await calendarApi.listConflicts?.() ?? [];
+          setConflicts(next);
+          setConflictIndex(next.length > 0 ? Math.min(conflictIndex ?? 0, next.length - 1) : null);
+          await store.getState().loadRange();
+        }}
+      />
     </div>
   );
 }

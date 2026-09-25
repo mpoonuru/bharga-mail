@@ -22,6 +22,7 @@ use tauri::{Manager, State};
 pub struct AppState {
     pub ai: Mutex<AiProfile>,
     pub store: Arc<Store>,
+    pub calendar_sync: calendar::sync::CalendarSyncCoordinator,
 }
 
 // ---- AI configuration commands ----
@@ -1503,6 +1504,7 @@ pub fn run() {
             app.manage(AppState {
                 ai: Mutex::new(ai_profile),
                 store: store.clone(),
+                calendar_sync: calendar::sync::CalendarSyncCoordinator::new(store.clone()),
             });
 
             // Background outbox flusher: owns an Arc<Store> clone (Send), so the
@@ -1562,6 +1564,10 @@ pub fn run() {
             calendar::commands::save_caldav_source,
             calendar::commands::connect_google_calendar,
             calendar::commands::connect_microsoft_calendar,
+            calendar::commands::sync_calendar_source,
+            calendar::commands::list_calendar_conflicts,
+            calendar::commands::list_calendar_sync_health,
+            calendar::commands::resolve_calendar_conflict,
             set_task_done,
             create_task,
             queue_send,

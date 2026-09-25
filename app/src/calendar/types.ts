@@ -2,9 +2,12 @@
 
 import type {
   Calendar,
+  CalendarConflict,
   CalendarCommandError,
   CalendarEvent,
   CalendarSource,
+  CalendarSyncHealth,
+  ConflictResolution,
   EventMutation,
   EventRange,
   InvitationInspection,
@@ -104,16 +107,20 @@ export interface CalendarApi {
   saveCalDavSource?(input: SaveCalDavSourceInput): Promise<CalendarSource>;
   connectGoogleCalendar?(): Promise<CalendarSource>;
   connectMicrosoftCalendar?(): Promise<CalendarSource>;
+  listConflicts?(): Promise<CalendarConflict[]>;
+  listSyncHealth?(): Promise<CalendarSyncHealth[]>;
+  resolveConflict?(eventId: string, resolution: ConflictResolution): Promise<CalendarEvent[]>;
   deleteEvent(eventId: string): Promise<CalendarEvent>;
   createLocalCalendar(input: { name: string; color: string; timezone: string }): Promise<Calendar>;
   setVisibility(calendarId: string, visible: boolean): Promise<void>;
-  syncSource(sourceId: string): Promise<void>;
+  syncSource(sourceId: string): Promise<CalendarSyncHealth | void>;
 }
 
 export interface CalendarStateSnapshot {
   sources: Record<string, CalendarSource>;
   calendars: Record<string, Calendar>;
   events: Record<string, CalendarEvent>;
+  syncHealth: Record<string, CalendarSyncHealth>;
   visibleCalendarIds: string[];
   anchor: string;
   view: CalendarView;

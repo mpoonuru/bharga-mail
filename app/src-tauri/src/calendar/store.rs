@@ -6,12 +6,13 @@ use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 use uuid::Uuid;
 
-use super::connectors::RemoteCalendar;
+use super::connectors::{PushOutcome, RemoteCalendar, RemoteChange, SyncBatch};
 use super::domain::{
-    AttendeeRole, Calendar, CalendarAccessRole, CalendarAuthState, CalendarEvent,
-    CalendarOperation, CalendarProvider, CalendarSource, EventAttendee, EventMoment, EventMutation,
-    EventRange, EventReminder, EventStatus, EventSyncState, EventVisibility, OperationKind,
-    ParticipationStatus, ReminderMethod, SeriesSplit, Transparency,
+    AttendeeRole, Calendar, CalendarAccessRole, CalendarAuthState, CalendarConflict, CalendarEvent,
+    CalendarOperation, CalendarProvider, CalendarSource, CalendarSyncHealth, ConflictResolution,
+    EventAttendee, EventMoment, EventMutation, EventRange, EventReminder, EventStatus,
+    EventSyncState, EventVisibility, OperationKind, ParticipationStatus, ReminderMethod,
+    SeriesSplit, Transparency,
 };
 use crate::store::{OutboxItem, Store};
 
@@ -22,6 +23,13 @@ const MAX_URL_BYTES: usize = 8_192;
 const MAX_ATTENDEES: usize = 500;
 const MAX_REMINDERS: usize = 20;
 const MAX_RECURRENCE_VALUES: usize = 128;
+
+#[derive(Debug, Clone)]
+pub struct CalendarSyncTarget {
+    pub calendar: Calendar,
+    pub remote_url: Option<String>,
+    pub cursor: Option<String>,
+}
 
 fn invalid(message: impl Into<String>) -> rusqlite::Error {
     rusqlite::Error::InvalidParameterName(message.into())
@@ -486,6 +494,84 @@ fn update_event(
     replace_people_and_reminders(tx, id, &input.attendees, &input.reminders)?;
     let event = read_event(tx, id)?.ok_or_else(|| invalid("updated event was not found"))?;
     Ok((source_id, event))
+}
+
+fn write_remote_event(
+    tx: &Transaction<'_>,
+    id: &str,
+    calendar_id: &str,
+    href: &str,
+    etag: &Option<String>,
+    event: &CalendarEvent,
+    now: i64,
+) -> rusqlite::Result<()> {
+    let provider_id = event.provider_id.as_deref().unwrap_or(href);
+    let provider_version = etag.as_ref().or(event.provider_version.as_ref());
+    let parent_event_id = event.parent_event_id.as_deref().and_then(|parent| {
+        tx.query_row(
+            "SELECT id FROM calendar_events WHERE calendar_id=?1 AND provider_id=?2 LIMIT 1",
+            params![calendar_id, parent.trim_start_matches("microsoft:")],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .ok()
+        .flatten()
+    });
+    tx.execute(
+        "INSERT INTO calendar_events
+         (id, calendar_id, uid, provider_id, resource_url, title, description,
+          location, conference_url, source_thread_id, start_kind, start_value,
+          end_kind, end_value, timezone, recurrence_json, recurrence_id,
+          parent_event_id, status, transparency, visibility, organizer_json,
+          sequence, provider_version, local_revision, sync_state, deleted,
+          created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                 ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22,
+                 ?23, ?24, 1, 'synced', ?25, ?26, ?26)
+         ON CONFLICT(id) DO UPDATE SET
+           calendar_id=excluded.calendar_id, uid=excluded.uid,
+           provider_id=excluded.provider_id, resource_url=excluded.resource_url,
+           title=excluded.title, description=excluded.description,
+           location=excluded.location, conference_url=excluded.conference_url,
+           start_kind=excluded.start_kind, start_value=excluded.start_value,
+           end_kind=excluded.end_kind, end_value=excluded.end_value,
+           timezone=excluded.timezone, recurrence_json=excluded.recurrence_json,
+           recurrence_id=excluded.recurrence_id,
+           parent_event_id=excluded.parent_event_id, status=excluded.status,
+           transparency=excluded.transparency, visibility=excluded.visibility,
+           organizer_json=excluded.organizer_json, sequence=excluded.sequence,
+           provider_version=excluded.provider_version, sync_state='synced',
+           deleted=excluded.deleted, updated_at=excluded.updated_at",
+        params![
+            id,
+            calendar_id,
+            event.uid,
+            provider_id,
+            href,
+            event.title,
+            event.description,
+            event.location,
+            event.conference_url,
+            event.source_thread_id,
+            event.start.kind(),
+            event.start.value(),
+            event.end.kind(),
+            event.end.value(),
+            event.timezone,
+            event.recurrence.as_ref().map(encode).transpose()?,
+            event.recurrence_id,
+            parent_event_id,
+            event.status.as_str(),
+            event.transparency.as_str(),
+            event.visibility.as_str(),
+            event.organizer.as_ref().map(encode).transpose()?,
+            event.sequence,
+            provider_version,
+            event.deleted,
+            now,
+        ],
+    )?;
+    replace_people_and_reminders(tx, id, &event.attendees, &event.reminders)
 }
 
 impl Store {
@@ -1050,6 +1136,411 @@ impl Store {
                         attempts: row.get(7)?,
                         next_retry_at: row.get(8)?,
                         last_error: row.get(9)?,
+                    })
+                },
+            )
+        })
+    }
+
+    pub fn calendar_sync_targets(
+        &self,
+        source_id: &str,
+    ) -> rusqlite::Result<Vec<CalendarSyncTarget>> {
+        self.with_calendar_connection(|connection| {
+            let mut statement = connection.prepare(
+                "SELECT c.id, c.source_id, c.provider_id, c.name, c.description, c.color,
+                        c.timezone, c.access_role, c.writable, c.visible, c.is_default,
+                        c.sort_order, c.remote_url, s.cursor
+                 FROM calendar_calendars c
+                 LEFT JOIN calendar_sync_state s ON s.calendar_id=c.id
+                 WHERE c.source_id=?1 AND c.deleted=0 ORDER BY c.sort_order, c.id",
+            )?;
+            let targets = statement
+                .query_map([source_id], |row| {
+                    Ok(CalendarSyncTarget {
+                        calendar: Calendar {
+                            id: row.get(0)?,
+                            source_id: row.get(1)?,
+                            provider_id: row.get(2)?,
+                            name: row.get(3)?,
+                            description: row.get(4)?,
+                            color: row.get(5)?,
+                            timezone: row.get(6)?,
+                            access_role: CalendarAccessRole::parse(&row.get::<_, String>(7)?),
+                            writable: row.get::<_, i64>(8)? != 0,
+                            visible: row.get::<_, i64>(9)? != 0,
+                            is_default: row.get::<_, i64>(10)? != 0,
+                            sort_order: row.get(11)?,
+                        },
+                        remote_url: row.get(12)?,
+                        cursor: row.get(13)?,
+                    })
+                })?
+                .collect();
+            targets
+        })
+    }
+
+    pub fn due_calendar_operations(
+        &self,
+        source_id: &str,
+        now: i64,
+    ) -> rusqlite::Result<Vec<CalendarOperation>> {
+        self.with_calendar_connection(|connection| {
+            let mut statement = connection.prepare(
+                "SELECT id, source_id, calendar_id, event_id, kind, local_revision,
+                        expected_provider_version, attempts, next_retry_at, last_error
+                 FROM calendar_operations
+                 WHERE source_id=?1 AND next_retry_at<=?2
+                 ORDER BY created_at, rowid LIMIT 100",
+            )?;
+            let operations = statement
+                .query_map(params![source_id, now], |row| {
+                    Ok(CalendarOperation {
+                        id: row.get(0)?,
+                        source_id: row.get(1)?,
+                        calendar_id: row.get(2)?,
+                        event_id: row.get(3)?,
+                        kind: OperationKind::parse(&row.get::<_, String>(4)?),
+                        revision: row.get(5)?,
+                        expected_provider_version: row.get(6)?,
+                        attempts: row.get(7)?,
+                        next_retry_at: row.get(8)?,
+                        last_error: row.get(9)?,
+                    })
+                })?
+                .collect();
+            operations
+        })
+    }
+
+    pub fn complete_calendar_operation(
+        &self,
+        operation: &CalendarOperation,
+        outcome: &PushOutcome,
+    ) -> rusqlite::Result<()> {
+        self.with_calendar_transaction(|tx| {
+            tx.execute(
+                "UPDATE calendar_events SET provider_id=COALESCE(?2, provider_id),
+                 resource_url=COALESCE(?2, resource_url),
+                 provider_version=COALESCE(?3, provider_version), sync_state='synced',
+                 updated_at=?4 WHERE id=?1 AND local_revision=?5",
+                params![
+                    operation.event_id,
+                    outcome.href,
+                    outcome.provider_version,
+                    Utc::now().timestamp(),
+                    operation.revision,
+                ],
+            )?;
+            tx.execute(
+                "DELETE FROM calendar_operations WHERE id=?1",
+                [&operation.id],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn retry_calendar_operation(
+        &self,
+        operation_id: &str,
+        error_code: &str,
+        retry_at: i64,
+    ) -> rusqlite::Result<()> {
+        self.with_calendar_connection(|connection| {
+            connection.execute(
+                "UPDATE calendar_operations SET attempts=attempts+1,
+                 next_retry_at=?2, last_error=?3 WHERE id=?1",
+                params![operation_id, retry_at, error_code],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn commit_calendar_sync_batch(
+        &self,
+        calendar_id: &str,
+        batch: &SyncBatch,
+    ) -> rusqlite::Result<()> {
+        self.with_calendar_transaction(|tx| {
+            let now = Utc::now().timestamp();
+            for change in &batch.changes {
+                match change {
+                    RemoteChange::Upsert { href, etag, event } => {
+                        let existing_id = tx
+                            .query_row(
+                                "SELECT id FROM calendar_events
+                                 WHERE calendar_id=?1 AND
+                                   (provider_id=?2 OR resource_url=?3 OR
+                                    (uid=?4 AND IFNULL(recurrence_id, '')=IFNULL(?5, '')))
+                                 LIMIT 1",
+                                params![
+                                    calendar_id,
+                                    event.provider_id,
+                                    href,
+                                    event.uid,
+                                    event.recurrence_id,
+                                ],
+                                |row| row.get::<_, String>(0),
+                            )
+                            .optional()?;
+                        if let Some(existing_id) = existing_id {
+                            let local = read_event(tx, &existing_id)?
+                                .ok_or_else(|| invalid("calendar event disappeared during sync"))?;
+                            if matches!(local.sync_state, EventSyncState::Pending | EventSyncState::Conflict) {
+                                let mut remote = event.clone();
+                                remote.id = existing_id.clone();
+                                remote.calendar_id = calendar_id.to_string();
+                                tx.execute(
+                                    "INSERT INTO calendar_conflicts
+                                     (event_id, local_json, remote_json, provider_version, created_at)
+                                     VALUES (?1, ?2, ?3, ?4, ?5)
+                                     ON CONFLICT(event_id) DO UPDATE SET
+                                       local_json=excluded.local_json,
+                                       remote_json=excluded.remote_json,
+                                       provider_version=excluded.provider_version,
+                                       created_at=excluded.created_at",
+                                    params![
+                                        existing_id,
+                                        encode(&local)?,
+                                        encode(&remote)?,
+                                        etag.as_ref().or(event.provider_version.as_ref()),
+                                        now,
+                                    ],
+                                )?;
+                                tx.execute(
+                                    "UPDATE calendar_events SET sync_state='conflict', updated_at=?2
+                                     WHERE id=?1",
+                                    params![existing_id, now],
+                                )?;
+                                continue;
+                            }
+                            write_remote_event(tx, &existing_id, calendar_id, href, etag, event, now)?;
+                        } else {
+                            let id = format!("event:{}", Uuid::new_v4());
+                            write_remote_event(tx, &id, calendar_id, href, etag, event, now)?;
+                        }
+                    }
+                    RemoteChange::Delete { href } => {
+                        let existing_id = tx
+                            .query_row(
+                                "SELECT id FROM calendar_events WHERE calendar_id=?1 AND
+                                 (provider_id=?2 OR resource_url=?2) LIMIT 1",
+                                params![calendar_id, href],
+                                |row| row.get::<_, String>(0),
+                            )
+                            .optional()?;
+                        if let Some(existing_id) = existing_id {
+                            let local = read_event(tx, &existing_id)?
+                                .ok_or_else(|| invalid("calendar event disappeared during sync"))?;
+                            if local.sync_state == EventSyncState::Pending {
+                                let mut remote = local.clone();
+                                remote.deleted = true;
+                                remote.sync_state = EventSyncState::Synced;
+                                tx.execute(
+                                    "INSERT INTO calendar_conflicts
+                                     (event_id, local_json, remote_json, provider_version, created_at)
+                                     VALUES (?1, ?2, ?3, NULL, ?4)
+                                     ON CONFLICT(event_id) DO UPDATE SET
+                                       local_json=excluded.local_json,
+                                       remote_json=excluded.remote_json,
+                                       provider_version=NULL,
+                                       created_at=excluded.created_at",
+                                    params![existing_id, encode(&local)?, encode(&remote)?, now],
+                                )?;
+                                tx.execute(
+                                    "UPDATE calendar_events SET sync_state='conflict', updated_at=?2
+                                     WHERE id=?1",
+                                    params![existing_id, now],
+                                )?;
+                            } else {
+                                tx.execute(
+                                    "UPDATE calendar_events SET deleted=1, sync_state='synced',
+                                     updated_at=?2 WHERE id=?1",
+                                    params![existing_id, now],
+                                )?;
+                            }
+                        }
+                    }
+                }
+            }
+            tx.execute(
+                "INSERT INTO calendar_sync_state (calendar_id, cursor, updated_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(calendar_id) DO UPDATE SET
+                   cursor=excluded.cursor, updated_at=excluded.updated_at",
+                params![calendar_id, batch.next_cursor, now],
+            )?;
+            let source_id: String = tx.query_row(
+                "SELECT source_id FROM calendar_calendars WHERE id=?1",
+                [calendar_id],
+                |row| row.get(0),
+            )?;
+            tx.execute(
+                "UPDATE calendar_sources SET last_attempt_at=?2, last_sync_at=?2,
+                 sync_error=NULL, retry_at=NULL, auth_state='ready', updated_at=?2
+                 WHERE id=?1",
+                params![source_id, now],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn record_calendar_sync_error(
+        &self,
+        source_id: &str,
+        error_code: &str,
+        auth_required: bool,
+        retry_at: Option<i64>,
+    ) -> rusqlite::Result<()> {
+        self.with_calendar_connection(|connection| {
+            let now = Utc::now().timestamp();
+            connection.execute(
+                "UPDATE calendar_sources SET last_attempt_at=?2, sync_error=?3,
+                 retry_at=?4, auth_state=?5, updated_at=?2 WHERE id=?1",
+                params![
+                    source_id,
+                    now,
+                    error_code,
+                    retry_at,
+                    if auth_required {
+                        "reauthorizationRequired"
+                    } else {
+                        "error"
+                    },
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn calendar_conflicts(&self) -> rusqlite::Result<Vec<CalendarConflict>> {
+        self.with_calendar_connection(|connection| {
+            let mut statement = connection.prepare(
+                "SELECT event_id, local_json, remote_json, provider_version, created_at
+                 FROM calendar_conflicts ORDER BY created_at, event_id",
+            )?;
+            let conflicts = statement
+                .query_map([], |row| {
+                    let local_json: String = row.get(1)?;
+                    let remote_json: String = row.get(2)?;
+                    Ok(CalendarConflict {
+                        event_id: row.get(0)?,
+                        local: serde_json::from_str(&local_json).map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                local_json.len(),
+                                rusqlite::types::Type::Text,
+                                Box::new(error),
+                            )
+                        })?,
+                        remote: serde_json::from_str(&remote_json).map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                remote_json.len(),
+                                rusqlite::types::Type::Text,
+                                Box::new(error),
+                            )
+                        })?,
+                        provider_version: row.get(3)?,
+                        created_at: row.get(4)?,
+                    })
+                })?
+                .collect();
+            conflicts
+        })
+    }
+
+    pub fn resolve_calendar_conflict(
+        &self,
+        event_id: &str,
+        resolution: ConflictResolution,
+    ) -> rusqlite::Result<Vec<CalendarEvent>> {
+        self.with_calendar_transaction(|tx| {
+            let (local_json, remote_json, provider_version): (String, String, Option<String>) = tx
+                .query_row(
+                    "SELECT local_json, remote_json, provider_version
+                     FROM calendar_conflicts WHERE event_id=?1",
+                    [event_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )?;
+            let local: CalendarEvent = serde_json::from_str(&local_json)
+                .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+            let remote: CalendarEvent = serde_json::from_str(&remote_json)
+                .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+            tx.execute(
+                "DELETE FROM calendar_operations WHERE event_id=?1",
+                [event_id],
+            )?;
+            let now = Utc::now().timestamp();
+            let mut resolved = Vec::new();
+            match resolution {
+                ConflictResolution::KeepLocal => {
+                    tx.execute(
+                        "UPDATE calendar_events SET provider_version=?2, sync_state='pending',
+                         updated_at=?3 WHERE id=?1",
+                        params![event_id, provider_version, now],
+                    )?;
+                    let event = read_event(tx, event_id)?
+                        .ok_or_else(|| invalid("conflicted event was not found"))?;
+                    let source_id: String = tx.query_row(
+                        "SELECT source_id FROM calendar_calendars WHERE id=?1",
+                        [&event.calendar_id],
+                        |row| row.get(0),
+                    )?;
+                    queue_operation(tx, &source_id, &event, OperationKind::Update)?;
+                    resolved.push(event);
+                }
+                ConflictResolution::UseRemote | ConflictResolution::Duplicate => {
+                    let href = remote.provider_id.as_deref().unwrap_or(remote.uid.as_str());
+                    write_remote_event(
+                        tx,
+                        event_id,
+                        &remote.calendar_id,
+                        href,
+                        &provider_version,
+                        &remote,
+                        now,
+                    )?;
+                    resolved.push(
+                        read_event(tx, event_id)?
+                            .ok_or_else(|| invalid("remote event was not restored"))?,
+                    );
+                    if resolution == ConflictResolution::Duplicate {
+                        let duplicate = EventMutation::from(&local);
+                        let (source_id, duplicate) =
+                            insert_event(tx, &duplicate, None, None, None)?;
+                        queue_operation(tx, &source_id, &duplicate, OperationKind::Create)?;
+                        resolved.push(duplicate);
+                    }
+                }
+            }
+            tx.execute(
+                "DELETE FROM calendar_conflicts WHERE event_id=?1",
+                [event_id],
+            )?;
+            Ok(resolved)
+        })
+    }
+
+    pub fn calendar_sync_health(&self, source_id: &str) -> rusqlite::Result<CalendarSyncHealth> {
+        self.with_calendar_connection(|connection| {
+            connection.query_row(
+                "SELECT s.id,
+                        (SELECT COUNT(*) FROM calendar_operations o WHERE o.source_id=s.id),
+                        (SELECT COUNT(*) FROM calendar_conflicts f
+                         JOIN calendar_events e ON e.id=f.event_id
+                         JOIN calendar_calendars c ON c.id=e.calendar_id
+                         WHERE c.source_id=s.id),
+                        s.last_sync_at, s.sync_error, s.retry_at
+                 FROM calendar_sources s WHERE s.id=?1",
+                [source_id],
+                |row| {
+                    Ok(CalendarSyncHealth {
+                        source_id: row.get(0)?,
+                        pending_count: row.get(1)?,
+                        conflict_count: row.get(2)?,
+                        last_sync_at: row.get(3)?,
+                        error_code: row.get(4)?,
+                        retry_at: row.get(5)?,
                     })
                 },
             )

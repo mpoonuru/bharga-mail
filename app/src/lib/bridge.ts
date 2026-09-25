@@ -6,8 +6,11 @@ import type {
   Account,
   AiProfile,
   Calendar,
+  CalendarConflict,
   CalendarEvent,
   CalendarSource,
+  CalendarSyncHealth,
+  ConflictResolution,
   CreateLocalCalendarInput,
   EventMutation,
   EventRange,
@@ -400,6 +403,21 @@ export const api = {
       return invoke<CalendarSource>("connect_microsoft_calendar");
     },
 
+    async listConflicts(): Promise<CalendarConflict[]> {
+      if (!inTauri) return [];
+      return invoke<CalendarConflict[]>("list_calendar_conflicts");
+    },
+
+    async listSyncHealth(): Promise<CalendarSyncHealth[]> {
+      if (!inTauri) return [];
+      return invoke<CalendarSyncHealth[]>("list_calendar_sync_health");
+    },
+
+    async resolveConflict(eventId: string, resolution: ConflictResolution): Promise<CalendarEvent[]> {
+      if (!inTauri) throw new Error("Conflict resolution requires the desktop app");
+      return invoke<CalendarEvent[]>("resolve_calendar_conflict", { eventId, resolution });
+    },
+
     async deleteEvent(eventId: string): Promise<CalendarEvent> {
       if (inTauri) return invoke<CalendarEvent>("delete_calendar_event", { eventId });
       const existing = previewCalendarEvents.find((candidate) => candidate.id === eventId);
@@ -448,9 +466,9 @@ export const api = {
         calendar.id === calendarId ? { ...calendar, visible } : calendar);
     },
 
-    async syncSource(sourceId: string): Promise<void> {
+    async syncSource(sourceId: string): Promise<CalendarSyncHealth | void> {
       if (inTauri) {
-        await invoke<void>("sync_calendar_source", { sourceId });
+        return invoke<CalendarSyncHealth>("sync_calendar_source", { sourceId });
       }
     },
   },

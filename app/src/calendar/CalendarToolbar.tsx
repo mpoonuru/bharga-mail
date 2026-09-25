@@ -44,6 +44,10 @@ interface CalendarToolbarProps {
   onCreate(): void;
   onImport?(): void;
   onExport?(): void;
+  pendingCount?: number;
+  conflictCount?: number;
+  hasSyncError?: boolean;
+  onOpenConflicts?(): void;
 }
 
 export function CalendarToolbar({
@@ -57,6 +61,10 @@ export function CalendarToolbar({
   onCreate,
   onImport,
   onExport,
+  pendingCount = 0,
+  conflictCount = 0,
+  hasSyncError = false,
+  onOpenConflicts,
 }: CalendarToolbarProps) {
   return (
     <header className="calendar-toolbar">
@@ -94,6 +102,18 @@ export function CalendarToolbar({
           {onImport && <button type="button" className="calendar-button calendar-button-quiet" onClick={onImport}>Import .ics</button>}
           {onExport && <button type="button" className="calendar-button calendar-button-quiet" onClick={onExport}>Export .ics</button>}
         </div>
+      )}
+      {(pendingCount > 0 || conflictCount > 0 || hasSyncError) && (
+        <button
+          type="button"
+          className="calendar-sync-summary"
+          onClick={conflictCount > 0 ? onOpenConflicts : undefined}
+          aria-label={conflictCount > 0 ? `Resolve ${conflictCount} calendar conflicts` : undefined}
+        >
+          {conflictCount > 0 ? `${conflictCount} conflict${conflictCount === 1 ? "" : "s"}`
+            : hasSyncError ? "Sync needs attention"
+              : `${pendingCount} pending`}
+        </button>
       )}
     </header>
   );

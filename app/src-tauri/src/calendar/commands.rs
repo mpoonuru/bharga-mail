@@ -6,14 +6,15 @@ use std::path::Path;
 
 use chrono::{DateTime, Duration, SecondsFormat, Timelike, Utc};
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use super::connectors::caldav::{CalDavConnector, Credentials};
 use super::connectors::{CalendarConnector, ConnectorError, RemoteCalendar};
 use super::domain::{
-    Calendar, CalendarEvent, CalendarSource, EventMoment, EventMutation, EventRange, EventStatus,
-    ParticipationStatus, RecurrenceEditScope, SeriesSplit,
+    Calendar, CalendarConflict, CalendarEvent, CalendarSource, CalendarSyncHealth,
+    ConflictResolution, EventMoment, EventMutation, EventRange, EventStatus, ParticipationStatus,
+    RecurrenceEditScope, SeriesSplit,
 };
 use super::ical::{
     build_itip, parse_calendar, write_calendar, ExportOptions, ItipActor, ItipMethod, Limits,
@@ -981,6 +982,66 @@ pub async fn connect_microsoft_calendar(
                 true,
             )
         })
+}
+
+#[tauri::command]
+pub async fn sync_calendar_source(
+    source_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CalendarSyncHealth, CalendarCommandError> {
+    let outcome = state.calendar_sync.sync_source(&source_id).await;
+    if let Ok(health) = state.store.calendar_sync_health(&source_id) {
+        let _ = app.emit("calendar:health", &health);
+    }
+    match outcome {
+        Ok(result) => {
+            let _ = app.emit(
+                "calendar:changed",
+                serde_json::json!({ "sourceId": source_id }),
+            );
+            Ok(result)
+        }
+        Err(failure) => Err(connector_error(failure)),
+    }
+}
+
+#[tauri::command]
+pub fn list_calendar_conflicts(
+    state: State<'_, AppState>,
+) -> Result<Vec<CalendarConflict>, CalendarCommandError> {
+    state.store.calendar_conflicts().map_err(store_error)
+}
+
+#[tauri::command]
+pub fn list_calendar_sync_health(
+    state: State<'_, AppState>,
+) -> Result<Vec<CalendarSyncHealth>, CalendarCommandError> {
+    state
+        .store
+        .calendar_sources()
+        .map_err(store_error)?
+        .into_iter()
+        .map(|source| state.store.calendar_sync_health(&source.id).map_err(store_error))
+        .collect()
+}
+
+#[tauri::command]
+pub fn resolve_calendar_conflict(
+    event_id: String,
+    resolution: ConflictResolution,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<CalendarEvent>, CalendarCommandError> {
+    let events = state
+        .store
+        .resolve_calendar_conflict(&event_id, resolution)
+        .map_err(store_error)?;
+    let _ = app.emit(
+        "calendar:changed",
+        serde_json::json!({ "eventId": event_id }),
+    );
+    Ok(events)
 }
 
 #[cfg(test)]

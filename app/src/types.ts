@@ -204,6 +204,25 @@ export interface CalendarEvent {
   deleted: boolean;
 }
 
+export interface CalendarConflict {
+  eventId: string;
+  local: CalendarEvent;
+  remote: CalendarEvent;
+  providerVersion: string | null;
+  createdAt: number;
+}
+
+export type ConflictResolution = "keepLocal" | "useRemote" | "duplicate";
+
+export interface CalendarSyncHealth {
+  sourceId: string;
+  pendingCount: number;
+  conflictCount: number;
+  lastSyncAt: number | null;
+  errorCode: string | null;
+  retryAt: number | null;
+}
+
 export interface EventRange {
   start: string;
   end: string;

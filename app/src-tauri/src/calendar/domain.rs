@@ -449,3 +449,32 @@ pub struct CalendarOperation {
     pub next_retry_at: i64,
     pub last_error: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarConflict {
+    pub event_id: String,
+    pub local: CalendarEvent,
+    pub remote: CalendarEvent,
+    pub provider_version: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ConflictResolution {
+    KeepLocal,
+    UseRemote,
+    Duplicate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarSyncHealth {
+    pub source_id: String,
+    pub pending_count: i64,
+    pub conflict_count: i64,
+    pub last_sync_at: Option<i64>,
+    pub error_code: Option<String>,
+    pub retry_at: Option<i64>,
+}

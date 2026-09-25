@@ -5,6 +5,7 @@ import relativeTime from "dayjs/plugin/relativeTime";
 import { useRef, useState } from "react";
 
 import type { Calendar, CalendarSource } from "@/calendar/types";
+import type { CalendarSyncHealth } from "@/types";
 import { SourceDialog } from "@/calendar/SourceDialog";
 
 dayjs.extend(relativeTime);
@@ -17,11 +18,14 @@ interface CalendarSidebarProps {
   onVisibility(calendarId: string, visible: boolean): void;
   onSync(sourceId: string): void;
   onSourceAdded?(): void;
+  health?: Record<string, CalendarSyncHealth>;
 }
 
-function sourceStatus(source: CalendarSource): { label: string; tone: string } {
+function sourceStatus(source: CalendarSource, health?: CalendarSyncHealth): { label: string; tone: string } {
   if (source.authState === "reauthorizationRequired") return { label: "Reconnect", tone: "warning" };
+  if (health?.conflictCount) return { label: `${health.conflictCount} conflict${health.conflictCount === 1 ? "" : "s"}`, tone: "danger" };
   if (source.syncError) return { label: "Needs attention", tone: "danger" };
+  if (health?.pendingCount) return { label: `${health.pendingCount} change${health.pendingCount === 1 ? "" : "s"} pending`, tone: "warning" };
   if (source.lastSyncAt) return { label: `Updated ${dayjs.unix(source.lastSyncAt).fromNow()}`, tone: "healthy" };
   return { label: source.provider === "local" ? "On this device" : "Ready to sync", tone: "neutral" };
 }
@@ -34,6 +38,7 @@ export function CalendarSidebar({
   onVisibility,
   onSync,
   onSourceAdded,
+  health,
 }: CalendarSidebarProps) {
   const [sourceOpen, setSourceOpen] = useState(false);
   const addButtonRef = useRef<HTMLButtonElement>(null);
@@ -63,7 +68,7 @@ export function CalendarSidebar({
       </div>
       <div className="calendar-source-list">
         {sources.map((source) => {
-          const status = sourceStatus(source);
+          const status = sourceStatus(source, health?.[source.id]);
           return (
             <div className="calendar-source" key={source.id}>
               <span className={`calendar-health ${status.tone}`} aria-hidden="true" />

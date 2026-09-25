@@ -10,3 +10,4 @@ pub mod domain;
 pub mod ical;
 pub mod recurrence;
 pub mod store;
+pub mod sync;
