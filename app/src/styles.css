@@ -190,28 +190,21 @@
   .account-order-instructions { @apply px-2 pb-1 text-[11px] leading-[1.4] text-text-2; }
   /* Folder list nested under an account, with a tree connector line. */
   .folder-disclosure {
-    display: grid;
-    grid-template-rows: 0fr;
+    height: 0;
     min-width: 0;
     opacity: 0;
+    overflow: hidden;
     transition:
-      grid-template-rows var(--motion-disclosure) var(--account-disclosure-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
-      opacity var(--motion-standard) var(--account-disclosure-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+      height var(--measured-disclosure-duration, var(--motion-disclosure)) var(--measured-disclosure-ease, var(--ease)),
+      opacity var(--motion-standard) var(--measured-disclosure-ease, var(--ease));
   }
   .folder-disclosure.expanded {
-    grid-template-rows: 1fr;
     opacity: 1;
   }
   .folder-disclosure-clip {
     min-height: 0;
-    overflow: hidden;
   }
-  .folder-disclosure.expanded .folder-disclosure-clip {
-    animation: account-disclosure-overflow var(--account-disclosure-duration, 160ms) step-end forwards;
-  }
-  @keyframes account-disclosure-overflow {
-    to { overflow: visible; }
-  }
+  .folder-disclosure.expanded.settled { overflow: visible; }
   .folder-tree { @apply ml-[15px] pl-2.5 flex flex-col gap-[1px] mt-0.5 mb-1.5; border-left: 1px solid var(--border-2); }
   .folder-row { @apply relative flex items-center; }
   .folder-row .folder-item { @apply flex-1 min-w-0; }

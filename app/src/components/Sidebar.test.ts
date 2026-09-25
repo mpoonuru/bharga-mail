@@ -6,7 +6,6 @@ import {
   ACCOUNT_DISCLOSURE_MOTION,
   ACCOUNT_REORDER_MOTION,
   Sidebar,
-  accountDisclosureState,
   accountReorderLayout,
   activateAccountReorder,
 } from "@/components/Sidebar";
@@ -15,18 +14,40 @@ import { useApp } from "@/store";
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("mail account disclosure motion", () => {
-  it("uses a restrained CSS-grid timing contract", () => {
+  it("routes account folders through the measured disclosure behavior", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    useApp.setState({
+      accounts: [{ id: "a1", email: "one@example.test", provider: "imap", displayName: "One" }],
+      accountOrder: [],
+      selectedAccountId: null,
+      selectedFolder: null,
+      folders: [{ name: "INBOX", role: "inbox", unread: 0, total: 0 }],
+      threads: [],
+    });
+
+    act(() => root.render(createElement(Sidebar)));
+    const disclosure = container.querySelector<HTMLElement>('[aria-label="One folders"]');
+    expect(disclosure?.getAttribute("aria-hidden")).toBe("true");
+    expect(disclosure?.hasAttribute("inert")).toBe(true);
+
+    const accountButton = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.includes("One"));
+    if (!accountButton) throw new Error("Account button not found");
+    act(() => accountButton.click());
+
+    expect(disclosure?.getAttribute("aria-hidden")).toBe("false");
+    expect(disclosure?.hasAttribute("inert")).toBe(false);
+    act(() => root.unmount());
+  });
+
+  it("uses the shared restrained disclosure timing", () => {
     expect(ACCOUNT_DISCLOSURE_MOTION).toEqual({
       durationMs: 160,
       caretDurationMs: 160,
       easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
     });
     expect(ACCOUNT_DISCLOSURE_MOTION).not.toHaveProperty("type");
-  });
-
-  it("keeps hidden and inert semantics synchronized with expansion", () => {
-    expect(accountDisclosureState(false)).toEqual({ ariaHidden: true, inert: true });
-    expect(accountDisclosureState(true)).toEqual({ ariaHidden: false, inert: false });
   });
 
   it("shows reorder controls only in explicit edit-order mode", () => {

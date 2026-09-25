@@ -9,6 +9,7 @@ import { accountColor } from "@/lib/colors";
 import { titlebarDoubleClick } from "@/lib/bridge";
 import { MOTION, MOTION_EASE } from "@/lib/motion";
 import { AccountRemovalDialog } from "@/components/settings/AccountRemovalDialog";
+import { MeasuredDisclosure } from "@/components/ui/MeasuredDisclosure";
 import { Modal } from "@/components/ui/Modal";
 
 const NAV: { id: View; icon: IconName; label: string }[] = [
@@ -60,14 +61,9 @@ export function activateAccountReorder(commitActivation: () => void, startDrag: 
   startDrag();
 }
 
-export function accountDisclosureState(expanded: boolean) {
-  return { ariaHidden: !expanded, inert: !expanded } as const;
-}
-
 type DisclosureStyle = CSSProperties & Record<`--${string}`, string>;
 
-const ACCOUNT_DISCLOSURE_STYLE: DisclosureStyle = {
-  "--account-disclosure-duration": `${ACCOUNT_DISCLOSURE_MOTION.durationMs}ms`,
+const ACCOUNT_ROW_MOTION_STYLE: DisclosureStyle = {
   "--account-caret-duration": `${ACCOUNT_DISCLOSURE_MOTION.caretDurationMs}ms`,
   "--account-disclosure-ease": ACCOUNT_DISCLOSURE_MOTION.easing,
 };
@@ -144,7 +140,7 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
       transition={reordering ? { layout: ACCOUNT_REORDER_MOTION.transition } : undefined}
       onDragEnd={() => setReordering(false)}
       className="acct-reorder"
-      style={ACCOUNT_DISCLOSURE_STYLE}
+      style={ACCOUNT_ROW_MOTION_STYLE}
     >
       <div className="acct-row">
         {orderEditing && (
@@ -211,13 +207,15 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
           </>
         )}
       </div>
-      <div
-        className={`folder-disclosure${isFocused ? " expanded" : ""}`}
-        aria-hidden={accountDisclosureState(isFocused).ariaHidden}
-        inert={accountDisclosureState(isFocused).inert}
+      <MeasuredDisclosure
+        open={isFocused}
+        ariaLabel={`${a.displayName?.trim() || a.email} folders`}
+        className="folder-disclosure"
+        contentClassName="folder-disclosure-clip"
+        durationMs={ACCOUNT_DISCLOSURE_MOTION.durationMs}
+        easing={ACCOUNT_DISCLOSURE_MOTION.easing}
       >
-        <div className="folder-disclosure-clip">
-          <div className="folder-tree">
+        <div className="folder-tree">
           {(folders.length ? folders : [{ name: "INBOX", role: "inbox", unread: 0, total: 0 }]).map((f) => {
             const pinned = pinnedFolders.includes(pinKey(a.id, f.name));
             // Every IMAP folder gets a full options menu (Open / Sync / Mark all
@@ -309,9 +307,8 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
               onBlur={() => { setNewName(null); setNewParent(null); }} />
           ))}
           {folderErr && <div className="folder-err" title={folderErr}>{folderErr}</div>}
-          </div>
         </div>
-      </div>
+      </MeasuredDisclosure>
       {removeOpen && (
         <AccountRemovalDialog
           account={a}
