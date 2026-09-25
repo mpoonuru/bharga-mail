@@ -52,6 +52,13 @@ mailparse = "0.16"
 # text/plain part — handles malformed Outlook/Word markup, <style>/<script>,
 # MSO conditional comments, and entity decoding correctly.
 html2text = "0.12"
+# Calendar domain and interoperability. Versions are pinned to preserve the
+# project's Rust 1.77 minimum while the calendar core is introduced.
+icalendar = { version = "=0.17.6", features = ["parser", "chrono-tz"] }
+rrule = { version = "=0.14.0", features = ["serde"] }
+chrono-tz = "=0.10.4"
+quick-xml = { version = "=0.39.4", features = ["serialize"] }
+uuid = { version = "=1.11.0", features = ["v4", "serde"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

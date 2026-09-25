@@ -5,13 +5,60 @@
 //! semantic search are a Phase 1 add (sqlite-vec). The DB is opened once and
 //! lives in app data; credential rows are encrypted under a Keychain-held key.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 pub mod seed;
+
+const CALENDAR_SCHEMA_VERSION: i64 = 14;
+
+/// Create a consistent, verified SQLite snapshot before a schema upgrade.
+///
+/// `VACUUM INTO` includes committed WAL content, unlike a plain filesystem copy.
+/// The returned file is intentionally retained for operator recovery.
+pub fn backup_before_migration(
+    path: &Path,
+    from: i64,
+    to: i64,
+) -> rusqlite::Result<Option<PathBuf>> {
+    if from <= 0 || from >= to || !path.exists() {
+        return Ok(None);
+    }
+
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| {
+            rusqlite::Error::InvalidParameterName("database path has no filename".into())
+        })?;
+    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%3fZ");
+    let backup_path = path.with_file_name(format!("{file_name}.schema-{from}-to-{to}-{stamp}.db"));
+    let backup_text = backup_path
+        .to_str()
+        .ok_or_else(|| rusqlite::Error::InvalidParameterName("backup path is not UTF-8".into()))?;
+
+    let source = Connection::open(path)?;
+    source.execute("VACUUM INTO ?1", [backup_text])?;
+    drop(source);
+
+    let backup = Connection::open(&backup_path)?;
+    let backup_version: i64 = backup.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let integrity: String = backup.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+    drop(backup);
+    if backup_version != from || integrity != "ok" {
+        let _ = std::fs::remove_file(&backup_path);
+        return Err(rusqlite::Error::InvalidParameterName(
+            "calendar migration backup verification failed".into(),
+        ));
+    }
+    std::fs::File::open(&backup_path)
+        .and_then(|file| file.sync_all())
+        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+    Ok(Some(backup_path))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Party {
@@ -248,8 +295,17 @@ pub struct Store {
 impl Store {
     /// Open (or create) the DB at the given path and run migrations.
     pub fn open(path: PathBuf) -> rusqlite::Result<Self> {
+        let previous_version = if path.exists() {
+            let connection = Connection::open(&path)?;
+            connection.query_row("PRAGMA user_version", [], |row| row.get(0))?
+        } else {
+            0
+        };
+        backup_before_migration(&path, previous_version, CALENDAR_SCHEMA_VERSION)?;
         let conn = Connection::open(path)?;
-        let store = Store { conn: Mutex::new(conn) };
+        let store = Store {
+            conn: Mutex::new(conn),
+        };
         store.migrate()?;
         store.seed_if_empty();
         Ok(store)
@@ -293,6 +349,7 @@ impl Store {
             (11, migrate_v11_thread_flags),
             (12, migrate_v12_backfill_inline_attachments),
             (13, migrate_v13_rededup_inline_attachments),
+            (14, migrate_v14_calendar),
         ];
         let mut version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         for (v, step) in steps {
@@ -305,6 +362,43 @@ impl Store {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn with_calendar_connection<T>(
+        &self,
+        operation: impl FnOnce(&Connection) -> rusqlite::Result<T>,
+    ) -> rusqlite::Result<T> {
+        let connection = self.conn.lock().unwrap();
+        operation(&connection)
+    }
+
+    pub(crate) fn with_calendar_transaction<T>(
+        &self,
+        operation: impl FnOnce(&rusqlite::Transaction<'_>) -> rusqlite::Result<T>,
+    ) -> rusqlite::Result<T> {
+        let mut connection = self.conn.lock().unwrap();
+        let transaction = connection.transaction()?;
+        let result = operation(&transaction)?;
+        transaction.commit()?;
+        Ok(result)
+    }
+
+    #[cfg(test)]
+    fn schema_version(&self) -> rusqlite::Result<i64> {
+        self.with_calendar_connection(|connection| {
+            connection.query_row("PRAGMA user_version", [], |row| row.get(0))
+        })
+    }
+
+    #[cfg(test)]
+    fn table_exists(&self, table: &str) -> rusqlite::Result<bool> {
+        self.with_calendar_connection(|connection| {
+            connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+                [table],
+                |row| row.get(0),
+            )
+        })
     }
 
     fn seed_if_empty(&self) {
@@ -1616,6 +1710,162 @@ fn migrate_v13_rededup_inline_attachments(tx: &rusqlite::Transaction) -> rusqlit
     Ok(())
 }
 
+/// v14 — canonical local-first calendar storage. Provider state is separate from
+/// mail accounts so calendar authorization can be revoked without breaking mail.
+fn migrate_v14_calendar(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "CREATE TABLE calendar_sources (
+            id TEXT PRIMARY KEY,
+            linked_account_id TEXT,
+            provider TEXT NOT NULL,
+            label TEXT NOT NULL,
+            address TEXT,
+            credential_ref TEXT,
+            auth_state TEXT NOT NULL DEFAULT 'ready',
+            capabilities TEXT NOT NULL DEFAULT '[]',
+            last_attempt_at INTEGER,
+            last_sync_at INTEGER,
+            sync_error TEXT,
+            retry_at INTEGER,
+            disabled INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE calendar_calendars (
+            id TEXT PRIMARY KEY,
+            source_id TEXT NOT NULL REFERENCES calendar_sources(id) ON DELETE CASCADE,
+            provider_id TEXT,
+            remote_url TEXT,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            color TEXT NOT NULL,
+            timezone TEXT NOT NULL,
+            access_role TEXT NOT NULL DEFAULT 'owner',
+            writable INTEGER NOT NULL DEFAULT 1,
+            visible INTEGER NOT NULL DEFAULT 1,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            etag TEXT,
+            ctag TEXT,
+            sync_token TEXT,
+            deleted INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE calendar_events (
+            id TEXT PRIMARY KEY,
+            calendar_id TEXT NOT NULL REFERENCES calendar_calendars(id) ON DELETE CASCADE,
+            uid TEXT NOT NULL,
+            provider_id TEXT,
+            resource_url TEXT,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            location TEXT NOT NULL DEFAULT '',
+            conference_url TEXT,
+            source_thread_id TEXT,
+            start_kind TEXT NOT NULL,
+            start_value TEXT NOT NULL,
+            end_kind TEXT NOT NULL,
+            end_value TEXT NOT NULL,
+            timezone TEXT NOT NULL,
+            recurrence_json TEXT,
+            recurrence_id TEXT,
+            parent_event_id TEXT REFERENCES calendar_events(id) ON DELETE CASCADE,
+            status TEXT NOT NULL DEFAULT 'confirmed',
+            transparency TEXT NOT NULL DEFAULT 'busy',
+            visibility TEXT NOT NULL DEFAULT 'default',
+            organizer_json TEXT,
+            sequence INTEGER NOT NULL DEFAULT 0,
+            dtstamp TEXT,
+            provider_version TEXT,
+            local_revision INTEGER NOT NULL DEFAULT 1,
+            sync_state TEXT NOT NULL DEFAULT 'pending',
+            provider_json TEXT,
+            preserved_ical_json TEXT,
+            deleted INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE calendar_event_attendees (
+            event_id TEXT NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+            email TEXT NOT NULL,
+            name TEXT,
+            role TEXT NOT NULL,
+            status TEXT NOT NULL,
+            rsvp INTEGER NOT NULL DEFAULT 0,
+            comment TEXT,
+            PRIMARY KEY(event_id, email)
+        );
+
+        CREATE TABLE calendar_event_reminders (
+            id TEXT PRIMARY KEY,
+            event_id TEXT NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+            method TEXT NOT NULL,
+            minutes_before INTEGER NOT NULL,
+            delivered_at INTEGER
+        );
+
+        CREATE TABLE calendar_event_exceptions (
+            series_event_id TEXT NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+            recurrence_id TEXT NOT NULL,
+            event_id TEXT REFERENCES calendar_events(id) ON DELETE CASCADE,
+            cancelled INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(series_event_id, recurrence_id)
+        );
+
+        CREATE TABLE calendar_sync_state (
+            calendar_id TEXT PRIMARY KEY REFERENCES calendar_calendars(id) ON DELETE CASCADE,
+            cursor TEXT,
+            window_start TEXT,
+            window_end TEXT,
+            updated_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE calendar_operations (
+            id TEXT PRIMARY KEY,
+            source_id TEXT NOT NULL REFERENCES calendar_sources(id) ON DELETE CASCADE,
+            calendar_id TEXT NOT NULL REFERENCES calendar_calendars(id) ON DELETE CASCADE,
+            event_id TEXT NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL,
+            local_revision INTEGER NOT NULL,
+            expected_provider_version TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            next_retry_at INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE calendar_conflicts (
+            event_id TEXT PRIMARY KEY REFERENCES calendar_events(id) ON DELETE CASCADE,
+            local_json TEXT NOT NULL,
+            remote_json TEXT NOT NULL,
+            provider_version TEXT,
+            created_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX idx_calendar_calendars_source_order
+            ON calendar_calendars(source_id, sort_order, id);
+        CREATE INDEX idx_calendar_events_range
+            ON calendar_events(calendar_id, start_value, end_value) WHERE deleted = 0;
+        CREATE UNIQUE INDEX idx_calendar_events_uid_recurrence
+            ON calendar_events(calendar_id, uid, IFNULL(recurrence_id, ''));
+        CREATE INDEX idx_calendar_events_provider
+            ON calendar_events(calendar_id, provider_id);
+        CREATE INDEX idx_calendar_events_sync_state
+            ON calendar_events(sync_state, updated_at);
+        CREATE INDEX idx_calendar_operations_due
+            ON calendar_operations(source_id, next_retry_at, created_at);
+        CREATE INDEX idx_calendar_reminders_due
+            ON calendar_event_reminders(delivered_at, event_id);
+        CREATE INDEX idx_calendar_conflicts_created
+            ON calendar_conflicts(created_at);",
+    )?;
+    Ok(())
+}
+
 /// Extract attachments embedded inline in HTML as `data:<mime>;base64,…` URIs
 /// (e.g. an iOS photo or a scanned document the sender pasted into the body).
 /// Returns `(filename, mime, decoded-bytes)` for each sizeable image/binary blob.
@@ -1859,6 +2109,117 @@ pub fn strip_quoted(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calendar::domain::{
+        EventMoment, EventMutation, EventStatus, EventSyncState, EventVisibility, OperationKind,
+        Transparency,
+    };
+
+    fn schema_13_database() -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "bharga-calendar-migration-{}-{}.db",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        let mut conn = Connection::open(&path).unwrap();
+        let steps: &[(i64, fn(&rusqlite::Transaction) -> rusqlite::Result<()>)] = &[
+            (1, migrate_v1_baseline),
+            (2, migrate_v2_integrity),
+            (3, migrate_v3_user_state),
+            (4, migrate_v4_message_meta),
+            (5, migrate_v5_secrets),
+            (6, migrate_v6_thread_folder),
+            (7, migrate_v7_settings),
+            (8, migrate_v8_reset_cache),
+            (9, migrate_v9_outbox_cc_bcc),
+            (10, migrate_v10_rebuild_previews),
+            (11, migrate_v11_thread_flags),
+            (12, migrate_v12_backfill_inline_attachments),
+            (13, migrate_v13_rededup_inline_attachments),
+        ];
+        for (version, step) in steps {
+            let tx = conn.transaction().unwrap();
+            step(&tx).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+            tx.commit().unwrap();
+        }
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('calendar-migration-marker', 'preserved')",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+        path
+    }
+
+    #[test]
+    fn migration_14_preserves_existing_data_and_creates_calendar_tables() {
+        let path = schema_13_database();
+        let store = Store::open(path.clone()).unwrap();
+
+        assert_eq!(store.schema_version().unwrap(), 14);
+        assert!(store.table_exists("calendar_events").unwrap());
+        assert_eq!(
+            store
+                .settings()
+                .get("calendar-migration-marker")
+                .map(String::as_str),
+            Some("preserved")
+        );
+
+        let file_name = path.file_name().unwrap().to_string_lossy();
+        let prefix = format!("{file_name}.schema-13-to-14-");
+        let backups = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(&prefix))
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1, "expected one verified migration backup");
+
+        drop(store);
+        std::fs::remove_file(&path).unwrap();
+        for backup in backups {
+            std::fs::remove_file(path.parent().unwrap().join(backup)).unwrap();
+        }
+    }
+
+    #[test]
+    fn local_event_and_pending_create_commit_together() {
+        let store = Store::in_memory().unwrap();
+        let calendar = store
+            .create_local_calendar("Personal", "#6f8df6", "Europe/Berlin")
+            .unwrap();
+        let event = store
+            .create_calendar_event(EventMutation {
+                calendar_id: calendar.id,
+                title: "Architecture review".into(),
+                description: String::new(),
+                location: String::new(),
+                conference_url: None,
+                source_thread_id: None,
+                start: EventMoment::Timed {
+                    utc: "2026-09-25T12:00:00Z".into(),
+                },
+                end: EventMoment::Timed {
+                    utc: "2026-09-25T13:00:00Z".into(),
+                },
+                timezone: "Europe/Berlin".into(),
+                recurrence: None,
+                status: EventStatus::Confirmed,
+                transparency: Transparency::Busy,
+                visibility: EventVisibility::Default,
+                organizer: None,
+                attendees: Vec::new(),
+                reminders: Vec::new(),
+            })
+            .unwrap();
+
+        assert_eq!(event.sync_state, EventSyncState::Pending);
+        assert_eq!(
+            store.calendar_operation_for(&event.id).unwrap().kind,
+            OperationKind::Create
+        );
+    }
 
     #[test]
     fn strip_html_works() {

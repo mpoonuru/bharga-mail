@@ -3,6 +3,7 @@
 //! talks to the local store; the sync engine reconciles it with providers.
 
 pub mod ai;
+pub mod calendar;
 pub mod store;
 pub mod sync;
 
