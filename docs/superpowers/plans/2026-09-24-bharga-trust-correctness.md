@@ -449,14 +449,16 @@ let host: HTMLDivElement | null = null;
 afterEach(() => { host?.remove(); host = null; });
 
 describe("AboutSettings", () => {
-  it("renders the runtime version and neutral contributor credit", async () => {
+  it("renders the runtime version, creator credit, and contributor credit", async () => {
     host = document.createElement("div");
     document.body.append(host);
     await act(async () => createRoot(host!).render(<AboutSettings version="0.1.3" runtime="preview" />));
     expect(host.textContent).toContain("Version 0.1.3");
+    expect(host.textContent).toContain("Created by");
+    expect(host.textContent).toContain("Arjun P");
+    expect(host.textContent).toContain("Maintained with");
     expect(host.textContent).toContain("Bharga Mail contributors");
     expect(host.textContent).toContain("Preview runtime");
-    expect(host.textContent).not.toContain("Arjun P");
   });
 });
 ```

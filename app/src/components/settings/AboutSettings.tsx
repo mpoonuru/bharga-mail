@@ -1,4 +1,4 @@
-// About metadata stays derived from runtime/package state and neutral for open source.
+// About metadata stays derived from runtime/package state and preserves project attribution.
 interface AboutSettingsProps {
   version: string;
   runtime: "desktop" | "preview";
@@ -20,7 +20,10 @@ export function AboutSettings({ version, runtime }: AboutSettingsProps) {
           <span className="about-version">Version {version}</span>
         </div>
         <div className="settings-row">
-          <div><b>Maintained by</b><p>Bharga Mail contributors</p></div>
+          <div><b>Created by</b><p>Arjun P</p></div>
+        </div>
+        <div className="settings-row">
+          <div><b>Maintained with</b><p>Bharga Mail contributors</p></div>
         </div>
       </div>
     </div>
