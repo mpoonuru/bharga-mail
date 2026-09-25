@@ -10,7 +10,10 @@ use tokio::sync::{Mutex as AsyncMutex, Notify};
 use super::connectors::caldav::{CalDavConnector, Credentials};
 use super::connectors::google::GoogleConnector;
 use super::connectors::microsoft::MicrosoftConnector;
-use super::connectors::{CalendarConnector, ConnectorError, ConnectorErrorKind};
+use super::connectors::{
+    BusyInterval, CalendarConnector, ConnectorError, ConnectorErrorKind, FreeBusyRequest,
+    FreeBusyResult,
+};
 use super::domain::{CalendarProvider, CalendarSource, CalendarSyncHealth};
 use super::store::CalendarSyncTarget;
 use crate::store::Store;
@@ -103,6 +106,85 @@ impl CalendarSyncCoordinator {
             self.sync_source_inner(&source_id).await
         })
         .await
+    }
+
+    pub async fn run_background(self) {
+        loop {
+            if let Ok(sources) = self.store.calendar_sources() {
+                for source in sources
+                    .into_iter()
+                    .filter(|source| !source.disabled && source.provider != CalendarProvider::Local)
+                {
+                    let _ = self.sync_source(&source.id).await;
+                }
+            }
+            let jitter = Utc::now().timestamp().unsigned_abs() % 31;
+            tokio::time::sleep(std::time::Duration::from_secs(300 + jitter)).await;
+        }
+    }
+
+    pub async fn availability(
+        &self,
+        source_ids: &[String],
+        request: &FreeBusyRequest,
+    ) -> Result<FreeBusyResult, ConnectorError> {
+        let mut selected_calendar_ids = Vec::new();
+        for source_id in source_ids {
+            selected_calendar_ids.extend(
+                self.store
+                    .calendar_sync_targets(source_id)
+                    .map_err(storage_error)?
+                    .into_iter()
+                    .map(|target| target.calendar.id),
+            );
+        }
+        let mut intervals = self
+            .store
+            .calendar_events(&request.range)
+            .map_err(storage_error)?
+            .into_iter()
+            .filter(|event| {
+                selected_calendar_ids.contains(&event.calendar_id)
+                    && event.transparency == super::domain::Transparency::Busy
+            })
+            .map(|event| BusyInterval {
+                start: event.start.value().to_string(),
+                end: event.end.value().to_string(),
+            })
+            .collect::<Vec<_>>();
+        let sources = self.store.calendar_sources().map_err(storage_error)?;
+        let mut complete = true;
+        for source in sources.into_iter().filter(|source| {
+            source_ids.contains(&source.id) && source.provider != CalendarProvider::Local
+        }) {
+            let target = self
+                .store
+                .calendar_sync_targets(&source.id)
+                .map_err(storage_error)?
+                .into_iter()
+                .next();
+            let Some(target) = target else {
+                complete = false;
+                continue;
+            };
+            match self.connector(&source, &target) {
+                Ok(connector) => match connector.free_busy(request).await {
+                    Ok(result) => {
+                        intervals.extend(result.intervals);
+                        complete &= result.complete;
+                    }
+                    Err(_) => complete = false,
+                },
+                Err(_) => complete = false,
+            }
+        }
+        intervals
+            .sort_by(|left, right| left.start.cmp(&right.start).then(left.end.cmp(&right.end)));
+        intervals.dedup();
+        Ok(FreeBusyResult {
+            intervals,
+            complete,
+        })
     }
 
     async fn sync_source_inner(

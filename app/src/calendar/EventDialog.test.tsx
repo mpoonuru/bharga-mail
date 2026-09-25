@@ -49,6 +49,34 @@ function initial(overrides: Partial<EventDialogInitial> = {}): EventDialogInitia
 }
 
 describe("EventDialog", () => {
+  it("labels incomplete availability without selecting or saving a time", async () => {
+    const onCheckAvailability = vi.fn().mockResolvedValue({
+      complete: false,
+      intervals: [{ start: "2026-09-25T10:00:00Z", end: "2026-09-25T11:00:00Z" }],
+    });
+    const onSave = vi.fn();
+    const rendered = renderTest(
+      <EventDialog
+        open
+        initial={initial({
+          end: { kind: "timed", utc: "2026-09-25T11:00:00Z" },
+          attendees: [{ email: "guest@example.test", role: "required", status: "needsAction", rsvp: true }],
+        })}
+        calendars={calendars}
+        onSave={onSave}
+        onClose={() => {}}
+        onCheckAvailability={onCheckAvailability}
+      />,
+    );
+    cleanup = rendered.unmount;
+    await act(async () => {
+      [...document.querySelectorAll("button")].find((button) => button.textContent === "Check availability")?.click();
+    });
+    expect(document.body.textContent).toContain("Availability incomplete");
+    expect(document.body.textContent).toContain("1 known busy interval");
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it("does not save an invalid interval", () => {
     const onSave = vi.fn();
     const rendered = renderTest(

@@ -223,6 +223,16 @@ export interface CalendarSyncHealth {
   retryAt: number | null;
 }
 
+export interface BusyInterval {
+  start: string;
+  end: string;
+}
+
+export interface FreeBusyResult {
+  intervals: BusyInterval[];
+  complete: boolean;
+}
+
 export interface EventRange {
   start: string;
   end: string;

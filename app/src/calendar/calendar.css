@@ -201,6 +201,8 @@
 .calendar-conflict-version p, .calendar-conflict-version small { display: block; margin: 4px 0; color: var(--text-2); overflow-wrap: anywhere; }
 .calendar-conflict-version strong { display: block; margin-top: 10px; color: var(--danger); }
 .calendar-conflict-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.calendar-availability { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.calendar-availability small { color: var(--text-3); }
 .calendar-sync-summary { min-height: 32px; border: 1px solid color-mix(in oklch, var(--warning) 42%, var(--border)); border-radius: 999px; padding: 0 11px; background: color-mix(in oklch, var(--warning) 10%, var(--surface)); color: var(--text); font-size: 11px; font-weight: 700; }
 @media (max-width: 620px) { .calendar-conflict-versions { grid-template-columns: 1fr; } }
 

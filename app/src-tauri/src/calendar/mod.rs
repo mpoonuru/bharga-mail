@@ -9,5 +9,6 @@ pub mod connectors;
 pub mod domain;
 pub mod ical;
 pub mod recurrence;
+pub mod reminders;
 pub mod store;
 pub mod sync;

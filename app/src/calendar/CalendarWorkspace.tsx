@@ -250,6 +250,10 @@ export function CalendarWorkspace({
           onDelete={editing.id ? async () => {
             await store.getState().deleteEvent(editing.id!);
           } : undefined}
+          onCheckAvailability={calendarApi.getAvailability ? async (range, attendees) => {
+            const calendar = calendars.find((candidate) => candidate.id === editing.calendarId);
+            return calendarApi.getAvailability!([calendar?.sourceId].filter((value): value is string => !!value), range, attendees);
+          } : undefined}
           onSave={async (input, options) => {
             if (!editing.id) {
               await store.getState().createEvent(input);

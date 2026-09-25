@@ -14,6 +14,7 @@ import type {
   CreateLocalCalendarInput,
   EventMutation,
   EventRange,
+  FreeBusyResult,
   FolderInfo,
   InvitationInspection,
   InvitationResponseInput,
@@ -416,6 +417,11 @@ export const api = {
     async resolveConflict(eventId: string, resolution: ConflictResolution): Promise<CalendarEvent[]> {
       if (!inTauri) throw new Error("Conflict resolution requires the desktop app");
       return invoke<CalendarEvent[]>("resolve_calendar_conflict", { eventId, resolution });
+    },
+
+    async getAvailability(sourceIds: string[], range: EventRange, attendees: string[]): Promise<FreeBusyResult> {
+      if (!inTauri) return { intervals: [], complete: false };
+      return invoke<FreeBusyResult>("calendar_availability", { sourceIds, request: { range, attendees } });
     },
 
     async deleteEvent(eventId: string): Promise<CalendarEvent> {

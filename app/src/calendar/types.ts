@@ -10,6 +10,7 @@ import type {
   ConflictResolution,
   EventMutation,
   EventRange,
+  FreeBusyResult,
   InvitationInspection,
   InvitationResponseInput,
   CalDavDiscoveryInput,
@@ -110,6 +111,7 @@ export interface CalendarApi {
   listConflicts?(): Promise<CalendarConflict[]>;
   listSyncHealth?(): Promise<CalendarSyncHealth[]>;
   resolveConflict?(eventId: string, resolution: ConflictResolution): Promise<CalendarEvent[]>;
+  getAvailability?(sourceIds: string[], range: EventRange, attendees: string[]): Promise<FreeBusyResult>;
   deleteEvent(eventId: string): Promise<CalendarEvent>;
   createLocalCalendar(input: { name: string; color: string; timezone: string }): Promise<Calendar>;
   setVisibility(calendarId: string, visible: boolean): Promise<void>;

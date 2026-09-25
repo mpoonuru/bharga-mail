@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use super::connectors::caldav::{CalDavConnector, Credentials};
 use super::connectors::{CalendarConnector, ConnectorError, RemoteCalendar};
+use super::connectors::{FreeBusyRequest, FreeBusyResult};
 use super::domain::{
     Calendar, CalendarConflict, CalendarEvent, CalendarSource, CalendarSyncHealth,
     ConflictResolution, EventMoment, EventMutation, EventRange, EventStatus, ParticipationStatus,
@@ -1022,7 +1023,12 @@ pub fn list_calendar_sync_health(
         .calendar_sources()
         .map_err(store_error)?
         .into_iter()
-        .map(|source| state.store.calendar_sync_health(&source.id).map_err(store_error))
+        .map(|source| {
+            state
+                .store
+                .calendar_sync_health(&source.id)
+                .map_err(store_error)
+        })
         .collect()
 }
 
@@ -1042,6 +1048,26 @@ pub fn resolve_calendar_conflict(
         serde_json::json!({ "eventId": event_id }),
     );
     Ok(events)
+}
+
+#[tauri::command]
+pub async fn calendar_availability(
+    source_ids: Vec<String>,
+    request: FreeBusyRequest,
+    state: State<'_, AppState>,
+) -> Result<FreeBusyResult, CalendarCommandError> {
+    if source_ids.len() > 100 || request.attendees.len() > 500 {
+        return Err(CalendarCommandError::new(
+            "availability-limit",
+            "Availability request is too large",
+            false,
+        ));
+    }
+    state
+        .calendar_sync
+        .availability(&source_ids, &request)
+        .await
+        .map_err(connector_error)
 }
 
 #[cfg(test)]

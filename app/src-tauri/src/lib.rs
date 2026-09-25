@@ -1484,6 +1484,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let dir = app
                 .path()
@@ -1501,11 +1502,15 @@ pub fn run() {
                 .and_then(|s| serde_json::from_str::<AiProfile>(s).ok())
                 .unwrap_or_else(default_profile);
             refresh_ai_readiness(&mut ai_profile);
+            let calendar_sync = calendar::sync::CalendarSyncCoordinator::new(store.clone());
             app.manage(AppState {
                 ai: Mutex::new(ai_profile),
                 store: store.clone(),
-                calendar_sync: calendar::sync::CalendarSyncCoordinator::new(store.clone()),
+                calendar_sync: calendar_sync.clone(),
             });
+
+            // Calendar sync starts immediately, then repeats with bounded jitter.
+            tauri::async_runtime::spawn(calendar_sync.run_background());
 
             // Background outbox flusher: owns an Arc<Store> clone (Send), so the
             // future is Send and nothing borrows Tauri State across .await.
@@ -1523,6 +1528,14 @@ pub fn run() {
             let live_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 sync::live::run(live_app, live_store).await;
+            });
+
+            // Calendar reminders are independent from mail synchronization so a
+            // slow provider cannot delay a due local notification.
+            let reminder_store = store.clone();
+            let reminder_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                calendar::reminders::run(reminder_app, reminder_store).await;
             });
             Ok(())
         })
@@ -1568,6 +1581,7 @@ pub fn run() {
             calendar::commands::list_calendar_conflicts,
             calendar::commands::list_calendar_sync_health,
             calendar::commands::resolve_calendar_conflict,
+            calendar::commands::calendar_availability,
             set_task_done,
             create_task,
             queue_send,

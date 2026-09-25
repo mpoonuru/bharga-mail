@@ -61,6 +61,7 @@ quick-xml = { version = "=0.39.4", features = ["serialize"] }
 uuid = { version = "=1.11.0", features = ["v4", "serde"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+tauri-plugin-notification = "2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

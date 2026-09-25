@@ -14,6 +14,7 @@ use super::domain::{
     EventSyncState, EventVisibility, OperationKind, ParticipationStatus, ReminderMethod,
     SeriesSplit, Transparency,
 };
+use super::reminders::ReminderCandidate;
 use crate::store::{OutboxItem, Store};
 
 const MAX_TITLE_BYTES: usize = 512;
@@ -1544,6 +1545,54 @@ impl Store {
                     })
                 },
             )
+        })
+    }
+
+    pub fn calendar_reminder_candidates(
+        &self,
+        window_start: &str,
+        window_end: &str,
+    ) -> rusqlite::Result<Vec<ReminderCandidate>> {
+        self.with_calendar_connection(|connection| {
+            let mut statement = connection.prepare(
+                "SELECT r.id, r.event_id, e.title, e.location, e.start_kind,
+                        e.start_value, e.timezone, e.visibility, r.minutes_before
+                 FROM calendar_event_reminders r
+                 JOIN calendar_events e ON e.id=r.event_id
+                 WHERE r.delivered_at IS NULL AND e.deleted=0 AND e.status!='cancelled'
+                   AND e.start_value>=?1 AND e.start_value<=?2
+                 ORDER BY e.start_value, r.minutes_before DESC LIMIT 2000",
+            )?;
+            let candidates = statement
+                .query_map(params![window_start, window_end], |row| {
+                    Ok(ReminderCandidate {
+                        id: row.get(0)?,
+                        event_id: row.get(1)?,
+                        title: row.get(2)?,
+                        location: row.get(3)?,
+                        start: event_moment(row.get(4)?, row.get(5)?),
+                        timezone: row.get(6)?,
+                        visibility: EventVisibility::parse(&row.get::<_, String>(7)?),
+                        minutes_before: row.get(8)?,
+                    })
+                })?
+                .collect();
+            candidates
+        })
+    }
+
+    pub fn mark_calendar_reminder_delivered(
+        &self,
+        reminder_id: &str,
+        delivered_at: i64,
+    ) -> rusqlite::Result<bool> {
+        self.with_calendar_connection(|connection| {
+            let changed = connection.execute(
+                "UPDATE calendar_event_reminders SET delivered_at=?2
+                 WHERE id=?1 AND delivered_at IS NULL",
+                params![reminder_id, delivered_at],
+            )?;
+            Ok(changed == 1)
         })
     }
 }

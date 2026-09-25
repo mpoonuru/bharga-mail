@@ -15,6 +15,7 @@ import type {
   EventStatus,
   EventTransparency,
   EventVisibility,
+  FreeBusyResult,
   RecurrenceSet,
 } from "@/types";
 import { Modal } from "@/components/ui/Modal";
@@ -42,6 +43,7 @@ interface EventDialogProps {
   onDelete?(): void | Promise<void>;
   onClose(): void;
   returnFocus?: HTMLElement | null;
+  onCheckAvailability?(range: { start: string; end: string }, attendees: string[]): Promise<FreeBusyResult>;
 }
 
 interface FormState {
@@ -107,7 +109,7 @@ function validEmail(value: string): boolean {
   return value.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-export function EventDialog({ open, initial, calendars, onSave, onDelete, onClose, returnFocus }: EventDialogProps) {
+export function EventDialog({ open, initial, calendars, onSave, onDelete, onClose, returnFocus, onCheckAvailability }: EventDialogProps) {
   const original = useMemo(() => initialState(initial), [initial]);
   const [form, setForm] = useState<FormState>(original);
   const [attendeeInput, setAttendeeInput] = useState("");
@@ -116,6 +118,8 @@ export function EventDialog({ open, initial, calendars, onSave, onDelete, onClos
   const [closeOpen, setCloseOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [availability, setAvailability] = useState<FreeBusyResult | null>(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const endDateRef = useRef<HTMLInputElement>(null);
   const calendarRef = useRef<HTMLSelectElement>(null);
@@ -212,6 +216,29 @@ export function EventDialog({ open, initial, calendars, onSave, onDelete, onClos
     }
   };
 
+  const checkAvailability = async () => {
+    if (!onCheckAvailability || form.attendees.length === 0) return;
+    setCheckingAvailability(true);
+    try {
+      const start = dayjs.tz(`${form.startDate}T${form.allDay ? "00:00" : form.startTime}`, form.timezone).toISOString();
+      const end = dayjs.tz(`${form.endDate}T${form.allDay ? "00:00" : form.endTime}`, form.timezone).toISOString();
+      setAvailability(await onCheckAvailability({ start, end }, form.attendees.map((attendee) => attendee.email)));
+    } catch {
+      setAvailability({ intervals: [], complete: false });
+    } finally {
+      setCheckingAvailability(false);
+    }
+  };
+
+  const requestReminderPermission = async () => {
+    try {
+      const notifications = await import("@tauri-apps/plugin-notification");
+      if (!await notifications.isPermissionGranted()) await notifications.requestPermission();
+    } catch {
+      // Browser preview and denied OS permission remain non-blocking.
+    }
+  };
+
   return (
     <>
       <Modal open={open} onClose={requestClose} title={initial.id ? "Edit event" : "New event"} maxWidth={720} returnFocus={returnFocus}>
@@ -276,6 +303,19 @@ export function EventDialog({ open, initial, calendars, onSave, onDelete, onClos
               <button type="button" onClick={addAttendee}>Add</button>
             </div>
             {errors.attendees && <small className="calendar-field-error">{errors.attendees}</small>}
+            {form.attendees.length > 0 && onCheckAvailability && (
+              <div className="calendar-availability">
+                <button type="button" className="calendar-button calendar-button-quiet" disabled={checkingAvailability} onClick={() => { void checkAvailability(); }}>
+                  {checkingAvailability ? "Checking availability…" : "Check availability"}
+                </button>
+                {availability && (
+                  <small role="status">
+                    {availability.complete ? "Availability checked" : "Availability incomplete"}
+                    {` · ${availability.intervals.length} known busy interval${availability.intervals.length === 1 ? "" : "s"}`}
+                  </small>
+                )}
+              </div>
+            )}
           </div>
           <div className="calendar-field">
             <span>Reminder</span>
@@ -283,7 +323,10 @@ export function EventDialog({ open, initial, calendars, onSave, onDelete, onClos
               value=""
               onChange={(event) => {
                 const minutes = Number(event.currentTarget.value);
-                if (minutes && form.reminders.length < 10) patch("reminders", [...form.reminders, { method: "display", minutesBefore: minutes }]);
+                if (minutes && form.reminders.length < 10) {
+                  patch("reminders", [...form.reminders, { method: "display", minutesBefore: minutes }]);
+                  void requestReminderPermission();
+                }
               }}
             >
               <option value="">Add reminder</option>
