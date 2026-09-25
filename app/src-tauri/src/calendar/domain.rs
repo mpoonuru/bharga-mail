@@ -309,6 +309,29 @@ pub struct EventMutation {
     pub reminders: Vec<EventReminder>,
 }
 
+impl From<&CalendarEvent> for EventMutation {
+    fn from(event: &CalendarEvent) -> Self {
+        Self {
+            calendar_id: event.calendar_id.clone(),
+            title: event.title.clone(),
+            description: event.description.clone(),
+            location: event.location.clone(),
+            conference_url: event.conference_url.clone(),
+            source_thread_id: event.source_thread_id.clone(),
+            start: event.start.clone(),
+            end: event.end.clone(),
+            timezone: event.timezone.clone(),
+            recurrence: event.recurrence.clone(),
+            status: event.status,
+            transparency: event.transparency,
+            visibility: event.visibility,
+            organizer: event.organizer.clone(),
+            attendees: event.attendees.clone(),
+            reminders: event.reminders.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CalendarEvent {
@@ -345,6 +368,33 @@ pub struct CalendarEvent {
 pub struct EventRange {
     pub start: String,
     pub end: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct EventOccurrence {
+    pub event_id: String,
+    pub recurrence_id: String,
+    pub start_utc: Option<chrono::DateTime<chrono::Utc>>,
+    pub end_utc: Option<chrono::DateTime<chrono::Utc>>,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RecurrenceEditScope {
+    ThisOccurrence,
+    EntireSeries,
+    ThisAndFollowing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesSplit {
+    pub original: CalendarEvent,
+    pub following: Option<CalendarEvent>,
+    pub exception: Option<CalendarEvent>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

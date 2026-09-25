@@ -6,4 +6,5 @@
 
 pub mod commands;
 pub mod domain;
+pub mod recurrence;
 pub mod store;

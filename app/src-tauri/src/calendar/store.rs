@@ -8,7 +8,7 @@ use super::domain::{
     AttendeeRole, Calendar, CalendarAccessRole, CalendarAuthState, CalendarEvent,
     CalendarOperation, CalendarProvider, CalendarSource, EventAttendee, EventMoment, EventMutation,
     EventRange, EventReminder, EventStatus, EventSyncState, EventVisibility, OperationKind,
-    ParticipationStatus, ReminderMethod, Transparency,
+    ParticipationStatus, ReminderMethod, SeriesSplit, Transparency,
 };
 use crate::store::Store;
 
@@ -307,6 +307,24 @@ fn hydrate_event(
     connection: &Connection,
     mut event: CalendarEvent,
 ) -> rusqlite::Result<CalendarEvent> {
+    if event.recurrence.is_some() {
+        let exception_ids = {
+            let mut statement = connection.prepare(
+                "SELECT recurrence_id FROM calendar_event_exceptions
+                 WHERE series_event_id=?1 ORDER BY recurrence_id",
+            )?;
+            let values = statement
+                .query_map([&event.id], |row| row.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            values
+        };
+        if let Some(recurrence) = event.recurrence.as_mut() {
+            recurrence.excluded_dates.extend(exception_ids);
+            recurrence.excluded_dates.sort();
+            recurrence.excluded_dates.dedup();
+        }
+    }
+
     let mut attendee_statement = connection.prepare(
         "SELECT email, name, role, status, rsvp, comment
          FROM calendar_event_attendees WHERE event_id=?1 ORDER BY email",
@@ -350,6 +368,121 @@ fn read_event(connection: &Connection, id: &str) -> rusqlite::Result<Option<Cale
     event
         .map(|value| hydrate_event(connection, value))
         .transpose()
+}
+
+fn insert_event(
+    tx: &Transaction<'_>,
+    input: &EventMutation,
+    uid: Option<&str>,
+    recurrence_id: Option<&str>,
+    parent_event_id: Option<&str>,
+) -> rusqlite::Result<(String, CalendarEvent)> {
+    let (source_id, writable): (String, bool) = tx
+        .query_row(
+            "SELECT source_id, writable FROM calendar_calendars
+             WHERE id=?1 AND deleted=0",
+            [&input.calendar_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?
+        .ok_or_else(|| invalid("calendar does not exist"))?;
+    if !writable {
+        return Err(invalid("calendar is read-only"));
+    }
+
+    let id = format!("event:{}", Uuid::new_v4());
+    let uid = uid
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{}@bharga.local", Uuid::new_v4()));
+    let now = Utc::now().timestamp();
+    tx.execute(
+        "INSERT INTO calendar_events
+         (id, calendar_id, uid, provider_id, resource_url, title, description,
+          location, conference_url, source_thread_id, start_kind, start_value,
+          end_kind, end_value, timezone, recurrence_json, recurrence_id,
+          parent_event_id, status, transparency, visibility, organizer_json,
+          sequence, provider_version, local_revision, sync_state, deleted,
+          created_at, updated_at)
+         VALUES (?1, ?2, ?3, NULL, NULL, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                 ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
+                 0, NULL, 1, 'pending', 0, ?21, ?21)",
+        params![
+            id,
+            input.calendar_id,
+            uid,
+            input.title,
+            input.description,
+            input.location,
+            input.conference_url,
+            input.source_thread_id,
+            input.start.kind(),
+            input.start.value(),
+            input.end.kind(),
+            input.end.value(),
+            input.timezone,
+            input.recurrence.as_ref().map(encode).transpose()?,
+            recurrence_id,
+            parent_event_id,
+            input.status.as_str(),
+            input.transparency.as_str(),
+            input.visibility.as_str(),
+            input.organizer.as_ref().map(encode).transpose()?,
+            now,
+        ],
+    )?;
+    replace_people_and_reminders(tx, &id, &input.attendees, &input.reminders)?;
+    let event = read_event(tx, &id)?.ok_or_else(|| invalid("created event was not found"))?;
+    Ok((source_id, event))
+}
+
+fn update_event(
+    tx: &Transaction<'_>,
+    id: &str,
+    input: &EventMutation,
+) -> rusqlite::Result<(String, CalendarEvent)> {
+    let existing = read_event(tx, id)?.ok_or_else(|| invalid("event does not exist"))?;
+    let (source_id, writable): (String, bool) = tx.query_row(
+        "SELECT source_id, writable FROM calendar_calendars
+         WHERE id=?1 AND deleted=0",
+        [&input.calendar_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    if !writable {
+        return Err(invalid("calendar is read-only"));
+    }
+    let revision = existing.revision + 1;
+    tx.execute(
+        "UPDATE calendar_events SET calendar_id=?2, title=?3, description=?4,
+         location=?5, conference_url=?6, source_thread_id=?7, start_kind=?8,
+         start_value=?9, end_kind=?10, end_value=?11, timezone=?12,
+         recurrence_json=?13, status=?14, transparency=?15, visibility=?16,
+         organizer_json=?17, local_revision=?18, sync_state='pending',
+         updated_at=?19 WHERE id=?1",
+        params![
+            id,
+            input.calendar_id,
+            input.title,
+            input.description,
+            input.location,
+            input.conference_url,
+            input.source_thread_id,
+            input.start.kind(),
+            input.start.value(),
+            input.end.kind(),
+            input.end.value(),
+            input.timezone,
+            input.recurrence.as_ref().map(encode).transpose()?,
+            input.status.as_str(),
+            input.transparency.as_str(),
+            input.visibility.as_str(),
+            input.organizer.as_ref().map(encode).transpose()?,
+            revision,
+            Utc::now().timestamp(),
+        ],
+    )?;
+    replace_people_and_reminders(tx, id, &input.attendees, &input.reminders)?;
+    let event = read_event(tx, id)?.ok_or_else(|| invalid("updated event was not found"))?;
+    Ok((source_id, event))
 }
 
 impl Store {
@@ -541,57 +674,7 @@ impl Store {
     pub fn create_calendar_event(&self, input: EventMutation) -> rusqlite::Result<CalendarEvent> {
         let input = validate_mutation(&input)?;
         self.with_calendar_transaction(|tx| {
-            let (source_id, writable): (String, bool) = tx
-                .query_row(
-                    "SELECT source_id, writable FROM calendar_calendars
-                     WHERE id=?1 AND deleted=0",
-                    [&input.calendar_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .optional()?
-                .ok_or_else(|| invalid("calendar does not exist"))?;
-            if !writable {
-                return Err(invalid("calendar is read-only"));
-            }
-            let id = format!("event:{}", Uuid::new_v4());
-            let uid = format!("{}@bharga.local", Uuid::new_v4());
-            let now = Utc::now().timestamp();
-            tx.execute(
-                "INSERT INTO calendar_events
-                 (id, calendar_id, uid, provider_id, resource_url, title, description,
-                  location, conference_url, source_thread_id, start_kind, start_value,
-                  end_kind, end_value, timezone, recurrence_json, recurrence_id,
-                  parent_event_id, status, transparency, visibility, organizer_json,
-                  sequence, provider_version, local_revision, sync_state, deleted,
-                  created_at, updated_at)
-                 VALUES (?1, ?2, ?3, NULL, NULL, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-                         ?11, ?12, ?13, ?14, NULL, NULL, ?15, ?16, ?17, ?18,
-                         0, NULL, 1, 'pending', 0, ?19, ?19)",
-                params![
-                    id,
-                    input.calendar_id,
-                    uid,
-                    input.title,
-                    input.description,
-                    input.location,
-                    input.conference_url,
-                    input.source_thread_id,
-                    input.start.kind(),
-                    input.start.value(),
-                    input.end.kind(),
-                    input.end.value(),
-                    input.timezone,
-                    input.recurrence.as_ref().map(encode).transpose()?,
-                    input.status.as_str(),
-                    input.transparency.as_str(),
-                    input.visibility.as_str(),
-                    input.organizer.as_ref().map(encode).transpose()?,
-                    now,
-                ],
-            )?;
-            replace_people_and_reminders(tx, &id, &input.attendees, &input.reminders)?;
-            let event =
-                read_event(tx, &id)?.ok_or_else(|| invalid("created event was not found"))?;
+            let (source_id, event) = insert_event(tx, &input, None, None, None)?;
             queue_operation(tx, &source_id, &event, OperationKind::Create)?;
             Ok(event)
         })
@@ -604,51 +687,113 @@ impl Store {
     ) -> rusqlite::Result<CalendarEvent> {
         let input = validate_mutation(&input)?;
         self.with_calendar_transaction(|tx| {
-            let existing = read_event(tx, id)?.ok_or_else(|| invalid("event does not exist"))?;
-            let (source_id, writable): (String, bool) = tx.query_row(
-                "SELECT source_id, writable FROM calendar_calendars
-                 WHERE id=?1 AND deleted=0",
-                [&input.calendar_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )?;
-            if !writable {
-                return Err(invalid("calendar is read-only"));
-            }
-            let revision = existing.revision + 1;
-            tx.execute(
-                "UPDATE calendar_events SET calendar_id=?2, title=?3, description=?4,
-                 location=?5, conference_url=?6, source_thread_id=?7, start_kind=?8,
-                 start_value=?9, end_kind=?10, end_value=?11, timezone=?12,
-                 recurrence_json=?13, status=?14, transparency=?15, visibility=?16,
-                 organizer_json=?17, local_revision=?18, sync_state='pending',
-                 updated_at=?19 WHERE id=?1",
-                params![
-                    id,
-                    input.calendar_id,
-                    input.title,
-                    input.description,
-                    input.location,
-                    input.conference_url,
-                    input.source_thread_id,
-                    input.start.kind(),
-                    input.start.value(),
-                    input.end.kind(),
-                    input.end.value(),
-                    input.timezone,
-                    input.recurrence.as_ref().map(encode).transpose()?,
-                    input.status.as_str(),
-                    input.transparency.as_str(),
-                    input.visibility.as_str(),
-                    input.organizer.as_ref().map(encode).transpose()?,
-                    revision,
-                    Utc::now().timestamp(),
-                ],
-            )?;
-            replace_people_and_reminders(tx, id, &input.attendees, &input.reminders)?;
-            let event =
-                read_event(tx, id)?.ok_or_else(|| invalid("updated event was not found"))?;
+            let (source_id, event) = update_event(tx, id, &input)?;
             queue_operation(tx, &source_id, &event, OperationKind::Update)?;
             Ok(event)
+        })
+    }
+
+    pub(crate) fn create_calendar_exception(
+        &self,
+        master_id: &str,
+        recurrence_id: &str,
+        mut input: EventMutation,
+    ) -> rusqlite::Result<SeriesSplit> {
+        input.recurrence = None;
+        let input = validate_mutation(&input)?;
+        self.with_calendar_transaction(|tx| {
+            let master = read_event(tx, master_id)?
+                .filter(|event| event.recurrence.is_some() && event.parent_event_id.is_none())
+                .ok_or_else(|| invalid("recurring series does not exist"))?;
+            if input.calendar_id != master.calendar_id {
+                return Err(invalid(
+                    "a recurrence exception must remain in its series calendar",
+                ));
+            }
+            let existing_id = tx
+                .query_row(
+                    "SELECT event_id FROM calendar_event_exceptions
+                     WHERE series_event_id=?1 AND recurrence_id=?2",
+                    params![master_id, recurrence_id],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten();
+            let (source_id, exception, operation) = if let Some(existing_id) = existing_id {
+                let (source_id, exception) = update_event(tx, &existing_id, &input)?;
+                (source_id, exception, OperationKind::Update)
+            } else {
+                let (source_id, exception) = insert_event(
+                    tx,
+                    &input,
+                    Some(&master.uid),
+                    Some(recurrence_id),
+                    Some(master_id),
+                )?;
+                (source_id, exception, OperationKind::Create)
+            };
+            tx.execute(
+                "INSERT INTO calendar_event_exceptions
+                 (series_event_id, recurrence_id, event_id, cancelled)
+                 VALUES (?1, ?2, ?3, 0)
+                 ON CONFLICT(series_event_id, recurrence_id) DO UPDATE SET
+                   event_id=excluded.event_id, cancelled=0",
+                params![master_id, recurrence_id, exception.id],
+            )?;
+            queue_operation(tx, &source_id, &exception, operation)?;
+            Ok(SeriesSplit {
+                original: master,
+                following: None,
+                exception: Some(exception),
+            })
+        })
+    }
+
+    pub(crate) fn calendar_exception(
+        &self,
+        master_id: &str,
+        recurrence_id: &str,
+    ) -> rusqlite::Result<Option<CalendarEvent>> {
+        self.with_calendar_connection(|connection| {
+            let event_id = connection
+                .query_row(
+                    "SELECT event_id FROM calendar_event_exceptions
+                     WHERE series_event_id=?1 AND recurrence_id=?2",
+                    params![master_id, recurrence_id],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten();
+            event_id
+                .map(|event_id| read_event(connection, &event_id))
+                .transpose()
+                .map(Option::flatten)
+        })
+    }
+
+    pub(crate) fn split_calendar_series(
+        &self,
+        master_id: &str,
+        original_input: EventMutation,
+        following_input: EventMutation,
+    ) -> rusqlite::Result<SeriesSplit> {
+        let original_input = validate_mutation(&original_input)?;
+        let following_input = validate_mutation(&following_input)?;
+        self.with_calendar_transaction(|tx| {
+            let master = read_event(tx, master_id)?
+                .filter(|event| event.recurrence.is_some() && event.parent_event_id.is_none())
+                .ok_or_else(|| invalid("recurring series does not exist"))?;
+            let (original_source, original) = update_event(tx, master_id, &original_input)?;
+            queue_operation(tx, &original_source, &original, OperationKind::Update)?;
+            let (following_source, following) =
+                insert_event(tx, &following_input, None, None, None)?;
+            queue_operation(tx, &following_source, &following, OperationKind::Create)?;
+            debug_assert_eq!(master.id, original.id);
+            Ok(SeriesSplit {
+                original,
+                following: Some(following),
+                exception: None,
+            })
         })
     }
 
