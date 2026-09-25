@@ -61,6 +61,17 @@ export interface SelectedOccurrence {
   occurrenceStart: string;
 }
 
+export interface CalendarSlot {
+  date: string;
+  time?: string;
+  allDay: boolean;
+}
+
+export interface CalendarOccurrenceIntent {
+  eventId: string;
+  occurrenceStart: string;
+}
+
 export interface CalendarApi {
   listSources(): Promise<CalendarSource[]>;
   listCalendars(): Promise<Calendar[]>;

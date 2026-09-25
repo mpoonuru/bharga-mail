@@ -543,10 +543,6 @@
   .task.done .box { @apply bg-accent border-accent; }
   .task.done .t-title { @apply line-through text-text-3; }
   .task .t-meta { @apply ml-auto text-[11px] text-text-3; }
-  .cal-grid { @apply grid grid-cols-7 gap-2; }
-  .cal-cell { @apply border border-border rounded-[10px] min-h-[92px] p-2 text-[12px]; }
-  .cal-cell .d { @apply text-text-3 text-[11px] mb-1.5; }
-  .cal-ev { @apply text-accent rounded-md px-1.5 py-[3px] text-[11px] mb-1; background: var(--accent-soft); }
   .setting-row { @apply flex items-center gap-3.5 py-[14px] border-b border-border; }
   .setting-row:last-child { @apply border-b-0; }
   .setting-row .info { @apply flex-1; }
