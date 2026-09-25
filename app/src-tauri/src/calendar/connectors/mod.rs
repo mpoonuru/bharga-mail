@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::domain::{CalendarEvent, CalendarOperation, EventRange};
 
 pub mod caldav;
+pub mod google;
 
 #[cfg(test)]
 pub mod test_server;

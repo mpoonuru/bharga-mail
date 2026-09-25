@@ -390,6 +390,11 @@ export const api = {
       return invoke<CalendarSource>("save_caldav_source", { input });
     },
 
+    async connectGoogleCalendar(): Promise<CalendarSource> {
+      if (!inTauri) throw new Error("Google Calendar authorization requires the desktop app");
+      return invoke<CalendarSource>("connect_google_calendar");
+    },
+
     async deleteEvent(eventId: string): Promise<CalendarEvent> {
       if (inTauri) return invoke<CalendarEvent>("delete_calendar_event", { eventId });
       const existing = previewCalendarEvents.find((candidate) => candidate.id === eventId);

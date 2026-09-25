@@ -322,6 +322,27 @@ pub fn calendar_secret(source_id: &str, kind: &str) -> Option<String> {
     get(&format!("calendar:{source_id}"), kind)
 }
 
+pub fn save_calendar_tokens(
+    source_id: &str,
+    access: &str,
+    refresh: Option<&str>,
+) -> Result<(), String> {
+    let credential_id = format!("calendar:{source_id}");
+    put(&credential_id, "access", access)?;
+    if let Some(refresh) = refresh {
+        put(&credential_id, "refresh", refresh)?;
+    }
+    Ok(())
+}
+
+pub fn calendar_access_token(source_id: &str) -> Option<String> {
+    calendar_secret(source_id, "access")
+}
+
+pub fn calendar_refresh_token(source_id: &str) -> Option<String> {
+    calendar_secret(source_id, "refresh")
+}
+
 /// Remove and verify every supported credential for a calendar source.
 pub fn clear_calendar_credentials(source_id: &str) -> Result<(), String> {
     let credential_id = format!("calendar:{source_id}");
@@ -381,9 +402,18 @@ mod tests {
     use std::sync::OnceLock;
 
     use super::{
-        cached_master_key, clear_kind_with, load_or_create_master_key_with,
+        cached_master_key, clear_kind_with, db_key, load_or_create_master_key_with,
         prepare_secret_updates_with, resolve_secret,
     };
+
+    #[test]
+    fn calendar_token_namespace_cannot_replace_mail_token() {
+        let mail = db_key("gmail:user@example.test", "refresh");
+        let calendar = db_key("calendar:google-calendar:source-1", "refresh");
+        assert_ne!(mail, calendar);
+        assert_eq!(mail, "gmail:user@example.test:refresh");
+        assert_eq!(calendar, "calendar:google-calendar:source-1:refresh");
+    }
 
     #[test]
     fn master_key_access_failure_never_writes_a_replacement() {

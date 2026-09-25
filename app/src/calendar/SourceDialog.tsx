@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/Modal";
 interface SourceApi {
   discoverCalDav: NonNullable<typeof api.calendar.discoverCalDav>;
   saveCalDavSource: NonNullable<typeof api.calendar.saveCalDavSource>;
+  connectGoogleCalendar?: NonNullable<typeof api.calendar.connectGoogleCalendar>;
 }
 
 interface SourceDialogProps {
@@ -100,10 +101,33 @@ export function SourceDialog({ open, onClose, onSaved, returnFocus, sourceApi = 
     }
   };
 
+  const connectGoogle = async () => {
+    if (!sourceApi.connectGoogleCalendar) return;
+    setStatus("saving");
+    setError(null);
+    try {
+      const source = await sourceApi.connectGoogleCalendar();
+      onSaved(source);
+      onClose();
+    } catch (reason) {
+      setError(reason && typeof reason === "object" && "message" in reason ? String(reason.message) : "Google Calendar authorization did not complete.");
+    } finally {
+      setStatus("idle");
+    }
+  };
+
   return (
     <Modal open={open} onClose={onClose} title="Add calendar connection" maxWidth={620} returnFocus={returnFocus}>
       <form className="calendar-source-form" onSubmit={(event) => { event.preventDefault(); void (calendars.length ? save() : discover()); }}>
         <p className="calendar-source-intro">Connect any standards-based CalDAV server. Credentials are encrypted on this device.</p>
+        {sourceApi.connectGoogleCalendar && (
+          <>
+            <button type="button" className="calendar-provider-choice" disabled={status !== "idle"} onClick={() => { void connectGoogle(); }}>
+              <b>Google Calendar</b><span>Authorize calendar access separately from Gmail</span>
+            </button>
+            <div className="calendar-source-separator"><span>or connect CalDAV</span></div>
+          </>
+        )}
         <label><span>Connection name</span><input value={label} onChange={(event) => setLabel(event.currentTarget.value)} autoComplete="off" /></label>
         <label><span>Server URL</span><input ref={urlRef} aria-label="CalDAV URL" type="url" value={url} onChange={(event) => { setUrl(event.currentTarget.value); setCalendars([]); }} placeholder="https://calendar.example.com" autoComplete="url" /></label>
         <div className="calendar-source-credentials">

@@ -26,6 +26,14 @@ pub struct OAuthConfig {
     pub token_url: String,
     pub client_id: String,
     pub scopes: Vec<String>,
+    pub purpose: OAuthPurpose,
+    pub extra_auth_params: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OAuthPurpose {
+    Mail,
+    Calendar,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -61,7 +69,7 @@ pub async fn run_pkce_flow(cfg: &OAuthConfig) -> Result<TokenSet, OAuthError> {
 
     // 2. build the consent URL and open the browser.
     let scope = cfg.scopes.join(" ");
-    let auth = format!(
+    let mut auth = format!(
         "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&code_challenge={}&code_challenge_method=S256&state={}&access_type=offline&prompt=consent",
         cfg.auth_url,
         urlencoding::encode(&cfg.client_id),
@@ -70,6 +78,12 @@ pub async fn run_pkce_flow(cfg: &OAuthConfig) -> Result<TokenSet, OAuthError> {
         challenge,
         state,
     );
+    for (name, value) in &cfg.extra_auth_params {
+        auth.push('&');
+        auth.push_str(&urlencoding::encode(name));
+        auth.push('=');
+        auth.push_str(&urlencoding::encode(value));
+    }
     open::that(&auth).map_err(|e| OAuthError::Browser(e.to_string()))?;
 
     // 3. block (on a worker thread) for the redirect carrying ?code=.

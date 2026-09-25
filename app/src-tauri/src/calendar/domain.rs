@@ -12,6 +12,15 @@ pub enum CalendarProvider {
 }
 
 impl CalendarProvider {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::CalDav => "caldav",
+            Self::Google => "google",
+            Self::Microsoft => "microsoft",
+        }
+    }
+
     pub(crate) fn parse(value: &str) -> Self {
         match value {
             "caldav" => Self::CalDav,

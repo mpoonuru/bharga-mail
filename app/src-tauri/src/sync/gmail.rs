@@ -8,7 +8,7 @@
 use base64::{engine::general_purpose::URL_SAFE, Engine};
 use serde_json::Value;
 
-use super::oauth::{self, OAuthConfig, TokenSet};
+use super::oauth::{self, OAuthConfig, OAuthPurpose, TokenSet};
 use super::{tokens, SyncError};
 use crate::store::{Message, Party, Store, Thread};
 
@@ -25,6 +25,8 @@ fn config() -> OAuthConfig {
             "https://www.googleapis.com/auth/userinfo.email".into(),
             "openid".into(),
         ],
+        purpose: OAuthPurpose::Mail,
+        extra_auth_params: Vec::new(),
     }
 }
 

@@ -489,9 +489,10 @@ fn update_event(
 }
 
 impl Store {
-    pub fn save_caldav_source_atomic(
+    pub fn save_remote_source_atomic(
         &self,
         source_id: &str,
+        provider: CalendarProvider,
         label: &str,
         address: &str,
         calendars: &[RemoteCalendar],
@@ -522,9 +523,10 @@ impl Store {
                 "INSERT INTO calendar_sources
                  (id, linked_account_id, provider, label, address, credential_ref,
                   auth_state, capabilities, disabled, created_at, updated_at)
-                 VALUES (?1, NULL, 'caldav', ?2, ?3, ?4, 'ready', ?5, 0, ?6, ?6)",
+                 VALUES (?1, NULL, ?2, ?3, ?4, ?5, 'ready', ?6, 0, ?7, ?7)",
                 params![
                     source_id,
+                    provider.as_str(),
                     label,
                     address,
                     credential_ref,
