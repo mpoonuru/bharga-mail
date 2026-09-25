@@ -6,20 +6,23 @@ interface AboutSettingsProps {
 
 export function AboutSettings({ version, runtime }: AboutSettingsProps) {
   return (
-    <>
-      <p className="sub" style={{ fontWeight: 600, color: "var(--text-2)", marginBottom: 8, marginTop: 18 }}>About</p>
-      <div className="card">
-        <div className="setting-row">
-          <div className="info">
-            <b>Bharga Mail</b>
-            <p>AI-native email client — your mail, your model, your machine. Version {version}.</p>
-          </div>
-          {runtime === "preview" && <span className="tag">Preview runtime</span>}
+    <div className="settings-section about-settings">
+      <div className="settings-section-head">
+        <div>
+          <h2>About</h2>
+          <p className="sub">Bharga Mail is an open-source, local-first desktop mail client.</p>
         </div>
-        <div className="setting-row">
-          <div className="info"><b>Maintained by</b><p>Bharga Mail contributors</p></div>
+        {runtime === "preview" && <span className="tag">Preview runtime</span>}
+      </div>
+      <div className="settings-group">
+        <div className="settings-row">
+          <div><b>Bharga Mail</b><p>Your mail, your model, your machine.</p></div>
+          <span className="about-version">Version {version}</span>
+        </div>
+        <div className="settings-row">
+          <div><b>Maintained by</b><p>Bharga Mail contributors</p></div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

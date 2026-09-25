@@ -20,6 +20,8 @@ const PRIVACY_OPTIONS: ReadonlyArray<{
 export function AiPrivacySettings() {
   const ai = useApp((state) => state.ai);
   const savePrivacy = useApp((state) => state.savePrivacy);
+  const autoOrganize = useApp((state) => state.autoOrganize);
+  const setAutoOrganize = useApp((state) => state.setAutoOrganize);
   const [privacyError, setPrivacyError] = useState("");
   const [savingPrivacy, setSavingPrivacy] = useState(false);
   const [indexing, setIndexing] = useState(false);
@@ -86,6 +88,17 @@ export function AiPrivacySettings() {
 
       <section className="settings-block" aria-label="AI providers">
         <AiProviderManager />
+      </section>
+
+      <section className="settings-block semantic-index">
+        <div>
+          <h3>Auto-organize new mail</h3>
+          <p>Summarize and prioritize arriving mail when an assigned model is available.</p>
+        </div>
+        <div className="seg" role="radiogroup" aria-label="Auto-organize new mail">
+          <button type="button" role="radio" aria-checked={autoOrganize} className={autoOrganize ? "on" : ""} onClick={() => setAutoOrganize(true)}>On</button>
+          <button type="button" role="radio" aria-checked={!autoOrganize} className={!autoOrganize ? "on" : ""} onClick={() => setAutoOrganize(false)}>Off</button>
+        </div>
       </section>
 
       <section className="settings-block semantic-index">
