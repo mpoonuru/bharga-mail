@@ -9,12 +9,14 @@ import { Icon } from "@/components/icons";
 import { SignatureManager } from "@/components/SignatureManager";
 import { AiProviderManager } from "@/components/AiProviderManager";
 import { AboutSettings } from "@/components/settings/AboutSettings";
+import { SettingsShell, type SettingsSection } from "@/components/settings/SettingsShell";
 import { FONTS, LOCALES } from "@/lib/prefs";
 export function Settings() {
   const { ai, density, setDensity, theme, toggleTheme, setPrivacy, saveAi, connectGmail, connectMicrosoft, font, locale, setFont, setLocale, groupConversations, setGroupConversations, highlights, setHighlights, autoOrganize, setAutoOrganize, accounts, load, removeAccount } = useApp();
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [editAccount, setEditAccount] = useState<{ id: string; initial: Partial<import("@/lib/bridge").ImapAccountInput> } | null>(null);
   const [appVersion, setAppVersion] = useState(__APP_VERSION__);
+  const [activeSection, setActiveSection] = useState<SettingsSection>("accounts");
 
   useEffect(() => {
     let active = true;
@@ -94,6 +96,10 @@ export function Settings() {
       <h1>Settings</h1>
       <p className="sub">Your mail, your model, your machine.</p>
 
+      <SettingsShell active={activeSection} onChange={setActiveSection}>
+
+      {activeSection === "ai-privacy" && <>
+
       <p className="sub" style={{ fontWeight: 600, color: "var(--text-2)", marginBottom: 8 }}>AI engine — plug &amp; play</p>
       <div className="card">
         <div className="setting-row">
@@ -122,7 +128,9 @@ export function Settings() {
         </div>
         {indexStatus && <p className="sub" style={{ marginTop: 6 }}>{indexStatus}</p>}
       </div>
+      </>}
 
+      {activeSection === "signatures" && <>
       <p className="sub" style={{ fontWeight: 600, color: "var(--text-2)", marginBottom: 8 }}>Signatures</p>
       <div className="card">
         <div className="setting-row" style={{ display: "block" }}>
@@ -130,7 +138,9 @@ export function Settings() {
           <SignatureManager />
         </div>
       </div>
+      </>}
 
+      {activeSection === "appearance" && <>
       <p className="sub" style={{ fontWeight: 600, color: "var(--text-2)", marginBottom: 8 }}>Appearance</p>
       <div className="card">
         <div className="setting-row">
@@ -181,7 +191,9 @@ export function Settings() {
           </div>
         </div>
       </div>
+      </>}
 
+      {activeSection === "accounts" && <>
       <p className="sub" style={{ fontWeight: 600, color: "var(--text-2)", marginBottom: 8 }}>Accounts</p>
       <div className="card">
         {accounts.length === 0 && (
@@ -225,8 +237,26 @@ export function Settings() {
         </Modal>
         {acctStatus && <p className="sub" style={{ marginTop: 10 }}>{acctStatus}</p>}
       </div>
+      </>}
 
-      <AboutSettings version={appVersion} runtime={runtimeMode()} />
+      {activeSection === "security-data" && (
+        <div className="settings-section">
+          <h2>Security and data</h2>
+          <p className="sub">Control local storage and protection for this device.</p>
+          <div className="settings-empty">Security and storage controls are being organized here.</div>
+        </div>
+      )}
+
+      {activeSection === "diagnostics" && (
+        <div className="settings-section">
+          <h2>Diagnostics</h2>
+          <p className="sub">Inspect app health without exposing message content or credentials.</p>
+          <div className="settings-empty">Runtime diagnostics are being organized here.</div>
+        </div>
+      )}
+
+      {activeSection === "about" && <AboutSettings version={appVersion} runtime={runtimeMode()} />}
+      </SettingsShell>
     </>
   );
 }
