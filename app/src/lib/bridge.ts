@@ -10,6 +10,7 @@ import type {
   CalendarEvent,
   CalendarSource,
   CalendarSyncHealth,
+  CalendarSourceRemovalPolicy,
   ConflictResolution,
   CreateLocalCalendarInput,
   EventMutation,
@@ -422,6 +423,21 @@ export const api = {
     async getAvailability(sourceIds: string[], range: EventRange, attendees: string[]): Promise<FreeBusyResult> {
       if (!inTauri) return { intervals: [], complete: false };
       return invoke<FreeBusyResult>("calendar_availability", { sourceIds, request: { range, attendees } });
+    },
+
+    async updateSourceLabel(sourceId: string, label: string): Promise<void> {
+      if (!inTauri) return;
+      await invoke<void>("update_calendar_source_label", { sourceId, label });
+    },
+
+    async removeSource(sourceId: string, policy: CalendarSourceRemovalPolicy): Promise<void> {
+      if (!inTauri) return;
+      await invoke<void>("remove_calendar_source", { sourceId, policy });
+    },
+
+    async setCalendarOrder(calendarIds: string[]): Promise<void> {
+      if (!inTauri) return;
+      await invoke<void>("set_calendar_order", { calendarIds });
     },
 
     async deleteEvent(eventId: string): Promise<CalendarEvent> {

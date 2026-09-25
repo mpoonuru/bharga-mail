@@ -7,6 +7,7 @@ import type {
   CalendarEvent,
   CalendarSource,
   CalendarSyncHealth,
+  CalendarSourceRemovalPolicy,
   ConflictResolution,
   EventMutation,
   EventRange,
@@ -112,6 +113,9 @@ export interface CalendarApi {
   listSyncHealth?(): Promise<CalendarSyncHealth[]>;
   resolveConflict?(eventId: string, resolution: ConflictResolution): Promise<CalendarEvent[]>;
   getAvailability?(sourceIds: string[], range: EventRange, attendees: string[]): Promise<FreeBusyResult>;
+  updateSourceLabel?(sourceId: string, label: string): Promise<void>;
+  removeSource?(sourceId: string, policy: CalendarSourceRemovalPolicy): Promise<void>;
+  setCalendarOrder?(calendarIds: string[]): Promise<void>;
   deleteEvent(eventId: string): Promise<CalendarEvent>;
   createLocalCalendar(input: { name: string; color: string; timezone: string }): Promise<Calendar>;
   setVisibility(calendarId: string, visible: boolean): Promise<void>;

@@ -468,6 +468,13 @@ pub enum ConflictResolution {
     Duplicate,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CalendarSourceRemovalPolicy {
+    KeepLocalCopy,
+    DeleteLocalData,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CalendarSyncHealth {

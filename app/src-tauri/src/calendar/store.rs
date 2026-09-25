@@ -9,10 +9,10 @@ use uuid::Uuid;
 use super::connectors::{PushOutcome, RemoteCalendar, RemoteChange, SyncBatch};
 use super::domain::{
     AttendeeRole, Calendar, CalendarAccessRole, CalendarAuthState, CalendarConflict, CalendarEvent,
-    CalendarOperation, CalendarProvider, CalendarSource, CalendarSyncHealth, ConflictResolution,
-    EventAttendee, EventMoment, EventMutation, EventRange, EventReminder, EventStatus,
-    EventSyncState, EventVisibility, OperationKind, ParticipationStatus, ReminderMethod,
-    SeriesSplit, Transparency,
+    CalendarOperation, CalendarProvider, CalendarSource, CalendarSourceRemovalPolicy,
+    CalendarSyncHealth, ConflictResolution, EventAttendee, EventMoment, EventMutation, EventRange,
+    EventReminder, EventStatus, EventSyncState, EventVisibility, OperationKind,
+    ParticipationStatus, ReminderMethod, SeriesSplit, Transparency,
 };
 use super::reminders::ReminderCandidate;
 use crate::store::{OutboxItem, Store};
@@ -1593,6 +1593,111 @@ impl Store {
                 params![reminder_id, delivered_at],
             )?;
             Ok(changed == 1)
+        })
+    }
+
+    pub fn update_calendar_source_label(
+        &self,
+        source_id: &str,
+        label: &str,
+    ) -> rusqlite::Result<()> {
+        let label = label.trim();
+        if label.is_empty() || label.len() > 256 {
+            return Err(invalid("calendar source name is required"));
+        }
+        self.with_calendar_connection(|connection| {
+            let changed = connection.execute(
+                "UPDATE calendar_sources SET label=?2, updated_at=?3 WHERE id=?1",
+                params![source_id, label, Utc::now().timestamp()],
+            )?;
+            if changed != 1 {
+                return Err(invalid("calendar source was not found"));
+            }
+            Ok(())
+        })
+    }
+
+    pub fn set_calendar_order(&self, calendar_ids: &[String]) -> rusqlite::Result<()> {
+        if calendar_ids.is_empty() || calendar_ids.len() > 500 {
+            return Err(invalid("calendar order is invalid"));
+        }
+        self.with_calendar_transaction(|tx| {
+            let visible_count: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM calendar_calendars WHERE deleted=0",
+                [],
+                |row| row.get(0),
+            )?;
+            if visible_count != calendar_ids.len() as i64 {
+                return Err(invalid("calendar order must include every calendar"));
+            }
+            for (index, id) in calendar_ids.iter().enumerate() {
+                let changed = tx.execute(
+                    "UPDATE calendar_calendars SET sort_order=?2, updated_at=?3
+                     WHERE id=?1 AND deleted=0",
+                    params![id, index as i64, Utc::now().timestamp()],
+                )?;
+                if changed != 1 {
+                    return Err(invalid("calendar order contains an unknown calendar"));
+                }
+            }
+            Ok(())
+        })
+    }
+
+    pub fn remove_calendar_source(
+        &self,
+        source_id: &str,
+        policy: CalendarSourceRemovalPolicy,
+    ) -> rusqlite::Result<()> {
+        self.with_calendar_transaction(|tx| {
+            let label: String = tx
+                .query_row(
+                    "SELECT label FROM calendar_sources WHERE id=?1",
+                    [source_id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .ok_or_else(|| invalid("calendar source was not found"))?;
+            if policy == CalendarSourceRemovalPolicy::KeepLocalCopy {
+                let local_source_id = format!("local:{}", Uuid::new_v4());
+                let now = Utc::now().timestamp();
+                tx.execute(
+                    "INSERT INTO calendar_sources
+                     (id, linked_account_id, provider, label, address, credential_ref,
+                      auth_state, capabilities, disabled, created_at, updated_at)
+                     VALUES (?1, NULL, 'local', ?2, NULL, NULL, 'ready', '[]', 0, ?3, ?3)",
+                    params![local_source_id, format!("{label} (local copy)"), now],
+                )?;
+                tx.execute(
+                    "UPDATE calendar_calendars SET source_id=?2, provider_id=NULL,
+                     remote_url=NULL, writable=1, access_role='owner', etag=NULL,
+                     ctag=NULL, sync_token=NULL, updated_at=?3 WHERE source_id=?1",
+                    params![source_id, local_source_id, now],
+                )?;
+                tx.execute(
+                    "DELETE FROM calendar_conflicts WHERE event_id IN
+                     (SELECT e.id FROM calendar_events e
+                      JOIN calendar_calendars c ON c.id=e.calendar_id
+                      WHERE c.source_id=?1)",
+                    [&local_source_id],
+                )?;
+                tx.execute(
+                    "UPDATE calendar_events SET provider_id=NULL, resource_url=NULL,
+                     provider_version=NULL, sync_state='local', updated_at=?2
+                     WHERE calendar_id IN
+                       (SELECT id FROM calendar_calendars WHERE source_id=?1)",
+                    params![local_source_id, now],
+                )?;
+                tx.execute(
+                    "DELETE FROM calendar_sync_state WHERE calendar_id IN
+                     (SELECT id FROM calendar_calendars WHERE source_id=?1)",
+                    [&local_source_id],
+                )?;
+                tx.execute("DELETE FROM calendar_sources WHERE id=?1", [source_id])?;
+            } else {
+                tx.execute("DELETE FROM calendar_sources WHERE id=?1", [source_id])?;
+            }
+            Ok(())
         })
     }
 }

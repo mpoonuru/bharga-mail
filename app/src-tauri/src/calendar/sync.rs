@@ -566,4 +566,38 @@ mod tests {
         assert_eq!(conflict.local.title, "Local");
         assert_eq!(conflict.remote.title, "Remote");
     }
+
+    #[test]
+    fn removing_remote_source_can_preserve_events_as_local_copy() {
+        let store = Store::in_memory().unwrap();
+        store
+            .save_remote_source_atomic(
+                "s1",
+                CalendarProvider::CalDav,
+                "Test",
+                "https://calendar.example.test",
+                &[remote_calendar()],
+                &[],
+            )
+            .unwrap();
+        let calendar_id = store.calendars().unwrap()[0].id.clone();
+        let event = store
+            .create_calendar_event(event_input(&calendar_id, "Local copy"))
+            .unwrap();
+        store
+            .remove_calendar_source(
+                "s1",
+                crate::calendar::domain::CalendarSourceRemovalPolicy::KeepLocalCopy,
+            )
+            .unwrap();
+        assert!(store
+            .calendar_sources()
+            .unwrap()
+            .iter()
+            .all(|source| source.id != "s1"));
+        assert_eq!(
+            store.calendar_event(&event.id).unwrap().unwrap().sync_state,
+            crate::calendar::domain::EventSyncState::Local
+        );
+    }
 }

@@ -199,6 +199,9 @@ export function CalendarWorkspace({
           }}
           onSourceAdded={() => { void store.getState().initialize().catch(() => {}); }}
           health={snapshot.syncHealth}
+          onOrder={calendarApi.setCalendarOrder ? (calendarIds) => { void store.getState().setCalendarOrder(calendarIds).catch(() => {}); } : undefined}
+          onRenameSource={calendarApi.updateSourceLabel ? (sourceId, label) => store.getState().updateSourceLabel(sourceId, label) : undefined}
+          onRemoveSource={calendarApi.removeSource ? (sourceId, keepLocalCopy) => store.getState().removeSource(sourceId, keepLocalCopy ? "keepLocalCopy" : "deleteLocalData") : undefined}
         />
         <main className="calendar-canvas" aria-busy={snapshot.loading}>
           {snapshot.error && (

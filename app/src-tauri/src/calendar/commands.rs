@@ -13,9 +13,9 @@ use super::connectors::caldav::{CalDavConnector, Credentials};
 use super::connectors::{CalendarConnector, ConnectorError, RemoteCalendar};
 use super::connectors::{FreeBusyRequest, FreeBusyResult};
 use super::domain::{
-    Calendar, CalendarConflict, CalendarEvent, CalendarSource, CalendarSyncHealth,
-    ConflictResolution, EventMoment, EventMutation, EventRange, EventStatus, ParticipationStatus,
-    RecurrenceEditScope, SeriesSplit,
+    Calendar, CalendarConflict, CalendarEvent, CalendarProvider, CalendarSource,
+    CalendarSourceRemovalPolicy, CalendarSyncHealth, ConflictResolution, EventMoment,
+    EventMutation, EventRange, EventStatus, ParticipationStatus, RecurrenceEditScope, SeriesSplit,
 };
 use super::ical::{
     build_itip, parse_calendar, write_calendar, ExportOptions, ItipActor, ItipMethod, Limits,
@@ -1070,6 +1070,67 @@ pub async fn calendar_availability(
         .map_err(connector_error)
 }
 
+#[tauri::command]
+pub fn update_calendar_source_label(
+    source_id: String,
+    label: String,
+    state: State<'_, AppState>,
+) -> Result<(), CalendarCommandError> {
+    state
+        .store
+        .update_calendar_source_label(&source_id, &label)
+        .map_err(store_error)
+}
+
+#[tauri::command]
+pub fn set_calendar_order(
+    calendar_ids: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<(), CalendarCommandError> {
+    state.store.set_calendar_order(&calendar_ids).map_err(store_error)
+}
+
+fn remove_calendar_source_with<F>(
+    store: &crate::store::Store,
+    source_id: &str,
+    policy: CalendarSourceRemovalPolicy,
+    clear_credentials: F,
+) -> Result<(), CalendarCommandError>
+where
+    F: FnOnce() -> Result<(), String>,
+{
+    let source = store
+        .calendar_sources()
+        .map_err(store_error)?
+        .into_iter()
+        .find(|source| source.id == source_id)
+        .ok_or_else(|| CalendarCommandError::new("source-not-found", "Calendar source was not found", false))?;
+    if source.provider != CalendarProvider::Local {
+        clear_credentials().map_err(|_| {
+            CalendarCommandError::new(
+                "credential-cleanup-failed",
+                "Calendar credentials could not be removed; the connection remains visible",
+                true,
+            )
+        })?;
+    }
+    store.remove_calendar_source(source_id, policy).map_err(store_error)
+}
+
+#[tauri::command]
+pub fn remove_calendar_source(
+    source_id: String,
+    policy: CalendarSourceRemovalPolicy,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CalendarCommandError> {
+    remove_calendar_source_with(&state.store, &source_id, policy, || {
+        crate::sync::tokens::clear_calendar_credentials(&source_id)
+    })?;
+    let _ = app.emit("calendar:changed", serde_json::json!({ "sourceId": source_id }));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1187,5 +1248,44 @@ mod tests {
             apply_reply(&existing, &forged).unwrap_err().code,
             "invalid-organizer-or-attendee"
         );
+    }
+
+    #[test]
+    fn credential_cleanup_failure_keeps_source_visible() {
+        let store = crate::store::Store::in_memory().unwrap();
+        store
+            .save_remote_source_atomic(
+                "source-1",
+                CalendarProvider::CalDav,
+                "Work",
+                "https://calendar.example.test",
+                &[RemoteCalendar {
+                    id: "remote".into(),
+                    href: "/remote/".into(),
+                    name: "Work".into(),
+                    description: String::new(),
+                    color: "#6f8df6".into(),
+                    timezone: "UTC".into(),
+                    writable: true,
+                    supports_sync_collection: true,
+                    supports_scheduling: false,
+                    ctag: None,
+                    sync_token: None,
+                }],
+                &[],
+            )
+            .unwrap();
+        let result = remove_calendar_source_with(
+            &store,
+            "source-1",
+            CalendarSourceRemovalPolicy::DeleteLocalData,
+            || Err("keychain denied".into()),
+        );
+        assert_eq!(result.unwrap_err().code, "credential-cleanup-failed");
+        assert!(store
+            .calendar_sources()
+            .unwrap()
+            .iter()
+            .any(|source| source.id == "source-1"));
     }
 }

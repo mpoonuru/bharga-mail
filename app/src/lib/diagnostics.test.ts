@@ -17,7 +17,7 @@ describe("redacted diagnostics", () => {
     const json = serializeDiagnostics(snapshot);
     const parsed = JSON.parse(json) as Record<string, unknown>;
 
-    expect(Object.keys(parsed)).toEqual(["schemaVersion", "app", "accounts", "ai", "preferences", "localData"]);
+    expect(Object.keys(parsed)).toEqual(["schemaVersion", "app", "accounts", "ai", "preferences", "localData", "calendar"]);
     expect(parsed.accounts).toEqual({ total: 1, byProvider: { imap: 1 }, synced: 1 });
     expect(parsed.ai).toEqual({
       providers: 1,
@@ -28,6 +28,34 @@ describe("redacted diagnostics", () => {
     for (const secret of ["secret-id", "person@company.test", "Finance", "private-provider", "Company endpoint", "private.test"]) {
       expect(json).not.toContain(secret);
     }
+  });
+
+  it("redacts event, attendee, URL, credential, and cursor data", () => {
+    const snapshot = buildRedactedDiagnostics({
+      version: "0.1.4",
+      runtime: "desktop",
+      accounts: [],
+      models: [],
+      preferences: { theme: "dark", density: "cozy", font: "inter", locale: "en" },
+      threadCount: 0,
+      taskCount: 0,
+      calendar: {
+        sources: [{
+          id: "sync-token", linkedAccountId: null, provider: "calDav", label: "Board acquisition",
+          address: "https://dav.example.test/user/42", authState: "error",
+          capabilities: ["syncCollection", "credential-secret"], lastSyncAt: null,
+          syncError: "network-error: guest@example.test", disabled: false,
+        }],
+        selectedCalendarCount: 2,
+        health: [{ sourceId: "sync-token", pendingCount: 1, conflictCount: 2, lastSyncAt: null, errorCode: "network-error", retryAt: null }],
+      },
+    });
+    const report = serializeDiagnostics(snapshot);
+    for (const secret of ["Board acquisition", "guest@example.test", "sync-token", "https://dav.example.test/user/42", "credential-secret"]) {
+      expect(report).not.toContain(secret);
+    }
+    expect(snapshot.calendar).toMatchObject({ sources: 1, selectedCalendars: 2, pending: 1, conflicts: 2 });
+    expect(snapshot.calendar.errorCategories).toEqual({ connectivity: 1 });
   });
 
   it("buckets hostile categorical values and bounds numeric values", () => {

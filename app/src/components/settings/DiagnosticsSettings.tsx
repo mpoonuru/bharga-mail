@@ -1,9 +1,11 @@
 // User-triggered, strictly redacted support export with local success and failure feedback.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/icons";
 import { buildRedactedDiagnostics, serializeDiagnostics } from "@/lib/diagnostics";
 import { useApp } from "@/store";
+import { api } from "@/lib/bridge";
+import type { CalendarSource, CalendarSyncHealth } from "@/types";
 
 interface DiagnosticsSettingsProps {
   version: string;
@@ -13,6 +15,18 @@ interface DiagnosticsSettingsProps {
 export function DiagnosticsSettings({ version, runtime }: DiagnosticsSettingsProps) {
   const { accounts, ai, theme, density, font, locale, threads, tasks } = useApp();
   const [feedback, setFeedback] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [calendar, setCalendar] = useState<{ sources: CalendarSource[]; selectedCalendarCount: number; health: CalendarSyncHealth[] }>({ sources: [], selectedCalendarCount: 0, health: [] });
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      api.calendar.listSources(),
+      api.calendar.listCalendars(),
+      api.calendar.listSyncHealth?.() ?? Promise.resolve([]),
+    ]).then(([sources, calendars, health]) => {
+      if (active) setCalendar({ sources, selectedCalendarCount: calendars.length, health });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
   const snapshot = buildRedactedDiagnostics({
     version,
     runtime,
@@ -21,6 +35,7 @@ export function DiagnosticsSettings({ version, runtime }: DiagnosticsSettingsPro
     preferences: { theme, density, font, locale },
     threadCount: threads.length,
     taskCount: tasks.length,
+    calendar,
   });
   const serialized = serializeDiagnostics(snapshot);
 
@@ -64,6 +79,7 @@ export function DiagnosticsSettings({ version, runtime }: DiagnosticsSettingsPro
         <div><span>AI providers</span><b>{snapshot.ai.providers}</b><small>{snapshot.ai.ready} ready</small></div>
         <div><span>Local threads</span><b>{snapshot.localData.threads}</b><small>{snapshot.localData.tasks} tasks</small></div>
         <div><span>Runtime</span><b>{runtime === "desktop" ? "Desktop" : "Preview"}</b><small>Version {version}</small></div>
+        <div><span>Calendars</span><b>{snapshot.calendar.selectedCalendars}</b><small>{snapshot.calendar.conflicts} conflicts</small></div>
       </div>
       <div className="settings-callout">The export is generated on demand and contains aggregate counts and non-identifying preference values only.</div>
       <div className="diagnostics-actions">

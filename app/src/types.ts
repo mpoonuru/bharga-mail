@@ -87,6 +87,7 @@ export interface Task {
 }
 
 export type CalendarProvider = "local" | "calDav" | "google" | "microsoft";
+export type CalendarSourceRemovalPolicy = "keepLocalCopy" | "deleteLocalData";
 export type CalendarAuthState = "ready" | "reauthorizationRequired" | "error";
 export type CalendarAccessRole = "owner" | "writer" | "reader" | "freeBusyReader";
 

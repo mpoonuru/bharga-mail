@@ -17,6 +17,7 @@ import type {
   EventMutation,
   SelectedOccurrence,
 } from "@/calendar/types";
+import type { CalendarSourceRemovalPolicy } from "@/types";
 import { api } from "@/lib/bridge";
 
 dayjs.extend(utc);
@@ -35,6 +36,9 @@ export interface CalendarState extends CalendarStateSnapshot {
   createLocalCalendar(input: { name: string; color: string; timezone: string }): Promise<Calendar>;
   setCalendarVisibility(calendarId: string, visible: boolean): Promise<void>;
   syncSource(sourceId: string): Promise<void>;
+  updateSourceLabel(sourceId: string, label: string): Promise<void>;
+  removeSource(sourceId: string, policy: CalendarSourceRemovalPolicy): Promise<void>;
+  setCalendarOrder(calendarIds: string[]): Promise<void>;
   clearError(): void;
 }
 
@@ -271,6 +275,40 @@ function calendarState(calendarApi: CalendarApi): StateCreator<CalendarState> {
         await get().loadRange();
       } catch (error) {
         set({ error: calendarError(error, "calendar-sync-failed") });
+        throw error;
+      }
+    },
+
+    async updateSourceLabel(sourceId, label) {
+      if (!calendarApi.updateSourceLabel) throw new Error("Calendar source editing is unavailable");
+      await calendarApi.updateSourceLabel(sourceId, label);
+      set((state) => ({
+        sources: {
+          ...state.sources,
+          [sourceId]: { ...state.sources[sourceId], label: label.trim() },
+        },
+        error: null,
+      }));
+    },
+
+    async removeSource(sourceId, policy) {
+      if (!calendarApi.removeSource) throw new Error("Calendar source removal is unavailable");
+      await calendarApi.removeSource(sourceId, policy);
+      await get().initialize();
+    },
+
+    async setCalendarOrder(calendarIds) {
+      if (!calendarApi.setCalendarOrder) throw new Error("Calendar ordering is unavailable");
+      const previous = get().calendars;
+      const calendars = { ...previous };
+      calendarIds.forEach((id, index) => {
+        if (calendars[id]) calendars[id] = { ...calendars[id], sortOrder: index };
+      });
+      set({ calendars, visibleCalendarIds: visibleCalendarIds(calendars) });
+      try {
+        await calendarApi.setCalendarOrder(calendarIds);
+      } catch (error) {
+        set({ calendars: previous, visibleCalendarIds: visibleCalendarIds(previous), error: calendarError(error, "calendar-order-failed") });
         throw error;
       }
     },
