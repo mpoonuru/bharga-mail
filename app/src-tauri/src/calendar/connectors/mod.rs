@@ -7,6 +7,7 @@ use super::domain::{CalendarEvent, CalendarOperation, EventRange};
 
 pub mod caldav;
 pub mod google;
+pub mod microsoft;
 
 #[cfg(test)]
 pub mod test_server;

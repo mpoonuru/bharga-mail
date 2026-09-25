@@ -103,6 +103,7 @@ export interface CalendarApi {
   discoverCalDav?(input: CalDavDiscoveryInput): Promise<RemoteCalendar[]>;
   saveCalDavSource?(input: SaveCalDavSourceInput): Promise<CalendarSource>;
   connectGoogleCalendar?(): Promise<CalendarSource>;
+  connectMicrosoftCalendar?(): Promise<CalendarSource>;
   deleteEvent(eventId: string): Promise<CalendarEvent>;
   createLocalCalendar(input: { name: string; color: string; timezone: string }): Promise<Calendar>;
   setVisibility(calendarId: string, visible: boolean): Promise<void>;

@@ -10,6 +10,7 @@ interface SourceApi {
   discoverCalDav: NonNullable<typeof api.calendar.discoverCalDav>;
   saveCalDavSource: NonNullable<typeof api.calendar.saveCalDavSource>;
   connectGoogleCalendar?: NonNullable<typeof api.calendar.connectGoogleCalendar>;
+  connectMicrosoftCalendar?: NonNullable<typeof api.calendar.connectMicrosoftCalendar>;
 }
 
 interface SourceDialogProps {
@@ -116,15 +117,39 @@ export function SourceDialog({ open, onClose, onSaved, returnFocus, sourceApi = 
     }
   };
 
+  const connectMicrosoft = async () => {
+    if (!sourceApi.connectMicrosoftCalendar) return;
+    setStatus("saving");
+    setError(null);
+    try {
+      const source = await sourceApi.connectMicrosoftCalendar();
+      onSaved(source);
+      onClose();
+    } catch (reason) {
+      setError(reason && typeof reason === "object" && "message" in reason ? String(reason.message) : "Microsoft Calendar authorization did not complete.");
+    } finally {
+      setStatus("idle");
+    }
+  };
+
   return (
     <Modal open={open} onClose={onClose} title="Add calendar connection" maxWidth={620} returnFocus={returnFocus}>
       <form className="calendar-source-form" onSubmit={(event) => { event.preventDefault(); void (calendars.length ? save() : discover()); }}>
         <p className="calendar-source-intro">Connect any standards-based CalDAV server. Credentials are encrypted on this device.</p>
-        {sourceApi.connectGoogleCalendar && (
+        {(sourceApi.connectGoogleCalendar || sourceApi.connectMicrosoftCalendar) && (
           <>
-            <button type="button" className="calendar-provider-choice" disabled={status !== "idle"} onClick={() => { void connectGoogle(); }}>
-              <b>Google Calendar</b><span>Authorize calendar access separately from Gmail</span>
-            </button>
+            <div className="calendar-provider-choices">
+              {sourceApi.connectGoogleCalendar && (
+                <button type="button" className="calendar-provider-choice" disabled={status !== "idle"} onClick={() => { void connectGoogle(); }}>
+                  <b>Google Calendar</b><span>Authorize calendar access separately from Gmail</span>
+                </button>
+              )}
+              {sourceApi.connectMicrosoftCalendar && (
+                <button type="button" className="calendar-provider-choice" disabled={status !== "idle"} onClick={() => { void connectMicrosoft(); }}>
+                  <b>Microsoft 365</b><span>Authorize calendar access separately from Outlook mail</span>
+                </button>
+              )}
+            </div>
             <div className="calendar-source-separator"><span>or connect CalDAV</span></div>
           </>
         )}

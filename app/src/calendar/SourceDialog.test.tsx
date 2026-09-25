@@ -18,6 +18,34 @@ function fields() {
 }
 
 describe("SourceDialog", () => {
+  it("offers isolated Google and Microsoft calendar authorization", async () => {
+    const connectMicrosoftCalendar = vi.fn().mockResolvedValue({ id: "microsoft", provider: "microsoft", label: "Microsoft 365" });
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    const rendered = renderTest(
+      <SourceDialog
+        open
+        onClose={onClose}
+        onSaved={onSaved}
+        sourceApi={{
+          discoverCalDav: vi.fn(),
+          saveCalDavSource: vi.fn(),
+          connectGoogleCalendar: vi.fn(),
+          connectMicrosoftCalendar,
+        }}
+      />,
+    );
+    cleanup = rendered.unmount;
+    expect(document.body.textContent).toContain("Google Calendar");
+    expect(document.body.textContent).toContain("Microsoft 365");
+    await act(async () => {
+      [...document.querySelectorAll("button")].find((button) => button.textContent?.includes("Microsoft 365"))?.click();
+    });
+    expect(connectMicrosoftCalendar).toHaveBeenCalledTimes(1);
+    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: "microsoft" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects insecure URLs before discovery", () => {
     const discoverCalDav = vi.fn();
     const rendered = renderTest(<SourceDialog open onClose={() => {}} onSaved={() => {}} sourceApi={{ discoverCalDav, saveCalDavSource: vi.fn() }} />);

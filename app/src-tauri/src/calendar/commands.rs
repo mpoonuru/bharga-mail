@@ -922,6 +922,67 @@ pub async fn connect_google_calendar(
         })
 }
 
+#[tauri::command]
+pub async fn connect_microsoft_calendar(
+    state: State<'_, AppState>,
+) -> Result<CalendarSource, CalendarCommandError> {
+    let tokens = super::connectors::microsoft::authorize()
+        .await
+        .map_err(connector_error)?;
+    let email = super::connectors::microsoft::account_email(&tokens.access_token)
+        .await
+        .map_err(connector_error)?;
+    let calendars =
+        super::connectors::microsoft::MicrosoftConnector::production(&tokens.access_token)
+            .map_err(connector_error)?
+            .discover()
+            .await
+            .map_err(connector_error)?;
+    if calendars.is_empty() {
+        return Err(CalendarCommandError::new(
+            "calendar-not-found",
+            "Microsoft returned no calendar collections",
+            false,
+        ));
+    }
+    let source_id = format!("microsoft-calendar:{}", Uuid::new_v4());
+    let mut secrets = vec![("access", tokens.access_token.as_str())];
+    if let Some(refresh) = tokens.refresh_token.as_deref() {
+        secrets.push(("refresh", refresh));
+    }
+    let encrypted = crate::sync::tokens::prepare_secret_updates(&secrets).map_err(|_| {
+        CalendarCommandError::new(
+            "credential-storage",
+            "Microsoft Calendar credentials could not be secured",
+            true,
+        )
+    })?;
+    state
+        .store
+        .save_remote_source_atomic(
+            &source_id,
+            super::domain::CalendarProvider::Microsoft,
+            &format!("Microsoft 365 · {email}"),
+            &email,
+            &calendars,
+            &encrypted,
+        )
+        .map_err(store_error)?;
+    state
+        .store
+        .calendar_sources()
+        .map_err(store_error)?
+        .into_iter()
+        .find(|source| source.id == source_id)
+        .ok_or_else(|| {
+            CalendarCommandError::new(
+                "storage-error",
+                "Saved Microsoft Calendar source was not found",
+                true,
+            )
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

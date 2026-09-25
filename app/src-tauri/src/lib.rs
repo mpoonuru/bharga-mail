@@ -1561,6 +1561,7 @@ pub fn run() {
             calendar::commands::discover_caldav,
             calendar::commands::save_caldav_source,
             calendar::commands::connect_google_calendar,
+            calendar::commands::connect_microsoft_calendar,
             set_task_done,
             create_task,
             queue_send,
