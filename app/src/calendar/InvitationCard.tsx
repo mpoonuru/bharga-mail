@@ -31,6 +31,15 @@ function eventTime(inspection: InvitationInspection, timezoneName: string): stri
   return `${localStart.format("ddd, MMM D · HH:mm")}–${localEnd.format("HH:mm")}`;
 }
 
+function responseErrorMessage(cause: unknown): string {
+  if (typeof cause === "object" && cause !== null && "message" in cause) {
+    const message = (cause as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message.trim();
+  }
+  if (cause instanceof Error && cause.message.trim()) return cause.message.trim();
+  return "The response was not queued. Try again.";
+}
+
 export function InvitationCard({ inspection, timezone: timezoneName, onRespond }: InvitationCardProps) {
   const [pending, setPending] = useState<ResponseStatus | null>(null);
   const [result, setResult] = useState<ResponseStatus | null>(null);
@@ -48,8 +57,8 @@ export function InvitationCard({ inspection, timezone: timezoneName, onRespond }
     try {
       await onRespond(status);
       setResult(status);
-    } catch {
-      setError("The response was not queued. Try again.");
+    } catch (cause) {
+      setError(responseErrorMessage(cause));
     } finally {
       setPending(null);
     }

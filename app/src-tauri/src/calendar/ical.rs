@@ -20,7 +20,7 @@ use super::domain::{
 use super::recurrence::{expand_event, CalendarError};
 
 pub const MAX_ICS_BYTES: usize = 4 * 1024 * 1024;
-const IMPORT_CALENDAR_ID: &str = "ics-import";
+pub(crate) const IMPORT_CALENDAR_ID: &str = "ics-import";
 
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {

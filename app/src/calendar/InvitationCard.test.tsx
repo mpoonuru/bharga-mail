@@ -66,4 +66,22 @@ describe("InvitationCard", () => {
     expect(document.body.textContent).toMatch(/newer version/i);
     expect([...document.querySelectorAll("button")].some((button) => button.textContent === "Accept")).toBe(false);
   });
+
+  it("shows the calendar command message and leaves RSVP actions available for retry", async () => {
+    const onRespond = vi.fn().mockRejectedValue({
+      code: "invalid-organizer-or-attendee",
+      message: "This invitation was sent to a different email address.",
+      retryable: false,
+    });
+    const rendered = renderTest(<InvitationCard inspection={inspection} timezone="Europe/Berlin" onRespond={onRespond} />);
+    cleanup = rendered.unmount;
+
+    const accept = [...document.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "Accept")!;
+    await act(async () => { accept.click(); });
+
+    expect(document.querySelector('[role="alert"]')?.textContent)
+      .toBe("This invitation was sent to a different email address.");
+    expect(accept.disabled).toBe(false);
+  });
 });

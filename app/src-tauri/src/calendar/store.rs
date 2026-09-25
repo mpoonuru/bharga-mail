@@ -14,6 +14,7 @@ use super::domain::{
     EventReminder, EventStatus, EventSyncState, EventVisibility, OperationKind,
     ParticipationStatus, ReminderMethod, SeriesSplit, Transparency,
 };
+use super::ical::IMPORT_CALENDAR_ID;
 use super::reminders::ReminderCandidate;
 use crate::store::{OutboxItem, Store};
 
@@ -282,6 +283,60 @@ fn queue_operation(
         ],
     )?;
     Ok(())
+}
+
+fn insert_local_calendar(
+    tx: &Transaction<'_>,
+    name: &str,
+    color: &str,
+    timezone: &str,
+) -> rusqlite::Result<Calendar> {
+    let source_id = format!("local:{}", Uuid::new_v4());
+    let calendar_id = format!("calendar:{}", Uuid::new_v4());
+    let now = Utc::now().timestamp();
+    let is_default: bool = tx.query_row(
+        "SELECT NOT EXISTS(SELECT 1 FROM calendar_calendars WHERE deleted=0)",
+        [],
+        |row| row.get(0),
+    )?;
+    tx.execute(
+        "INSERT INTO calendar_sources
+         (id, linked_account_id, provider, label, address, credential_ref,
+          auth_state, capabilities, disabled, created_at, updated_at)
+         VALUES (?1, NULL, 'local', ?2, NULL, NULL, 'ready', '[]', 0, ?3, ?3)",
+        params![source_id, name, now],
+    )?;
+    tx.execute(
+        "INSERT INTO calendar_calendars
+         (id, source_id, provider_id, name, description, color, timezone,
+          access_role, writable, visible, is_default, sort_order, deleted,
+          created_at, updated_at)
+         VALUES (?1, ?2, NULL, ?3, '', ?4, ?5, 'owner', 1, 1, ?6,
+                 (SELECT COUNT(*) FROM calendar_calendars), 0, ?7, ?7)",
+        params![
+            calendar_id,
+            source_id,
+            name,
+            color,
+            timezone,
+            is_default,
+            now
+        ],
+    )?;
+    Ok(Calendar {
+        id: calendar_id,
+        source_id,
+        provider_id: None,
+        name: name.to_string(),
+        description: String::new(),
+        color: color.to_string(),
+        timezone: timezone.to_string(),
+        access_role: CalendarAccessRole::Owner,
+        writable: true,
+        visible: true,
+        is_default,
+        sort_order: 0,
+    })
 }
 
 fn event_moment(kind: String, value: String) -> EventMoment {
@@ -703,54 +758,7 @@ impl Store {
             return Err(invalid("calendar color must be a six-digit hex color"));
         }
 
-        self.with_calendar_transaction(|tx| {
-            let source_id = format!("local:{}", Uuid::new_v4());
-            let calendar_id = format!("calendar:{}", Uuid::new_v4());
-            let now = Utc::now().timestamp();
-            let is_default: bool = tx.query_row(
-                "SELECT NOT EXISTS(SELECT 1 FROM calendar_calendars WHERE deleted=0)",
-                [],
-                |row| row.get(0),
-            )?;
-            tx.execute(
-                "INSERT INTO calendar_sources
-                 (id, linked_account_id, provider, label, address, credential_ref,
-                  auth_state, capabilities, disabled, created_at, updated_at)
-                 VALUES (?1, NULL, 'local', ?2, NULL, NULL, 'ready', '[]', 0, ?3, ?3)",
-                params![source_id, name, now],
-            )?;
-            tx.execute(
-                "INSERT INTO calendar_calendars
-                 (id, source_id, provider_id, name, description, color, timezone,
-                  access_role, writable, visible, is_default, sort_order, deleted,
-                  created_at, updated_at)
-                 VALUES (?1, ?2, NULL, ?3, '', ?4, ?5, 'owner', 1, 1, ?6,
-                         (SELECT COUNT(*) FROM calendar_calendars), 0, ?7, ?7)",
-                params![
-                    calendar_id,
-                    source_id,
-                    name,
-                    color,
-                    timezone,
-                    is_default,
-                    now
-                ],
-            )?;
-            Ok(Calendar {
-                id: calendar_id,
-                source_id,
-                provider_id: None,
-                name: name.to_string(),
-                description: String::new(),
-                color: color.to_string(),
-                timezone: timezone.to_string(),
-                access_role: CalendarAccessRole::Owner,
-                writable: true,
-                visible: true,
-                is_default,
-                sort_order: 0,
-            })
-        })
+        self.with_calendar_transaction(|tx| insert_local_calendar(tx, name, color, timezone))
     }
 
     pub fn calendar_sources(&self) -> rusqlite::Result<Vec<CalendarSource>> {
@@ -946,8 +954,23 @@ impl Store {
         sequence: i64,
         outbox: &OutboxItem,
     ) -> rusqlite::Result<CalendarEvent> {
-        let input = validate_mutation(&input)?;
+        let mut input = validate_mutation(&input)?;
         self.with_calendar_transaction(|tx| {
+            if existing_id.is_none() && input.calendar_id == IMPORT_CALENDAR_ID {
+                input.calendar_id = match tx
+                    .query_row(
+                        "SELECT id FROM calendar_calendars
+                         WHERE writable=1 AND deleted=0
+                         ORDER BY is_default DESC, sort_order, id LIMIT 1",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+                {
+                    Some(calendar_id) => calendar_id,
+                    None => insert_local_calendar(tx, "Personal", "#6f8df6", &input.timezone)?.id,
+                };
+            }
             let (source_id, event, operation) = if let Some(event_id) = existing_id {
                 let (source_id, event) = update_event(tx, event_id, &input)?;
                 (source_id, event, OperationKind::Update)
@@ -959,9 +982,9 @@ impl Store {
                 "UPDATE calendar_events SET sequence=?2 WHERE id=?1",
                 params![event.id, sequence],
             )?;
+            queue_operation(tx, &source_id, &event, operation, false)?;
             let event = read_event(tx, &event.id)?
                 .ok_or_else(|| invalid("responded event was not found"))?;
-            queue_operation(tx, &source_id, &event, operation, false)?;
             tx.execute(
                 "INSERT INTO outbox
                  (id, account_id, thread_id, recipient, subject, body, attachments,

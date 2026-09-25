@@ -2215,6 +2215,70 @@ mod tests {
     }
 
     #[test]
+    fn invitation_response_creates_an_atomic_local_calendar_fallback() {
+        let store = Store::in_memory().unwrap();
+        let mutation = EventMutation {
+            calendar_id: "ics-import".into(),
+            title: "Partner briefing".into(),
+            description: String::new(),
+            location: String::new(),
+            conference_url: None,
+            source_thread_id: Some("thread-1".into()),
+            start: EventMoment::Timed {
+                utc: "2026-10-07T13:00:00Z".into(),
+            },
+            end: EventMoment::Timed {
+                utc: "2026-10-07T14:00:00Z".into(),
+            },
+            timezone: "Europe/Berlin".into(),
+            recurrence: None,
+            status: EventStatus::Confirmed,
+            transparency: Transparency::Busy,
+            visibility: EventVisibility::Default,
+            organizer: None,
+            attendees: vec![EventAttendee {
+                name: Some("Arjun".into()),
+                email: "arjun@example.test".into(),
+                role: AttendeeRole::Required,
+                status: ParticipationStatus::Accepted,
+                rsvp: true,
+                comment: None,
+            }],
+            reminders: Vec::new(),
+        };
+        let outbox = OutboxItem {
+            id: "calendar-reply-1".into(),
+            account_id: "account-1".into(),
+            thread_id: Some("thread-1".into()),
+            to: "organizer@example.test".into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: "Accepted: Partner briefing".into(),
+            body: "Accepted".into(),
+            attachments: Vec::new(),
+            scheduled_ts: 0,
+            status: "queued".into(),
+        };
+
+        let event = store
+            .respond_to_calendar_invitation(
+                None,
+                mutation,
+                "partner-briefing@example.test",
+                0,
+                &outbox,
+            )
+            .unwrap();
+
+        let calendars = store.calendars().unwrap();
+        assert_eq!(calendars.len(), 1);
+        assert_eq!(event.calendar_id, calendars[0].id);
+        assert_eq!(event.sync_state, EventSyncState::Local);
+        assert_eq!(store.list_outbox().len(), 1);
+        assert!(store.calendar_operation_for(&event.id).is_err());
+    }
+
+    #[test]
     fn remote_operation_persists_attendee_notification_intent() {
         let store = Store::in_memory().unwrap();
         store
