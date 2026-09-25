@@ -14,13 +14,13 @@ import { useApp } from "@/store";
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("mail account disclosure motion", () => {
-  it("routes account folders through the measured disclosure behavior", () => {
+  it("collapses folders without rebuilding the selected mailbox", () => {
     const container = document.createElement("div");
     const root = createRoot(container);
     useApp.setState({
       accounts: [{ id: "a1", email: "one@example.test", provider: "imap", displayName: "One" }],
       accountOrder: [],
-      selectedAccountId: null,
+      selectedAccountId: "a1",
       selectedFolder: null,
       folders: [{ name: "INBOX", role: "inbox", unread: 0, total: 0 }],
       threads: [],
@@ -28,16 +28,18 @@ describe("mail account disclosure motion", () => {
 
     act(() => root.render(createElement(Sidebar)));
     const disclosure = container.querySelector<HTMLElement>('[aria-label="One folders"]');
-    expect(disclosure?.getAttribute("aria-hidden")).toBe("true");
-    expect(disclosure?.hasAttribute("inert")).toBe(true);
+    expect(disclosure?.getAttribute("aria-hidden")).toBe("false");
+    expect(disclosure?.hasAttribute("inert")).toBe(false);
 
     const accountButton = [...container.querySelectorAll<HTMLButtonElement>("button")]
       .find((button) => button.textContent?.includes("One"));
     if (!accountButton) throw new Error("Account button not found");
     act(() => accountButton.click());
 
-    expect(disclosure?.getAttribute("aria-hidden")).toBe("false");
-    expect(disclosure?.hasAttribute("inert")).toBe(false);
+    expect(disclosure?.getAttribute("aria-hidden")).toBe("true");
+    expect(disclosure?.hasAttribute("inert")).toBe(true);
+    expect(useApp.getState().selectedAccountId).toBe("a1");
+    expect(useApp.getState().folders).toHaveLength(1);
     act(() => root.unmount());
   });
 

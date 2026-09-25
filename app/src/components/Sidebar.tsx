@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 import { Reorder, useDragControls } from "motion/react";
 import { useApp } from "@/store";
@@ -70,8 +70,11 @@ const ACCOUNT_ROW_MOTION_STYLE: DisclosureStyle = {
 
 /** A single account row in the expanded sidebar: drag-handle to reorder, the
  *  account selector, refresh, and (when focused) its folders with pin toggles. */
-function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove }: {
+function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEditing, reordering, setReordering, onKeyboardMove }: {
   a: Account;
+  expanded: boolean;
+  onToggleDisclosure: () => void;
+  onOpenDisclosure: () => void;
   orderEditing: boolean;
   reordering: boolean;
   setReordering: (active: boolean) => void;
@@ -173,8 +176,8 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
             onBlur={() => setAcctRename(null)} />
         ) : (
           <button className={`nav-item acct-main${isFocused ? " active" : ""}`}
-            aria-expanded={isFocused}
-            onClick={() => setAccount(isFocused ? null : a.id)} title={a.email}>
+            aria-expanded={expanded}
+            onClick={onToggleDisclosure} title={a.email}>
             <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
             <span className="acct-email">{a.displayName?.trim() || a.email}</span>
             <span className="acct-caret" aria-hidden="true">
@@ -195,7 +198,12 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
           <>
             <div className="folder-menu-backdrop" onClick={() => setAcctMenu(false)} aria-hidden="true" />
             <div className="folder-menu acct-menu" role="menu">
-              {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); setAccount(a.id); setNewName(""); }}><Icon name="compose" size={12} /> New folder</button>}
+              {isImap && <button role="menuitem" onClick={() => {
+                setAcctMenu(false);
+                onOpenDisclosure();
+                if (!isFocused) setAccount(a.id);
+                setNewName("");
+              }}><Icon name="compose" size={12} /> New folder</button>}
               {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); setBusy(true); void refreshFolders(a.id).finally(() => setBusy(false)); }}><Icon name="cloud" size={12} /> Refresh folders</button>}
               <button role="menuitem" onClick={() => { setAcctMenu(false); setAcctRename(a.displayName?.trim() || ""); }}><Icon name="reply" size={12} /> Rename</button>
               <button role="menuitem" className="danger" onClick={() => {
@@ -208,7 +216,7 @@ function AccountRow({ a, orderEditing, reordering, setReordering, onKeyboardMove
         )}
       </div>
       <MeasuredDisclosure
-        open={isFocused}
+        open={expanded}
         ariaLabel={`${a.displayName?.trim() || a.email} folders`}
         className="folder-disclosure"
         contentClassName="folder-disclosure-clip"
@@ -350,6 +358,10 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
   const [reordering, setReordering] = useState(false);
   const [orderEditing, setOrderEditing] = useState(false);
   const [orderAnnouncement, setOrderAnnouncement] = useState("");
+  const [expandedAccountId, setExpandedAccountId] = useState<string | null>(selectedAccountId);
+  useEffect(() => {
+    setExpandedAccountId(selectedAccountId);
+  }, [selectedAccountId]);
   // Accounts in the user's saved order; any not yet in the order sort to the end.
   const ordered = [...accounts].sort((x, y) => {
     const ix = accountOrder.indexOf(x.id), iy = accountOrder.indexOf(y.id);
@@ -419,7 +431,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                 <div className="acct-row" key={key}>
                   <button
                     className={`nav-item acct-main folder-item${active ? " active" : ""}`}
-                    onClick={() => { setAccount(accId); void setFolder(folder); }}
+                    onClick={() => { setExpandedAccountId(accId); setAccount(accId); void setFolder(folder); }}
                     title={`${acc.email} · ${folder}`}
                   >
                     <span className="ic"><span className="acct-dot" style={{ background: accountColor(accId) }} /></span>
@@ -465,7 +477,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
             {accounts.length > 1 && (
               <button
                 className={`nav-item${selectedAccountId === null ? " active" : ""}`}
-                onClick={() => setAccount(null)}
+                onClick={() => { setExpandedAccountId(null); setAccount(null); }}
                 title={rail ? "All accounts" : undefined}
               >
                 <span className="ic"><Icon name="inbox" size={17} weight="duotone" /></span>
@@ -477,7 +489,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                 <button
                   key={a.id}
                   className={`nav-item${selectedAccountId === a.id ? " active" : ""}`}
-                  onClick={() => setAccount(a.id)}
+                  onClick={() => { setExpandedAccountId(a.id); setAccount(a.id); }}
                   title={a.email}
                 >
                   <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
@@ -489,6 +501,16 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                   <AccountRow
                     key={a.id}
                     a={a}
+                    expanded={expandedAccountId === a.id}
+                    onToggleDisclosure={() => {
+                      if (selectedAccountId === a.id) {
+                        setExpandedAccountId((current) => current === a.id ? null : a.id);
+                        return;
+                      }
+                      setExpandedAccountId(a.id);
+                      setAccount(a.id);
+                    }}
+                    onOpenDisclosure={() => setExpandedAccountId(a.id)}
                     orderEditing={orderEditing}
                     reordering={reordering}
                     setReordering={setReordering}
