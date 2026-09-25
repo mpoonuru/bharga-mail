@@ -5,6 +5,7 @@
 //! their outbound operations transactional.
 
 pub mod commands;
+pub mod connectors;
 pub mod domain;
 pub mod ical;
 pub mod recurrence;

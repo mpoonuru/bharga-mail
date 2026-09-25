@@ -14,6 +14,9 @@ import type {
   FolderInfo,
   InvitationInspection,
   InvitationResponseInput,
+  CalDavDiscoveryInput,
+  SaveCalDavSourceInput,
+  RemoteCalendar,
   SaveAiProviderInput,
   Task,
   Thread,
@@ -375,6 +378,16 @@ export const api = {
       const draft = pendingCalendarDraft;
       pendingCalendarDraft = null;
       return draft;
+    },
+
+    async discoverCalDav(input: CalDavDiscoveryInput): Promise<RemoteCalendar[]> {
+      if (!inTauri) throw new Error("CalDAV discovery requires the desktop app");
+      return invoke<RemoteCalendar[]>("discover_caldav", { input });
+    },
+
+    async saveCalDavSource(input: SaveCalDavSourceInput): Promise<CalendarSource> {
+      if (!inTauri) throw new Error("CalDAV connections require the desktop app");
+      return invoke<CalendarSource>("save_caldav_source", { input });
     },
 
     async deleteEvent(eventId: string): Promise<CalendarEvent> {

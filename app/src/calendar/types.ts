@@ -9,6 +9,9 @@ import type {
   EventRange,
   InvitationInspection,
   InvitationResponseInput,
+  CalDavDiscoveryInput,
+  SaveCalDavSourceInput,
+  RemoteCalendar,
 } from "@/types";
 
 export type CalendarView = "month" | "week" | "day" | "agenda";
@@ -97,6 +100,8 @@ export interface CalendarApi {
   respondToInvitation?(input: InvitationResponseInput): Promise<CalendarEvent>;
   scheduleFromThread?(threadId: string): Promise<EventMutation>;
   takeScheduledDraft?(): EventMutation | null;
+  discoverCalDav?(input: CalDavDiscoveryInput): Promise<RemoteCalendar[]>;
+  saveCalDavSource?(input: SaveCalDavSourceInput): Promise<CalendarSource>;
   deleteEvent(eventId: string): Promise<CalendarEvent>;
   createLocalCalendar(input: { name: string; color: string; timezone: string }): Promise<Calendar>;
   setVisibility(calendarId: string, visible: boolean): Promise<void>;
@@ -126,4 +131,7 @@ export type {
   EventRange,
   InvitationInspection,
   InvitationResponseInput,
+  CalDavDiscoveryInput,
+  SaveCalDavSourceInput,
+  RemoteCalendar,
 };

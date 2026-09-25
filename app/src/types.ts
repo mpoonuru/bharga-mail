@@ -239,6 +239,31 @@ export interface InvitationResponseInput {
   status: Extract<ParticipationStatus, "accepted" | "tentative" | "declined">;
 }
 
+export interface RemoteCalendar {
+  id: string;
+  href: string;
+  name: string;
+  description: string;
+  color: string;
+  timezone: string;
+  writable: boolean;
+  supportsSyncCollection: boolean;
+  supportsScheduling: boolean;
+  ctag: string | null;
+  syncToken: string | null;
+}
+
+export interface CalDavDiscoveryInput {
+  url: string;
+  username: string;
+  password: string;
+}
+
+export interface SaveCalDavSourceInput extends CalDavDiscoveryInput {
+  label: string;
+  selectedCalendarIds: string[];
+}
+
 // ---- Plug-and-play AI engine (mirrors Rust `ai` module) ----
 
 export type AiProviderKind =

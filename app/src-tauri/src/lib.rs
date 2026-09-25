@@ -1558,6 +1558,8 @@ pub fn run() {
             calendar::commands::inspect_calendar_attachment,
             calendar::commands::respond_to_invitation,
             calendar::commands::schedule_from_thread,
+            calendar::commands::discover_caldav,
+            calendar::commands::save_caldav_source,
             set_task_done,
             create_task,
             queue_send,

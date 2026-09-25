@@ -297,7 +297,11 @@ pub fn clear(account_id: &str) -> Result<(), String> {
                 None => Ok(()),
             },
             || delete_legacy(account_id, kind),
-            || Ok(DB.get().is_some_and(|db| db.get_secret(&encrypted_key).is_some())),
+            || {
+                Ok(DB
+                    .get()
+                    .is_some_and(|db| db.get_secret(&encrypted_key).is_some()))
+            },
             || legacy_exists(account_id, kind),
         )?;
     }
@@ -311,6 +315,35 @@ pub fn save_secret(account_id: &str, kind: &str, value: &str) -> Result<(), Stri
 
 pub fn secret(account_id: &str, kind: &str) -> Option<String> {
     get(account_id, kind)
+}
+
+/// Read an isolated calendar credential. Mail token namespaces are never used.
+pub fn calendar_secret(source_id: &str, kind: &str) -> Option<String> {
+    get(&format!("calendar:{source_id}"), kind)
+}
+
+/// Remove and verify every supported credential for a calendar source.
+pub fn clear_calendar_credentials(source_id: &str) -> Result<(), String> {
+    let credential_id = format!("calendar:{source_id}");
+    for kind in ["username", "password", "access", "refresh"] {
+        let encrypted_key = db_key(&credential_id, kind);
+        clear_kind_with(
+            || match DB.get() {
+                Some(db) => db
+                    .delete_secret(&encrypted_key)
+                    .map_err(|_| "Encrypted calendar credential could not be removed".into()),
+                None => Ok(()),
+            },
+            || delete_legacy(&credential_id, kind),
+            || {
+                Ok(DB
+                    .get()
+                    .is_some_and(|db| db.get_secret(&encrypted_key).is_some()))
+            },
+            || legacy_exists(&credential_id, kind),
+        )?;
+    }
+    Ok(())
 }
 
 /// Store a write-only AI provider key and verify that at least one secure
@@ -333,7 +366,11 @@ pub fn delete_ai_key(provider_id: &str) -> Result<(), String> {
             None => Ok(()),
         },
         || delete_legacy(provider_id, "ai-api-key"),
-        || Ok(DB.get().is_some_and(|db| db.get_secret(&encrypted_key).is_some())),
+        || {
+            Ok(DB
+                .get()
+                .is_some_and(|db| db.get_secret(&encrypted_key).is_some()))
+        },
         || legacy_exists(provider_id, "ai-api-key"),
     )
 }
@@ -493,12 +530,7 @@ mod tests {
 
     #[test]
     fn credential_cleanup_requires_verified_absence() {
-        let result = clear_kind_with(
-            || Ok(()),
-            || Ok(()),
-            || Ok(false),
-            || Ok(true),
-        );
+        let result = clear_kind_with(|| Ok(()), || Ok(()), || Ok(false), || Ok(true));
         assert!(result.is_err());
     }
 }

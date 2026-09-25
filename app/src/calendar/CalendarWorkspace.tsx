@@ -181,6 +181,7 @@ export function CalendarWorkspace({
           loading={snapshot.loading}
           onVisibility={changeVisibility}
           onSync={(sourceId) => { void store.getState().syncSource(sourceId).catch(() => {}); }}
+          onSourceAdded={() => { void store.getState().initialize().catch(() => {}); }}
         />
         <main className="calendar-canvas" aria-busy={snapshot.loading}>
           {snapshot.error && (

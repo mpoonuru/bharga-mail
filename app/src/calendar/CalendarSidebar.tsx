@@ -2,8 +2,10 @@
 
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import { useRef, useState } from "react";
 
 import type { Calendar, CalendarSource } from "@/calendar/types";
+import { SourceDialog } from "@/calendar/SourceDialog";
 
 dayjs.extend(relativeTime);
 
@@ -14,6 +16,7 @@ interface CalendarSidebarProps {
   loading: boolean;
   onVisibility(calendarId: string, visible: boolean): void;
   onSync(sourceId: string): void;
+  onSourceAdded?(): void;
 }
 
 function sourceStatus(source: CalendarSource): { label: string; tone: string } {
@@ -30,7 +33,10 @@ export function CalendarSidebar({
   loading,
   onVisibility,
   onSync,
+  onSourceAdded,
 }: CalendarSidebarProps) {
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
   return (
     <aside className="calendar-sidebar" aria-label="Calendars">
       <div className="calendar-sidebar-head">
@@ -53,6 +59,7 @@ export function CalendarSidebar({
       <div className="calendar-sidebar-divider" />
       <div className="calendar-sidebar-head">
         <h2>Connections</h2>
+        <button ref={addButtonRef} type="button" className="calendar-sidebar-add" onClick={() => setSourceOpen(true)}>Add</button>
       </div>
       <div className="calendar-source-list">
         {sources.map((source) => {
@@ -78,6 +85,12 @@ export function CalendarSidebar({
           );
         })}
       </div>
+      <SourceDialog
+        open={sourceOpen}
+        onClose={() => setSourceOpen(false)}
+        onSaved={() => onSourceAdded?.()}
+        returnFocus={addButtonRef.current}
+      />
     </aside>
   );
 }

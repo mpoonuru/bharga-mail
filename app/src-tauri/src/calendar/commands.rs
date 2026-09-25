@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use uuid::Uuid;
 
+use super::connectors::caldav::{CalDavConnector, Credentials};
+use super::connectors::{CalendarConnector, ConnectorError, RemoteCalendar};
 use super::domain::{
     Calendar, CalendarEvent, CalendarSource, EventMoment, EventMutation, EventRange, EventStatus,
     ParticipationStatus, RecurrenceEditScope, SeriesSplit,
@@ -25,15 +27,15 @@ const MAX_RANGE_DAYS: i64 = 400;
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CalendarCommandError {
-    pub code: &'static str,
+    pub code: String,
     pub message: String,
     pub retryable: bool,
 }
 
 impl CalendarCommandError {
-    fn new(code: &'static str, message: impl Into<String>, retryable: bool) -> Self {
+    fn new(code: impl Into<String>, message: impl Into<String>, retryable: bool) -> Self {
         Self {
-            code,
+            code: code.into(),
             message: message.into(),
             retryable,
         }
@@ -256,6 +258,18 @@ fn store_error(error: rusqlite::Error) -> CalendarCommandError {
 
 fn calendar_error(error: super::recurrence::CalendarError) -> CalendarCommandError {
     CalendarCommandError::new(error.code(), error.message(), false)
+}
+
+fn connector_error(error: ConnectorError) -> CalendarCommandError {
+    CalendarCommandError::new(
+        error.code,
+        error.message,
+        matches!(
+            error.kind,
+            super::connectors::ConnectorErrorKind::RateLimited
+                | super::connectors::ConnectorErrorKind::Transient
+        ),
+    )
 }
 
 fn io_error(error: std::io::Error) -> CalendarCommandError {
@@ -731,6 +745,120 @@ pub fn schedule_from_thread(
         attendees: Vec::new(),
         reminders: Vec::new(),
     })
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalDavDiscoveryInput {
+    pub url: String,
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveCalDavSourceInput {
+    pub label: String,
+    pub url: String,
+    pub username: String,
+    pub password: String,
+    pub selected_calendar_ids: Vec<String>,
+}
+
+fn caldav_credentials(input: &CalDavDiscoveryInput) -> Credentials {
+    Credentials::Basic {
+        username: input.username.clone(),
+        password: input.password.clone(),
+    }
+}
+
+#[tauri::command]
+pub async fn discover_caldav(
+    input: CalDavDiscoveryInput,
+) -> Result<Vec<RemoteCalendar>, CalendarCommandError> {
+    if input.username.trim().is_empty() || input.password.is_empty() {
+        return Err(CalendarCommandError::new(
+            "credentials-required",
+            "CalDAV username and password are required",
+            false,
+        ));
+    }
+    CalDavConnector::new(input.url.trim(), caldav_credentials(&input))
+        .map_err(connector_error)?
+        .discover()
+        .await
+        .map_err(connector_error)
+}
+
+#[tauri::command]
+pub async fn save_caldav_source(
+    input: SaveCalDavSourceInput,
+    state: State<'_, AppState>,
+) -> Result<CalendarSource, CalendarCommandError> {
+    if input.label.trim().is_empty() || input.label.len() > 256 {
+        return Err(CalendarCommandError::new(
+            "invalid-label",
+            "Connection name is required",
+            false,
+        ));
+    }
+    if input.selected_calendar_ids.is_empty() || input.selected_calendar_ids.len() > 500 {
+        return Err(CalendarCommandError::new(
+            "invalid-selection",
+            "Select at least one calendar",
+            false,
+        ));
+    }
+    let discovery = CalDavDiscoveryInput {
+        url: input.url.clone(),
+        username: input.username.clone(),
+        password: input.password.clone(),
+    };
+    let discovered = discover_caldav(discovery).await?;
+    let selected = discovered
+        .into_iter()
+        .filter(|calendar| input.selected_calendar_ids.contains(&calendar.id))
+        .collect::<Vec<_>>();
+    if selected.len() != input.selected_calendar_ids.len() {
+        return Err(CalendarCommandError::new(
+            "invalid-selection",
+            "A selected calendar is no longer available",
+            false,
+        ));
+    }
+    let source_id = format!("caldav:{}", Uuid::new_v4());
+    let encrypted = crate::sync::tokens::prepare_secret_updates(&[
+        ("username", input.username.as_str()),
+        ("password", input.password.as_str()),
+    ])
+    .map_err(|_| {
+        CalendarCommandError::new(
+            "credential-storage",
+            "CalDAV credentials could not be secured",
+            true,
+        )
+    })?;
+    state
+        .store
+        .save_caldav_source_atomic(
+            &source_id,
+            input.label.trim(),
+            input.url.trim(),
+            &selected,
+            &encrypted,
+        )
+        .map_err(store_error)?;
+    let _ = crate::sync::tokens::delete_legacy_secret(&format!("calendar:{source_id}"), "username");
+    let _ = crate::sync::tokens::delete_legacy_secret(&format!("calendar:{source_id}"), "password");
+    state
+        .store
+        .calendar_sources()
+        .map_err(store_error)?
+        .into_iter()
+        .find(|source| source.id == source_id)
+        .ok_or_else(|| {
+            CalendarCommandError::new("storage-error", "Saved calendar source was not found", true)
+        })
 }
 
 #[cfg(test)]

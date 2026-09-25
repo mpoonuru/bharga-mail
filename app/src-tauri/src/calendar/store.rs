@@ -6,6 +6,7 @@ use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 use uuid::Uuid;
 
+use super::connectors::RemoteCalendar;
 use super::domain::{
     AttendeeRole, Calendar, CalendarAccessRole, CalendarAuthState, CalendarEvent,
     CalendarOperation, CalendarProvider, CalendarSource, EventAttendee, EventMoment, EventMutation,
@@ -488,6 +489,92 @@ fn update_event(
 }
 
 impl Store {
+    pub fn save_caldav_source_atomic(
+        &self,
+        source_id: &str,
+        label: &str,
+        address: &str,
+        calendars: &[RemoteCalendar],
+        encrypted_secrets: &[(String, String)],
+    ) -> rusqlite::Result<()> {
+        if calendars.is_empty() {
+            return Err(invalid("select at least one calendar"));
+        }
+        let credential_ref = format!("calendar:{source_id}");
+        self.with_calendar_transaction(|tx| {
+            let now = Utc::now().timestamp();
+            let capabilities = calendars
+                .iter()
+                .flat_map(|calendar| {
+                    [
+                        calendar
+                            .supports_sync_collection
+                            .then_some("syncCollection"),
+                        calendar.supports_scheduling.then_some("scheduling"),
+                    ]
+                    .into_iter()
+                    .flatten()
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            tx.execute(
+                "INSERT INTO calendar_sources
+                 (id, linked_account_id, provider, label, address, credential_ref,
+                  auth_state, capabilities, disabled, created_at, updated_at)
+                 VALUES (?1, NULL, 'caldav', ?2, ?3, ?4, 'ready', ?5, 0, ?6, ?6)",
+                params![
+                    source_id,
+                    label,
+                    address,
+                    credential_ref,
+                    encode(&capabilities)?,
+                    now
+                ],
+            )?;
+            let has_default: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM calendar_calendars WHERE deleted=0)",
+                [],
+                |row| row.get(0),
+            )?;
+            for (index, calendar) in calendars.iter().enumerate() {
+                let id = format!("calendar:{}", Uuid::new_v4());
+                tx.execute(
+                    "INSERT INTO calendar_calendars
+                     (id, source_id, provider_id, remote_url, name, description, color,
+                      timezone, access_role, writable, visible, is_default, sort_order,
+                      ctag, sync_token, deleted, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, ?11,
+                             (SELECT COUNT(*) FROM calendar_calendars), ?12, ?13, 0, ?14, ?14)",
+                    params![
+                        id,
+                        source_id,
+                        calendar.id,
+                        calendar.href,
+                        calendar.name,
+                        calendar.description,
+                        calendar.color,
+                        calendar.timezone,
+                        if calendar.writable { "owner" } else { "reader" },
+                        calendar.writable,
+                        !has_default && index == 0,
+                        calendar.ctag,
+                        calendar.sync_token,
+                        now,
+                    ],
+                )?;
+            }
+            for (kind, encrypted) in encrypted_secrets {
+                tx.execute(
+                    "INSERT INTO secrets (key, value) VALUES (?1, ?2)
+                     ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    params![format!("{credential_ref}:{kind}"), encrypted],
+                )?;
+            }
+            Ok(())
+        })
+    }
+
     pub fn create_local_calendar(
         &self,
         name: &str,
