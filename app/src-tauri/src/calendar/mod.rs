@@ -4,5 +4,6 @@
 //! remote services never bypass the store, which keeps offline mutations and
 //! their outbound operations transactional.
 
+pub mod commands;
 pub mod domain;
 pub mod store;

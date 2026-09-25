@@ -2,13 +2,25 @@
 // When running in the browser (vite dev without Tauri), we fall back to mock data
 // so the whole UI is explorable. In the Tauri shell, these call real `#[tauri::command]`s.
 
-import type { Thread, Task, CalEvent, AiProfile, Account, FolderInfo, SaveAiProviderInput } from "@/types";
+import type {
+  Account,
+  AiProfile,
+  Calendar,
+  CalendarEvent,
+  CalendarSource,
+  CreateLocalCalendarInput,
+  EventMutation,
+  EventRange,
+  FolderInfo,
+  SaveAiProviderInput,
+  Task,
+  Thread,
+} from "@/types";
 import dayjs from "dayjs";
 import { parseExternalWebUrl } from "@/lib/externalLinks";
 import {
   account as mockAccount,
   aiProfile as mockAiProfile,
-  events as mockEvents,
   tasks as mockTasks,
   threads as mockThreads,
 } from "@/data/mock";
@@ -81,6 +93,57 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 // a prompt first. Cleared once installed.
 let pendingUpdate: { version: string; downloadAndInstall: () => Promise<void> } | null = null;
 
+// The browser preview exercises the same local-first calendar operations as the
+// desktop bridge. It intentionally starts empty and never pretends that a
+// remote provider connected or returned data.
+const previewCalendarSource: CalendarSource = {
+  id: "preview-local-source",
+  linkedAccountId: null,
+  provider: "local",
+  label: "Personal",
+  address: null,
+  authState: "ready",
+  capabilities: [],
+  lastSyncAt: null,
+  syncError: null,
+  disabled: false,
+};
+let previewCalendars: Calendar[] = [{
+  id: "preview-local-calendar",
+  sourceId: previewCalendarSource.id,
+  providerId: null,
+  name: "Personal",
+  description: "",
+  color: "#6f8df6",
+  timezone: "Europe/Berlin",
+  accessRole: "owner",
+  writable: true,
+  visible: true,
+  isDefault: true,
+  sortOrder: 0,
+}];
+let previewCalendarEvents: CalendarEvent[] = [];
+let previewCalendarSequence = 0;
+
+function copyCalendarEvent(event: CalendarEvent): CalendarEvent {
+  return {
+    ...event,
+    attendees: event.attendees.map((attendee) => ({ ...attendee })),
+    reminders: event.reminders.map((reminder) => ({ ...reminder })),
+    recurrence: event.recurrence ? {
+      rules: [...event.recurrence.rules],
+      dates: [...event.recurrence.dates],
+      excludedDates: [...event.recurrence.excludedDates],
+    } : null,
+  };
+}
+
+function eventIntersectsRange(event: CalendarEvent, range: EventRange): boolean {
+  const eventStart = event.start.kind === "timed" ? dayjs(event.start.utc) : dayjs(event.start.date);
+  const eventEnd = event.end.kind === "timed" ? dayjs(event.end.utc) : dayjs(event.end.date);
+  return eventStart.isBefore(dayjs(range.end)) && eventEnd.isAfter(dayjs(range.start));
+}
+
 /** Check GitHub Releases for a newer signed build. Returns the new version
  *  string if one is available, else null. No-op outside the desktop app. */
 export async function checkForUpdate(): Promise<string | null> {
@@ -146,6 +209,120 @@ export async function listenMail(handlers: { onSync?: () => void; onNew?: (count
 }
 
 export const api = {
+  calendar: {
+    async listSources(): Promise<CalendarSource[]> {
+      if (inTauri) return invoke<CalendarSource[]>("list_calendar_sources");
+      return [{ ...previewCalendarSource, capabilities: [...previewCalendarSource.capabilities] }];
+    },
+
+    async listCalendars(): Promise<Calendar[]> {
+      if (inTauri) return invoke<Calendar[]>("list_calendars");
+      return previewCalendars.map((calendar) => ({ ...calendar }));
+    },
+
+    async listEvents(range: EventRange): Promise<CalendarEvent[]> {
+      if (inTauri) return invoke<CalendarEvent[]>("list_calendar_events", { input: range });
+      return previewCalendarEvents
+        .filter((event) => !event.deleted && eventIntersectsRange(event, range))
+        .map(copyCalendarEvent);
+    },
+
+    async getEvent(eventId: string): Promise<CalendarEvent | undefined> {
+      if (inTauri) {
+        return (await invoke<CalendarEvent | null>("get_calendar_event", { eventId })) ?? undefined;
+      }
+      const event = previewCalendarEvents.find((candidate) => candidate.id === eventId);
+      return event ? copyCalendarEvent(event) : undefined;
+    },
+
+    async createEvent(input: EventMutation): Promise<CalendarEvent> {
+      if (inTauri) return invoke<CalendarEvent>("create_calendar_event", { input });
+      previewCalendarSequence += 1;
+      const event: CalendarEvent = {
+        ...input,
+        id: `preview-event-${previewCalendarSequence}`,
+        uid: `preview-event-${previewCalendarSequence}@bharga.local`,
+        providerId: null,
+        conferenceUrl: input.conferenceUrl ?? null,
+        sourceThreadId: input.sourceThreadId ?? null,
+        recurrence: input.recurrence ?? null,
+        recurrenceId: null,
+        parentEventId: null,
+        organizer: input.organizer ?? null,
+        sequence: 0,
+        providerVersion: null,
+        revision: 1,
+        syncState: "pending",
+        deleted: false,
+      };
+      previewCalendarEvents = [...previewCalendarEvents, event];
+      return copyCalendarEvent(event);
+    },
+
+    async updateEvent(eventId: string, input: EventMutation): Promise<CalendarEvent> {
+      if (inTauri) return invoke<CalendarEvent>("update_calendar_event", { eventId, input });
+      const existing = previewCalendarEvents.find((candidate) => candidate.id === eventId);
+      if (!existing) throw new Error("Calendar event was not found");
+      const updated: CalendarEvent = {
+        ...existing,
+        ...input,
+        revision: existing.revision + 1,
+        syncState: "pending",
+      };
+      previewCalendarEvents = previewCalendarEvents.map((candidate) =>
+        candidate.id === eventId ? updated : candidate);
+      return copyCalendarEvent(updated);
+    },
+
+    async deleteEvent(eventId: string): Promise<CalendarEvent> {
+      if (inTauri) return invoke<CalendarEvent>("delete_calendar_event", { eventId });
+      const existing = previewCalendarEvents.find((candidate) => candidate.id === eventId);
+      if (!existing) throw new Error("Calendar event was not found");
+      const deleted = {
+        ...existing,
+        revision: existing.revision + 1,
+        syncState: "pending" as const,
+        deleted: true,
+      };
+      previewCalendarEvents = previewCalendarEvents.map((candidate) =>
+        candidate.id === eventId ? deleted : candidate);
+      return copyCalendarEvent(deleted);
+    },
+
+    async createLocalCalendar(input: CreateLocalCalendarInput): Promise<Calendar> {
+      if (inTauri) return invoke<Calendar>("create_local_calendar", { input });
+      previewCalendarSequence += 1;
+      const calendar: Calendar = {
+        id: `preview-calendar-${previewCalendarSequence}`,
+        sourceId: previewCalendarSource.id,
+        providerId: null,
+        name: input.name,
+        description: "",
+        color: input.color,
+        timezone: input.timezone,
+        accessRole: "owner",
+        writable: true,
+        visible: true,
+        isDefault: previewCalendars.length === 0,
+        sortOrder: previewCalendars.length,
+      };
+      previewCalendars = [...previewCalendars, calendar];
+      return { ...calendar };
+    },
+
+    async setVisibility(calendarId: string, visible: boolean): Promise<void> {
+      if (inTauri) {
+        await invoke<void>("set_calendar_visibility", { calendarId, visible });
+        return;
+      }
+      if (!previewCalendars.some((calendar) => calendar.id === calendarId)) {
+        throw new Error("Calendar was not found");
+      }
+      previewCalendars = previewCalendars.map((calendar) =>
+        calendar.id === calendarId ? { ...calendar, visible } : calendar);
+    },
+  },
+
   async openExternalUrl(rawUrl: string): Promise<void> {
     const destination = parseExternalWebUrl(rawUrl);
     if (!destination) throw new Error("Blocked external link: only valid http and https URLs are allowed.");
@@ -216,14 +393,6 @@ export const api = {
       return await invoke<Task[]>("list_tasks");
     } catch {
       return mockTasks;
-    }
-  },
-
-  async listEvents(): Promise<CalEvent[]> {
-    try {
-      return await invoke<CalEvent[]>("list_events");
-    } catch {
-      return mockEvents;
     }
   },
 

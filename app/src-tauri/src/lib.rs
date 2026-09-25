@@ -13,7 +13,7 @@ use ai::{
     build_provider, default_profile, prompts, router::Router, AiProfile, ModelConfig, ProviderKind,
     Role, SaveProviderInput,
 };
-use store::{Attachment, CalEvent, ImapAccount, OutboxItem, Security, Store, Task, Thread};
+use store::{Attachment, ImapAccount, OutboxItem, Security, Store, Task, Thread};
 use tauri::{Manager, State};
 
 /// App-wide managed state: the local store + the AI profile.
@@ -402,11 +402,6 @@ fn set_setting(key: String, value: String, state: State<'_, AppState>) -> Result
 #[tauri::command]
 fn list_tasks(state: State<'_, AppState>) -> Vec<Task> {
     state.store.tasks()
-}
-
-#[tauri::command]
-fn list_events(state: State<'_, AppState>) -> Vec<CalEvent> {
-    state.store.events()
 }
 
 #[tauri::command]
@@ -1546,7 +1541,15 @@ pub fn run() {
             get_settings,
             set_setting,
             list_tasks,
-            list_events,
+            calendar::commands::list_calendar_sources,
+            calendar::commands::list_calendars,
+            calendar::commands::list_calendar_events,
+            calendar::commands::get_calendar_event,
+            calendar::commands::create_calendar_event,
+            calendar::commands::update_calendar_event,
+            calendar::commands::delete_calendar_event,
+            calendar::commands::create_local_calendar,
+            calendar::commands::set_calendar_visibility,
             set_task_done,
             create_task,
             queue_send,

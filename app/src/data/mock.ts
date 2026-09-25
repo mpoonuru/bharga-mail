@@ -1,4 +1,4 @@
-import type { Thread, Task, CalEvent, AiProfile, Account } from "@/types";
+import type { Thread, Task, AiProfile, Account } from "@/types";
 
 // Seed data so the UI is fully explorable without a backend.
 // Replace with live data from the Rust core (see src/lib/bridge.ts).
@@ -180,13 +180,6 @@ export const tasks: Task[] = [
   { id: "k3", title: "Reply to Priya with onboarding feedback", due: "Wed", done: false, sourceThreadId: "t4" },
   { id: "k4", title: "Approve Q3 roadmap", done: true },
   { id: "k5", title: "Renew TLS certificate", due: "Jun 3", done: false },
-];
-
-export const events: CalEvent[] = [
-  { id: "e1", title: "Standup", day: 1, time: "09:30" },
-  { id: "e2", title: "Marco · pipeline", day: 3, time: "14:00" },
-  { id: "e3", title: "1:1 Priya", day: 3, time: "16:00" },
-  { id: "e4", title: "Renewal deadline", day: 4, time: "EOD" },
 ];
 
 export const aiProfile: AiProfile = {

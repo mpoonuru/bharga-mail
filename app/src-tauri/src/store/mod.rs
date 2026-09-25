@@ -143,14 +143,6 @@ pub struct Task {
     pub done: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CalEvent {
-    pub id: String,
-    pub title: String,
-    pub day: u8,
-    pub time: String,
-}
-
 /// Transport security for a mail server connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -1100,15 +1092,6 @@ impl Store {
                 Some(t)
             })
             .collect()
-    }
-
-    pub fn events(&self) -> Vec<CalEvent> {
-        // Calendar provider sync is Phase 1; show demo events only in demo mode.
-        if std::env::var("BHARGA_DEMO").is_ok() {
-            seed::events()
-        } else {
-            Vec::new()
-        }
     }
 
     // ---- outbox ----

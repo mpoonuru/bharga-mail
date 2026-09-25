@@ -86,11 +86,139 @@ export interface Task {
   sourceThreadId?: string;
 }
 
-export interface CalEvent {
+export type CalendarProvider = "local" | "calDav" | "google" | "microsoft";
+export type CalendarAuthState = "ready" | "reauthorizationRequired" | "error";
+export type CalendarAccessRole = "owner" | "writer" | "reader" | "freeBusyReader";
+
+export interface CalendarSource {
   id: string;
+  linkedAccountId: string | null;
+  provider: CalendarProvider;
+  label: string;
+  address: string | null;
+  authState: CalendarAuthState;
+  capabilities: string[];
+  lastSyncAt: number | null;
+  syncError: string | null;
+  disabled: boolean;
+}
+
+export interface Calendar {
+  id: string;
+  sourceId: string;
+  providerId: string | null;
+  name: string;
+  description: string;
+  color: string;
+  timezone: string;
+  accessRole: CalendarAccessRole;
+  writable: boolean;
+  visible: boolean;
+  isDefault: boolean;
+  sortOrder: number;
+}
+
+export type EventMoment =
+  | { kind: "timed"; utc: string }
+  | { kind: "allDay"; date: string };
+
+export interface RecurrenceSet {
+  rules: string[];
+  dates: string[];
+  excludedDates: string[];
+}
+
+export type EventStatus = "tentative" | "confirmed" | "cancelled";
+export type EventTransparency = "busy" | "free";
+export type EventVisibility = "default" | "public" | "private" | "confidential";
+export type AttendeeRole = "required" | "optional" | "chair" | "nonParticipant";
+export type ParticipationStatus = "needsAction" | "accepted" | "declined" | "tentative" | "delegated";
+export type ReminderMethod = "display" | "email";
+export type EventSyncState = "local" | "pending" | "synced" | "conflict" | "error";
+
+export interface EventPerson {
+  name?: string | null;
+  email: string;
+}
+
+export interface EventAttendee {
+  name?: string | null;
+  email: string;
+  role: AttendeeRole;
+  status: ParticipationStatus;
+  rsvp: boolean;
+  comment?: string | null;
+}
+
+export interface EventReminder {
+  id?: string | null;
+  method: ReminderMethod;
+  minutesBefore: number;
+}
+
+export interface EventMutation {
+  calendarId: string;
   title: string;
-  day: number; // 0..6 for the concept week grid
-  time: string;
+  description: string;
+  location: string;
+  conferenceUrl?: string | null;
+  sourceThreadId?: string | null;
+  start: EventMoment;
+  end: EventMoment;
+  timezone: string;
+  recurrence?: RecurrenceSet | null;
+  status: EventStatus;
+  transparency: EventTransparency;
+  visibility: EventVisibility;
+  organizer?: EventPerson | null;
+  attendees: EventAttendee[];
+  reminders: EventReminder[];
+}
+
+export interface CalendarEvent {
+  id: string;
+  calendarId: string;
+  uid: string;
+  providerId: string | null;
+  title: string;
+  description: string;
+  location: string;
+  conferenceUrl: string | null;
+  sourceThreadId: string | null;
+  start: EventMoment;
+  end: EventMoment;
+  timezone: string;
+  recurrence: RecurrenceSet | null;
+  recurrenceId: string | null;
+  parentEventId: string | null;
+  status: EventStatus;
+  transparency: EventTransparency;
+  visibility: EventVisibility;
+  organizer: EventPerson | null;
+  attendees: EventAttendee[];
+  reminders: EventReminder[];
+  sequence: number;
+  providerVersion: string | null;
+  revision: number;
+  syncState: EventSyncState;
+  deleted: boolean;
+}
+
+export interface EventRange {
+  start: string;
+  end: string;
+}
+
+export interface CreateLocalCalendarInput {
+  name: string;
+  color: string;
+  timezone: string;
+}
+
+export interface CalendarCommandError {
+  code: string;
+  message: string;
+  retryable: boolean;
 }
 
 // ---- Plug-and-play AI engine (mirrors Rust `ai` module) ----

@@ -8,6 +8,28 @@ afterEach(() => {
 });
 
 describe("bridge desktop failures", () => {
+  it("sends bounded range inputs to the calendar command", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {},
+    });
+    const invoke = vi.fn().mockResolvedValue([]);
+    vi.doMock("@tauri-apps/api/core", () => ({ invoke }));
+    const { api } = await import("@/lib/bridge");
+
+    await api.calendar.listEvents({
+      start: "2026-09-01T00:00:00Z",
+      end: "2026-10-01T00:00:00Z",
+    });
+
+    expect(invoke).toHaveBeenCalledWith("list_calendar_events", {
+      input: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-10-01T00:00:00Z",
+      },
+    });
+  });
+
   it("propagates account and send IPC failures", async () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,

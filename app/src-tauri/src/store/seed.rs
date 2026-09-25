@@ -1,36 +1,7 @@
 //! First-run seed data, so the app is alive before any account is connected.
 //! Mirrors the front-end mock. Once a real account syncs, real mail takes over.
 
-use super::{CalEvent, Message, Party, Store, Task, Thread};
-
-pub fn events() -> Vec<CalEvent> {
-    vec![
-        CalEvent {
-            id: "e1".into(),
-            title: "Standup".into(),
-            day: 1,
-            time: "09:30".into(),
-        },
-        CalEvent {
-            id: "e2".into(),
-            title: "Marco · pipeline".into(),
-            day: 3,
-            time: "14:00".into(),
-        },
-        CalEvent {
-            id: "e3".into(),
-            title: "1:1 Priya".into(),
-            day: 3,
-            time: "16:00".into(),
-        },
-        CalEvent {
-            id: "e4".into(),
-            title: "Renewal deadline".into(),
-            day: 4,
-            time: "EOD".into(),
-        },
-    ]
-}
+use super::{Message, Party, Store, Task, Thread};
 
 pub fn seed(store: &Store) {
     let _ = store.upsert_account("acc1", "alex.morgan@example.com", "imap", "Alex");

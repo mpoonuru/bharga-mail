@@ -484,6 +484,20 @@ impl Store {
         })
     }
 
+    pub fn set_calendar_visibility(&self, id: &str, visible: bool) -> rusqlite::Result<()> {
+        self.with_calendar_connection(|connection| {
+            let changed = connection.execute(
+                "UPDATE calendar_calendars SET visible=?2, updated_at=?3
+                 WHERE id=?1 AND deleted=0",
+                params![id, visible, Utc::now().timestamp()],
+            )?;
+            if changed == 0 {
+                return Err(invalid("calendar does not exist"));
+            }
+            Ok(())
+        })
+    }
+
     pub fn calendar_events(&self, range: &EventRange) -> rusqlite::Result<Vec<CalendarEvent>> {
         let start = DateTime::parse_from_rfc3339(&range.start)
             .map_err(|_| invalid("calendar range start must be RFC3339"))?

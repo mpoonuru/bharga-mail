@@ -1,20 +1,38 @@
 import { useEffect, useState } from "react";
 import { useApp } from "@/store";
 import { api } from "@/lib/bridge";
-import type { CalEvent } from "@/types";
+import type { CalendarEvent } from "@/types";
+import dayjs from "dayjs";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function CalendarView() {
   const createTask = useApp((s) => s.createTask);
   const [status, setStatus] = useState("");
-  const [events, setEvents] = useState<CalEvent[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const today = dayjs();
+  const weekStart = today.subtract((today.day() + 6) % 7, "day").startOf("day");
+  const weekStartIso = weekStart.toISOString();
 
   useEffect(() => {
     let active = true;
-    void api.listEvents().then((next) => { if (active) setEvents(next); });
+    void api.calendar.listEvents({
+      start: weekStartIso,
+      end: dayjs(weekStartIso).add(7, "day").toISOString(),
+    }).then((next) => {
+      if (active) setEvents(next);
+    }).catch(() => {
+      if (active) setStatus("Calendar data could not be loaded.");
+    });
     return () => { active = false; };
-  }, []);
+  }, [weekStartIso]);
+
+  const eventDay = (event: CalendarEvent) => {
+    const value = event.start.kind === "timed" ? event.start.utc : event.start.date;
+    return dayjs(value).startOf("day").diff(weekStart, "day");
+  };
+  const eventTime = (event: CalendarEvent) =>
+    event.start.kind === "timed" ? dayjs(event.start.utc).format("HH:mm") : "All day";
 
   return (
     <>
@@ -28,8 +46,8 @@ export function CalendarView() {
         {DAYS.map((d, i) => (
           <div className="cal-cell" key={d}>
             <div className="d">{d}</div>
-            {events.filter((e) => e.day === i).map((e) => (
-              <div className="cal-ev" key={e.id}>{e.time} · {e.title}</div>
+            {events.filter((event) => eventDay(event) === i).map((event) => (
+              <div className="cal-ev" key={event.id}>{eventTime(event)} · {event.title}</div>
             ))}
           </div>
         ))}
