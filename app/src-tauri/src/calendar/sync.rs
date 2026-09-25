@@ -5,7 +5,7 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
-use tokio::sync::{Mutex as AsyncMutex, Notify};
+use tokio::sync::{watch, Mutex as AsyncMutex};
 
 use super::connectors::caldav::{CalDavConnector, Credentials};
 use super::connectors::google::GoogleConnector;
@@ -25,10 +25,19 @@ struct GateState {
     result: Option<Result<CalendarSyncHealth, ConnectorError>>,
 }
 
-#[derive(Default)]
 struct SourceGate {
     state: AsyncMutex<GateState>,
-    notify: Notify,
+    changes: watch::Sender<u64>,
+}
+
+impl Default for SourceGate {
+    fn default() -> Self {
+        let (changes, _) = watch::channel(0);
+        Self {
+            state: AsyncMutex::new(GateState::default()),
+            changes,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -64,6 +73,7 @@ impl CalendarSyncCoordinator {
         Fut: Future<Output = Result<CalendarSyncHealth, ConnectorError>>,
     {
         let gate = self.gate(source_id);
+        let mut changes = gate.changes.subscribe();
         let generation = {
             let mut state = gate.state.lock().await;
             if state.running {
@@ -75,7 +85,13 @@ impl CalendarSyncCoordinator {
         };
         if let Some(generation) = generation {
             loop {
-                gate.notify.notified().await;
+                changes.changed().await.map_err(|_| {
+                    error(
+                        ConnectorErrorKind::Transient,
+                        "sync-coordinator-closed",
+                        "Calendar synchronization coordinator stopped",
+                    )
+                })?;
                 let state = gate.state.lock().await;
                 if state.generation != generation {
                     return state.result.clone().unwrap_or_else(|| {
@@ -96,7 +112,9 @@ impl CalendarSyncCoordinator {
             state.generation = state.generation.wrapping_add(1);
             state.result = Some(result.clone());
         }
-        gate.notify.notify_waiters();
+        let _ = gate.changes.send_modify(|generation| {
+            *generation = generation.wrapping_add(1);
+        });
         result
     }
 
@@ -223,27 +241,81 @@ impl CalendarSyncCoordinator {
         }
 
         for target in targets {
-            let connector = self.connector(&source, &target)?;
-            if let Err(failure) = self.flush(&source, &target, connector.as_ref()).await {
-                if failure.kind != ConnectorErrorKind::Conflict {
+            let first = self.sync_target(&source, &target).await;
+            let result = if matches!(
+                first.as_ref().err().map(|failure| failure.kind),
+                Some(ConnectorErrorKind::AuthRequired)
+            ) && matches!(
+                source.provider,
+                CalendarProvider::Google | CalendarProvider::Microsoft
+            ) {
+                if let Err(failure) = self.refresh_authorization(&source).await {
                     self.record_failure(source_id, &failure, None)?;
                     return Err(failure);
                 }
-            }
-            match connector.pull(target.cursor.as_deref()).await {
-                Ok(batch) => self
-                    .store
-                    .commit_calendar_sync_batch(&target.calendar.id, &batch)
-                    .map_err(storage_error)?,
-                Err(failure) => {
-                    self.record_failure(source_id, &failure, None)?;
-                    return Err(failure);
-                }
+                self.store
+                    .reset_calendar_operation_retries(source_id)
+                    .map_err(storage_error)?;
+                self.sync_target(&source, &target).await
+            } else {
+                first
+            };
+            if let Err(failure) = result {
+                self.record_failure(source_id, &failure, None)?;
+                return Err(failure);
             }
         }
         self.store
             .calendar_sync_health(source_id)
             .map_err(storage_error)
+    }
+
+    async fn sync_target(
+        &self,
+        source: &CalendarSource,
+        target: &CalendarSyncTarget,
+    ) -> Result<(), ConnectorError> {
+        let connector = self.connector(source, target)?;
+        if let Err(failure) = self.flush(source, target, connector.as_ref()).await {
+            if failure.kind != ConnectorErrorKind::Conflict {
+                return Err(failure);
+            }
+        }
+        let batch = connector.pull(target.cursor.as_deref()).await?;
+        self.store
+            .commit_calendar_sync_batch(&target.calendar.id, &batch)
+            .map_err(storage_error)
+    }
+
+    async fn refresh_authorization(&self, source: &CalendarSource) -> Result<(), ConnectorError> {
+        let refresh =
+            crate::sync::tokens::calendar_refresh_token(&source.id).ok_or_else(auth_error)?;
+        let config = match source.provider {
+            CalendarProvider::Google => super::connectors::google::oauth_config(),
+            CalendarProvider::Microsoft => super::connectors::microsoft::oauth_config(),
+            _ => return Err(auth_error()),
+        };
+        let tokens = crate::sync::oauth::refresh(&config, &refresh)
+            .await
+            .map_err(|_| {
+                error(
+                    ConnectorErrorKind::AuthRequired,
+                    "token-refresh-failed",
+                    "Calendar authorization expired; reconnect this source",
+                )
+            })?;
+        crate::sync::tokens::save_calendar_tokens(
+            &source.id,
+            &tokens.access_token,
+            tokens.refresh_token.as_deref().or(Some(refresh.as_str())),
+        )
+        .map_err(|_| {
+            error(
+                ConnectorErrorKind::Transient,
+                "credential-storage",
+                "Refreshed calendar authorization could not be secured",
+            )
+        })
     }
 
     fn connector(

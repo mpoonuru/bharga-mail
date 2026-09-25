@@ -6,7 +6,7 @@ afterEach(() => vi.restoreAllMocks());
 // Outside Tauri, the bridge falls back to seed data — verify those paths.
 describe("bridge fallbacks (non-Tauri)", () => {
   it("reports the package version in browser preview", async () => {
-    expect(await api.getAppVersion()).toBe("0.1.4");
+    expect(await api.getAppVersion()).toBe("0.2.0");
   });
 
   it("identifies the browser runtime as preview", () => {

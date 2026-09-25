@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod seed;
 
-const CALENDAR_SCHEMA_VERSION: i64 = 14;
+const CALENDAR_SCHEMA_VERSION: i64 = 15;
 
 /// Create a consistent, verified SQLite snapshot before a schema upgrade.
 ///
@@ -342,6 +342,7 @@ impl Store {
             (12, migrate_v12_backfill_inline_attachments),
             (13, migrate_v13_rededup_inline_attachments),
             (14, migrate_v14_calendar),
+            (15, migrate_v15_calendar_notifications),
         ];
         let mut version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         for (v, step) in steps {
@@ -1849,6 +1850,17 @@ fn migrate_v14_calendar(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// v15 — preserve the user's attendee-notification choice with each durable
+/// calendar operation so offline synchronization cannot change its meaning.
+fn migrate_v15_calendar_notifications(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    tx.execute(
+        "ALTER TABLE calendar_operations
+         ADD COLUMN notify_attendees INTEGER NOT NULL DEFAULT 0",
+        [],
+    )?;
+    Ok(())
+}
+
 /// Extract attachments embedded inline in HTML as `data:<mime>;base64,…` URIs
 /// (e.g. an iOS photo or a scanned document the sender pasted into the body).
 /// Returns `(filename, mime, decoded-bytes)` for each sizeable image/binary blob.
@@ -2092,9 +2104,10 @@ pub fn strip_quoted(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calendar::connectors::RemoteCalendar;
     use crate::calendar::domain::{
-        EventMoment, EventMutation, EventStatus, EventSyncState, EventVisibility, OperationKind,
-        Transparency,
+        AttendeeRole, CalendarProvider, EventAttendee, EventMoment, EventMutation, EventStatus,
+        EventSyncState, EventVisibility, ParticipationStatus, Transparency,
     };
 
     fn schema_13_database() -> PathBuf {
@@ -2135,11 +2148,11 @@ mod tests {
     }
 
     #[test]
-    fn migration_14_preserves_existing_data_and_creates_calendar_tables() {
+    fn calendar_migrations_preserve_existing_data_and_create_calendar_tables() {
         let path = schema_13_database();
         let store = Store::open(path.clone()).unwrap();
 
-        assert_eq!(store.schema_version().unwrap(), 14);
+        assert_eq!(store.schema_version().unwrap(), 15);
         assert!(store.table_exists("calendar_events").unwrap());
         assert_eq!(
             store
@@ -2150,7 +2163,7 @@ mod tests {
         );
 
         let file_name = path.file_name().unwrap().to_string_lossy();
-        let prefix = format!("{file_name}.schema-13-to-14-");
+        let prefix = format!("{file_name}.schema-13-to-15-");
         let backups = std::fs::read_dir(path.parent().unwrap())
             .unwrap()
             .filter_map(Result::ok)
@@ -2167,7 +2180,7 @@ mod tests {
     }
 
     #[test]
-    fn local_event_and_pending_create_commit_together() {
+    fn local_event_commits_without_a_remote_operation() {
         let store = Store::in_memory().unwrap();
         let calendar = store
             .create_local_calendar("Personal", "#6f8df6", "Europe/Berlin")
@@ -2197,11 +2210,72 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(event.sync_state, EventSyncState::Pending);
-        assert_eq!(
-            store.calendar_operation_for(&event.id).unwrap().kind,
-            OperationKind::Create
-        );
+        assert_eq!(event.sync_state, EventSyncState::Local);
+        assert!(store.calendar_operation_for(&event.id).is_err());
+    }
+
+    #[test]
+    fn remote_operation_persists_attendee_notification_intent() {
+        let store = Store::in_memory().unwrap();
+        store
+            .save_remote_source_atomic(
+                "google-source",
+                CalendarProvider::Google,
+                "Work",
+                "",
+                &[RemoteCalendar {
+                    id: "primary".into(),
+                    href: "primary".into(),
+                    name: "Work".into(),
+                    description: String::new(),
+                    color: "#6f8df6".into(),
+                    timezone: "Europe/Berlin".into(),
+                    writable: true,
+                    supports_sync_collection: true,
+                    supports_scheduling: true,
+                    ctag: None,
+                    sync_token: None,
+                }],
+                &[],
+            )
+            .unwrap();
+        let calendar = store.calendars().unwrap().remove(0);
+        let event = store
+            .create_calendar_event_with_notifications(
+                EventMutation {
+                    calendar_id: calendar.id,
+                    title: "Partner review".into(),
+                    description: String::new(),
+                    location: String::new(),
+                    conference_url: None,
+                    source_thread_id: None,
+                    start: EventMoment::Timed {
+                        utc: "2026-09-25T12:00:00Z".into(),
+                    },
+                    end: EventMoment::Timed {
+                        utc: "2026-09-25T13:00:00Z".into(),
+                    },
+                    timezone: "Europe/Berlin".into(),
+                    recurrence: None,
+                    status: EventStatus::Confirmed,
+                    transparency: Transparency::Busy,
+                    visibility: EventVisibility::Default,
+                    organizer: None,
+                    attendees: vec![EventAttendee {
+                        name: None,
+                        email: "guest@example.test".into(),
+                        role: AttendeeRole::Required,
+                        status: ParticipationStatus::NeedsAction,
+                        rsvp: true,
+                        comment: None,
+                    }],
+                    reminders: Vec::new(),
+                },
+                true,
+            )
+            .unwrap();
+
+        assert!(store.calendar_operation_for(&event.id).unwrap().notify_attendees);
     }
 
     #[test]

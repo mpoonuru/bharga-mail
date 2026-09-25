@@ -185,6 +185,7 @@ mod tests {
                 kind: OperationKind::Update,
                 revision: 2,
                 expected_provider_version: Some("stale".into()),
+                notify_attendees: false,
                 attempts: 0,
                 next_retry_at: 0,
                 last_error: None,

@@ -351,11 +351,15 @@ pub fn get_calendar_event(
 #[tauri::command]
 pub fn create_calendar_event(
     input: EventMutationInput,
+    notify_attendees: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<CalendarEvent, CalendarCommandError> {
     state
         .store
-        .create_calendar_event(validate_event(input)?)
+        .create_calendar_event_with_notifications(
+            validate_event(input)?,
+            notify_attendees.unwrap_or(false),
+        )
         .map_err(store_error)
 }
 
@@ -363,11 +367,16 @@ pub fn create_calendar_event(
 pub fn update_calendar_event(
     event_id: String,
     input: EventMutationInput,
+    notify_attendees: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<CalendarEvent, CalendarCommandError> {
     state
         .store
-        .update_calendar_event(&event_id, validate_event(input)?)
+        .update_calendar_event_with_notifications(
+            &event_id,
+            validate_event(input)?,
+            notify_attendees.unwrap_or(false),
+        )
         .map_err(store_error)
 }
 
@@ -377,6 +386,7 @@ pub fn update_recurring_calendar_event(
     recurrence_id: String,
     scope: RecurrenceEditScope,
     input: EventMutationInput,
+    notify_attendees: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<SeriesSplit, CalendarCommandError> {
     super::recurrence::edit_recurring_event(
@@ -385,6 +395,7 @@ pub fn update_recurring_calendar_event(
         &recurrence_id,
         scope,
         validate_event(input)?,
+        notify_attendees.unwrap_or(false),
     )
     .map_err(calendar_error)
 }
@@ -1087,7 +1098,10 @@ pub fn set_calendar_order(
     calendar_ids: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<(), CalendarCommandError> {
-    state.store.set_calendar_order(&calendar_ids).map_err(store_error)
+    state
+        .store
+        .set_calendar_order(&calendar_ids)
+        .map_err(store_error)
 }
 
 fn remove_calendar_source_with<F>(
@@ -1104,7 +1118,9 @@ where
         .map_err(store_error)?
         .into_iter()
         .find(|source| source.id == source_id)
-        .ok_or_else(|| CalendarCommandError::new("source-not-found", "Calendar source was not found", false))?;
+        .ok_or_else(|| {
+            CalendarCommandError::new("source-not-found", "Calendar source was not found", false)
+        })?;
     if source.provider != CalendarProvider::Local {
         clear_credentials().map_err(|_| {
             CalendarCommandError::new(
@@ -1114,7 +1130,9 @@ where
             )
         })?;
     }
-    store.remove_calendar_source(source_id, policy).map_err(store_error)
+    store
+        .remove_calendar_source(source_id, policy)
+        .map_err(store_error)
 }
 
 #[tauri::command]
@@ -1127,7 +1145,10 @@ pub fn remove_calendar_source(
     remove_calendar_source_with(&state.store, &source_id, policy, || {
         crate::sync::tokens::clear_calendar_credentials(&source_id)
     })?;
-    let _ = app.emit("calendar:changed", serde_json::json!({ "sourceId": source_id }));
+    let _ = app.emit(
+        "calendar:changed",
+        serde_json::json!({ "sourceId": source_id }),
+    );
     Ok(())
 }
 

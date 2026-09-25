@@ -30,6 +30,21 @@ describe("bridge desktop failures", () => {
     });
   });
 
+  it("never substitutes browser events after a desktop calendar IPC failure", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {},
+    });
+    const invoke = vi.fn().mockRejectedValue(new Error("database unavailable"));
+    vi.doMock("@tauri-apps/api/core", () => ({ invoke }));
+    const { api } = await import("@/lib/bridge");
+
+    await expect(api.calendar.listEvents({
+      start: "2026-09-01T00:00:00Z",
+      end: "2026-10-01T00:00:00Z",
+    })).rejects.toThrow("database unavailable");
+  });
+
   it("propagates account and send IPC failures", async () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,

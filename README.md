@@ -48,6 +48,7 @@ Most "AI email" lives in someone else's cloud — your messages and login tokens
 
 - **Your mail never leaves your device.** Bharga Mail connects straight to your IMAP / Gmail / Microsoft 365 servers. There is no Bharga server in the middle.
 - **Encrypted credentials:** the OS Keychain holds one master key; account passwords, OAuth tokens, and provider keys are sealed with AES-256-GCM in the local secrets store.
+- **Calendar authorization is isolated from mail.** Google Calendar and Microsoft 365 Calendar use separate OAuth grants and token namespaces, so revoking calendar access does not break mail access.
 - **Local mail storage:** message bodies and contacts remain on your device in SQLite with full-text search. They are not yet encrypted at rest; SQLCipher migration, rollback, and recovery are release-gate work before Bharga claims full mailbox encryption.
 - **Reading mail doesn't mark it read by accident.** We fetch with `BODY.PEEK[]`, so syncing never silently flips your messages to *seen* on the server.
 - **AI is yours to choose.** Run triage/summaries fully **on‑device** (local model), or bring your own OpenAI/Anthropic key. Cloud AI is opt‑in, per‑role, and never required.
@@ -62,6 +63,15 @@ Most "AI email" lives in someone else's cloud — your messages and login tokens
 - 📥 **Multi‑account** — IMAP, Gmail, and Microsoft 365 / Graph, with instant IMAP **IDLE** push.
 - ✍️ **Modern compose** — from‑account picker, contact autocomplete, scheduled send, undo send, rich text, signatures.
 - 🔎 **Fast local search** (SQLite FTS5), smart bundles, snooze, flags, and AI "smart chips".
+- 📅 **Local-first calendar** — month, week, day, and agenda views; offline event changes; recurrence; reminders; `.ics` import/export; invitation replies; CalDAV, Google Calendar, and Microsoft 365 Calendar synchronization.
+
+## Calendar data and interoperability
+
+Calendar events, recurrence exceptions, reminders, outbound operations, and sync cursors are stored in the local SQLite database. Remote changes use provider versions or ETags for conflict detection; when both sides changed, Bharga Mail preserves both snapshots and requires an explicit choice. Disconnecting a source never deletes provider-side events. You can remove its local cache or preserve it as a local calendar.
+
+CalDAV credentials and Google/Microsoft calendar tokens use the encrypted credential store described above. The app exports redacted diagnostics only: provider kind, coarse health, capability names, and aggregate counts; event text, attendees, account identities, URLs, credentials, payloads, and sync cursors are excluded.
+
+Current limitations: CalDAV scheduling support depends on the server, free/busy results are labelled incomplete whenever a selected provider cannot answer, and packaged notification behavior must be granted by the operating system. Provider integration testing requires your own test tenant and OAuth client configuration. The app does not publish an npm package; desktop artifacts are distributed through GitHub Releases.
 
 ## Tech
 
@@ -81,6 +91,13 @@ bun run tauri:dev
 
 # build a signed/installable bundle
 bun run tauri:build
+
+# complete local verification
+bun run test
+bun run build
+bun run check:open-source
+bun run check:version
+cd src-tauri && cargo test && cargo check
 ```
 
 ## License

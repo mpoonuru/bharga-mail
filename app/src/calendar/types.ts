@@ -71,6 +71,10 @@ export interface SelectedOccurrence {
   occurrenceStart: string;
 }
 
+export interface EventWriteOptions {
+  notifyAttendees?: boolean;
+}
+
 export interface CalendarSlot {
   date: string;
   time?: string;
@@ -87,13 +91,14 @@ export interface CalendarApi {
   listCalendars(): Promise<Calendar[]>;
   listEvents(range: EventRange): Promise<CalendarEvent[]>;
   getEvent(eventId: string): Promise<CalendarEvent | undefined>;
-  createEvent(input: EventMutation): Promise<CalendarEvent>;
-  updateEvent(eventId: string, input: EventMutation): Promise<CalendarEvent>;
+  createEvent(input: EventMutation, options?: EventWriteOptions): Promise<CalendarEvent>;
+  updateEvent(eventId: string, input: EventMutation, options?: EventWriteOptions): Promise<CalendarEvent>;
   updateRecurringEvent?(
     eventId: string,
     recurrenceId: string,
     scope: "occurrence" | "following" | "series",
     input: EventMutation,
+    options?: EventWriteOptions,
   ): Promise<CalendarEvent[]>;
   importIcs?(calendarId: string): Promise<CalendarEvent[]>;
   exportIcs?(eventIds: string[]): Promise<number>;

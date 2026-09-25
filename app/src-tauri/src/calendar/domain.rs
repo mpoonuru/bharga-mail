@@ -445,6 +445,7 @@ pub struct CalendarOperation {
     pub kind: OperationKind,
     pub revision: i64,
     pub expected_provider_version: Option<String>,
+    pub notify_attendees: bool,
     pub attempts: i64,
     pub next_retry_at: i64,
     pub last_error: Option<String>,

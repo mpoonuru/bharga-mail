@@ -44,6 +44,7 @@ interface EventDialogProps {
   onClose(): void;
   returnFocus?: HTMLElement | null;
   onCheckAvailability?(range: { start: string; end: string }, attendees: string[]): Promise<FreeBusyResult>;
+  notificationPolicy?: "optional" | "providerManaged" | "none";
 }
 
 interface FormState {
@@ -109,7 +110,7 @@ function validEmail(value: string): boolean {
   return value.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-export function EventDialog({ open, initial, calendars, onSave, onDelete, onClose, returnFocus, onCheckAvailability }: EventDialogProps) {
+export function EventDialog({ open, initial, calendars, onSave, onDelete, onClose, returnFocus, onCheckAvailability, notificationPolicy = "optional" }: EventDialogProps) {
   const original = useMemo(() => initialState(initial), [initial]);
   const [form, setForm] = useState<FormState>(original);
   const [attendeeInput, setAttendeeInput] = useState("");
@@ -207,7 +208,12 @@ export function EventDialog({ open, initial, calendars, onSave, onDelete, onClos
     setSubmitting(true);
     setSaveError("");
     try {
-      await onSave(value, { scope, notifyAttendees: form.notifyAttendees });
+      await onSave(value, {
+        scope,
+        notifyAttendees: notificationPolicy === "providerManaged"
+          ? value.attendees.length > 0
+          : notificationPolicy === "optional" && form.notifyAttendees,
+      });
       onClose();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Event could not be saved");
@@ -343,11 +349,16 @@ export function EventDialog({ open, initial, calendars, onSave, onDelete, onClos
               </button>
             ))}
           </div>
-          {form.attendees.length > 0 && (
+          {form.attendees.length > 0 && notificationPolicy === "optional" && (
             <label className="calendar-check calendar-field-wide">
               <input type="checkbox" checked={form.notifyAttendees} onChange={(event) => patch("notifyAttendees", event.currentTarget.checked)} />
               <span>Send updates to attendees</span>
             </label>
+          )}
+          {form.attendees.length > 0 && notificationPolicy === "providerManaged" && (
+            <p className="calendar-field-note calendar-field-wide">
+              Invitation delivery is managed by this calendar provider when attendees change.
+            </p>
           )}
           {saveError && <p className="calendar-save-error calendar-field-wide" role="alert">{saveError}</p>}
           <div className="calendar-dialog-actions calendar-field-wide">

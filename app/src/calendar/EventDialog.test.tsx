@@ -116,4 +116,32 @@ describe("EventDialog", () => {
     expect(document.querySelector('[role="dialog"][aria-label="Apply changes"]')).not.toBeNull();
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  it("explains provider-managed invitation delivery and preserves attendees", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const rendered = renderTest(
+      <EventDialog
+        open
+        initial={initial({
+          end: { kind: "timed", utc: "2026-09-25T11:00:00Z" },
+          attendees: [{ email: "guest@example.test", role: "required", status: "needsAction", rsvp: true }],
+        })}
+        calendars={calendars}
+        notificationPolicy="providerManaged"
+        onSave={onSave}
+        onClose={() => {}}
+      />,
+    );
+    cleanup = rendered.unmount;
+
+    expect(document.body.textContent).toContain("Invitation delivery is managed by this calendar provider");
+    expect(document.body.textContent).not.toContain("Send updates to attendees");
+    await act(async () => {
+      [...document.querySelectorAll("button")].find((button) => button.textContent === "Save event")?.click();
+    });
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ attendees: [expect.objectContaining({ email: "guest@example.test" })] }),
+      expect.objectContaining({ notifyAttendees: true }),
+    );
+  });
 });

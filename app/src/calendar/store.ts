@@ -15,6 +15,7 @@ import type {
   CalendarStateSnapshot,
   CalendarView,
   EventMutation,
+  EventWriteOptions,
   SelectedOccurrence,
 } from "@/calendar/types";
 import type { CalendarSourceRemovalPolicy } from "@/types";
@@ -30,8 +31,8 @@ export interface CalendarState extends CalendarStateSnapshot {
   setView(view: CalendarView): Promise<void>;
   setTimezone(timezone: string): Promise<void>;
   setSelectedOccurrence(selection: SelectedOccurrence | null): void;
-  createEvent(input: EventMutation): Promise<CalendarEvent>;
-  updateEvent(eventId: string, patch: Partial<EventMutation>): Promise<CalendarEvent>;
+  createEvent(input: EventMutation, options?: EventWriteOptions): Promise<CalendarEvent>;
+  updateEvent(eventId: string, patch: Partial<EventMutation>, options?: EventWriteOptions): Promise<CalendarEvent>;
   deleteEvent(eventId: string): Promise<CalendarEvent>;
   createLocalCalendar(input: { name: string; color: string; timezone: string }): Promise<Calendar>;
   setCalendarVisibility(calendarId: string, visible: boolean): Promise<void>;
@@ -175,9 +176,9 @@ function calendarState(calendarApi: CalendarApi): StateCreator<CalendarState> {
       set({ selectedOccurrence });
     },
 
-    async createEvent(input) {
+    async createEvent(input, options) {
       try {
-        const created = await calendarApi.createEvent(input);
+        const created = await calendarApi.createEvent(input, options);
         set((state) => ({ events: { ...state.events, [created.id]: created }, error: null }));
         return created;
       } catch (error) {
@@ -186,7 +187,7 @@ function calendarState(calendarApi: CalendarApi): StateCreator<CalendarState> {
       }
     },
 
-    async updateEvent(eventId, patch) {
+    async updateEvent(eventId, patch, options) {
       const existing = get().events[eventId];
       if (!existing) throw new Error(`Calendar event ${eventId} was not found`);
       const optimistic: CalendarEvent = {
@@ -197,7 +198,7 @@ function calendarState(calendarApi: CalendarApi): StateCreator<CalendarState> {
       };
       set((state) => ({ events: { ...state.events, [eventId]: optimistic }, error: null }));
       try {
-        const updated = await calendarApi.updateEvent(eventId, eventMutation(optimistic));
+        const updated = await calendarApi.updateEvent(eventId, eventMutation(optimistic), options);
         set((state) => ({ events: { ...state.events, [eventId]: updated } }));
         return updated;
       } catch (error) {

@@ -443,6 +443,7 @@ pub fn split_series(
     event_id: &str,
     recurrence_id: &str,
     mut patch: EventMutation,
+    notify_attendees: bool,
 ) -> Result<SeriesSplit, CalendarError> {
     let master = store
         .calendar_event(event_id)
@@ -460,7 +461,7 @@ pub fn split_series(
     let (context, target, occurrences_before) = recurrence_target(&master, recurrence_id)?;
     if occurrences_before == 0 {
         let updated = store
-            .update_calendar_event(event_id, patch)
+            .update_calendar_event_with_notifications(event_id, patch, notify_attendees)
             .map_err(store_error)?;
         return Ok(SeriesSplit {
             original: updated,
@@ -493,7 +494,7 @@ pub fn split_series(
         excluded_dates: following_exdates,
     });
     store
-        .split_calendar_series(event_id, original_patch, patch)
+        .split_calendar_series(event_id, original_patch, patch, notify_attendees)
         .map_err(store_error)
 }
 
@@ -503,11 +504,12 @@ pub fn edit_recurring_event(
     recurrence_id: &str,
     scope: RecurrenceEditScope,
     patch: EventMutation,
+    notify_attendees: bool,
 ) -> Result<SeriesSplit, CalendarError> {
     match scope {
         RecurrenceEditScope::EntireSeries => {
             let original = store
-                .update_calendar_event(event_id, patch)
+                .update_calendar_event_with_notifications(event_id, patch, notify_attendees)
                 .map_err(store_error)?;
             Ok(SeriesSplit {
                 original,
@@ -528,11 +530,11 @@ pub fn edit_recurring_event(
                 recurrence_target(&master, recurrence_id)?;
             }
             store
-                .create_calendar_exception(event_id, recurrence_id, patch)
+                .create_calendar_exception(event_id, recurrence_id, patch, notify_attendees)
                 .map_err(store_error)
         }
         RecurrenceEditScope::ThisAndFollowing => {
-            split_series(store, event_id, recurrence_id, patch)
+            split_series(store, event_id, recurrence_id, patch, notify_attendees)
         }
     }
 }
@@ -709,6 +711,7 @@ mod tests {
             "2026-03-29T07:00:00Z",
             RecurrenceEditScope::ThisOccurrence,
             patch,
+            false,
         )
         .unwrap();
         let exception = result.exception.unwrap();
@@ -745,6 +748,7 @@ mod tests {
             "2026-03-29T07:00:00Z",
             RecurrenceEditScope::ThisOccurrence,
             second_patch,
+            false,
         )
         .unwrap()
         .exception
@@ -796,6 +800,7 @@ mod tests {
             "2026-04-05T07:00:00Z",
             RecurrenceEditScope::ThisAndFollowing,
             patch,
+            false,
         )
         .unwrap();
 

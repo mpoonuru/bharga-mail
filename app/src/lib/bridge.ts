@@ -106,8 +106,8 @@ let pendingUpdate: { version: string; downloadAndInstall: () => Promise<void> } 
 // The browser preview exercises the same local-first calendar operations as the
 // desktop bridge. It intentionally starts empty and never pretends that a
 // remote provider connected or returned data.
-const previewCalendarSource: CalendarSource = {
-  id: "preview-local-source",
+const browserCalendarSource: CalendarSource = {
+  id: "browser-local-source",
   linkedAccountId: null,
   provider: "local",
   label: "Personal",
@@ -118,9 +118,9 @@ const previewCalendarSource: CalendarSource = {
   syncError: null,
   disabled: false,
 };
-let previewCalendars: Calendar[] = [{
-  id: "preview-local-calendar",
-  sourceId: previewCalendarSource.id,
+let browserCalendars: Calendar[] = [{
+  id: "browser-local-calendar",
+  sourceId: browserCalendarSource.id,
   providerId: null,
   name: "Personal",
   description: "",
@@ -132,8 +132,8 @@ let previewCalendars: Calendar[] = [{
   isDefault: true,
   sortOrder: 0,
 }];
-let previewCalendarEvents: CalendarEvent[] = [];
-let previewCalendarSequence = 0;
+let browserCalendarEvents: CalendarEvent[] = [];
+let browserCalendarSequence = 0;
 let pendingCalendarDraft: EventMutation | null = null;
 
 function copyCalendarEvent(event: CalendarEvent): CalendarEvent {
@@ -223,17 +223,17 @@ export const api = {
   calendar: {
     async listSources(): Promise<CalendarSource[]> {
       if (inTauri) return invoke<CalendarSource[]>("list_calendar_sources");
-      return [{ ...previewCalendarSource, capabilities: [...previewCalendarSource.capabilities] }];
+      return [{ ...browserCalendarSource, capabilities: [...browserCalendarSource.capabilities] }];
     },
 
     async listCalendars(): Promise<Calendar[]> {
       if (inTauri) return invoke<Calendar[]>("list_calendars");
-      return previewCalendars.map((calendar) => ({ ...calendar }));
+      return browserCalendars.map((calendar) => ({ ...calendar }));
     },
 
     async listEvents(range: EventRange): Promise<CalendarEvent[]> {
       if (inTauri) return invoke<CalendarEvent[]>("list_calendar_events", { input: range });
-      return previewCalendarEvents
+      return browserCalendarEvents
         .filter((event) => !event.deleted && eventIntersectsRange(event, range))
         .map(copyCalendarEvent);
     },
@@ -242,17 +242,20 @@ export const api = {
       if (inTauri) {
         return (await invoke<CalendarEvent | null>("get_calendar_event", { eventId })) ?? undefined;
       }
-      const event = previewCalendarEvents.find((candidate) => candidate.id === eventId);
+      const event = browserCalendarEvents.find((candidate) => candidate.id === eventId);
       return event ? copyCalendarEvent(event) : undefined;
     },
 
-    async createEvent(input: EventMutation): Promise<CalendarEvent> {
-      if (inTauri) return invoke<CalendarEvent>("create_calendar_event", { input });
-      previewCalendarSequence += 1;
+    async createEvent(input: EventMutation, options?: { notifyAttendees?: boolean }): Promise<CalendarEvent> {
+      if (inTauri) return invoke<CalendarEvent>("create_calendar_event", {
+        input,
+        notifyAttendees: options?.notifyAttendees ?? false,
+      });
+      browserCalendarSequence += 1;
       const event: CalendarEvent = {
         ...input,
-        id: `preview-event-${previewCalendarSequence}`,
-        uid: `preview-event-${previewCalendarSequence}@bharga.local`,
+        id: `browser-event-${browserCalendarSequence}`,
+        uid: `browser-event-${browserCalendarSequence}@bharga.local`,
         providerId: null,
         conferenceUrl: input.conferenceUrl ?? null,
         sourceThreadId: input.sourceThreadId ?? null,
@@ -263,24 +266,28 @@ export const api = {
         sequence: 0,
         providerVersion: null,
         revision: 1,
-        syncState: "pending",
+        syncState: "local",
         deleted: false,
       };
-      previewCalendarEvents = [...previewCalendarEvents, event];
+      browserCalendarEvents = [...browserCalendarEvents, event];
       return copyCalendarEvent(event);
     },
 
-    async updateEvent(eventId: string, input: EventMutation): Promise<CalendarEvent> {
-      if (inTauri) return invoke<CalendarEvent>("update_calendar_event", { eventId, input });
-      const existing = previewCalendarEvents.find((candidate) => candidate.id === eventId);
+    async updateEvent(eventId: string, input: EventMutation, options?: { notifyAttendees?: boolean }): Promise<CalendarEvent> {
+      if (inTauri) return invoke<CalendarEvent>("update_calendar_event", {
+        eventId,
+        input,
+        notifyAttendees: options?.notifyAttendees ?? false,
+      });
+      const existing = browserCalendarEvents.find((candidate) => candidate.id === eventId);
       if (!existing) throw new Error("Calendar event was not found");
       const updated: CalendarEvent = {
         ...existing,
         ...input,
         revision: existing.revision + 1,
-        syncState: "pending",
+        syncState: "local",
       };
-      previewCalendarEvents = previewCalendarEvents.map((candidate) =>
+      browserCalendarEvents = browserCalendarEvents.map((candidate) =>
         candidate.id === eventId ? updated : candidate);
       return copyCalendarEvent(updated);
     },
@@ -290,8 +297,9 @@ export const api = {
       recurrenceId: string,
       scope: "occurrence" | "following" | "series",
       input: EventMutation,
+      options?: { notifyAttendees?: boolean },
     ): Promise<CalendarEvent[]> {
-      if (!inTauri) return [await this.updateEvent(eventId, input)];
+      if (!inTauri) return [await this.updateEvent(eventId, input, options)];
       const nativeScope = scope === "occurrence"
         ? "thisOccurrence"
         : scope === "following"
@@ -301,7 +309,13 @@ export const api = {
         original: CalendarEvent;
         following: CalendarEvent | null;
         exception: CalendarEvent | null;
-      }>("update_recurring_calendar_event", { eventId, recurrenceId, scope: nativeScope, input });
+      }>("update_recurring_calendar_event", {
+        eventId,
+        recurrenceId,
+        scope: nativeScope,
+        input,
+        notifyAttendees: options?.notifyAttendees ?? false,
+      });
       return [result.original, result.following, result.exception].filter(
         (event): event is CalendarEvent => event !== null,
       );
@@ -353,7 +367,7 @@ export const api = {
         draft = await invoke<EventMutation>("schedule_from_thread", { threadId });
       } else {
         const thread = mockThreads.find((candidate) => candidate.id === threadId);
-        const calendar = previewCalendars.find((candidate) => candidate.writable);
+        const calendar = browserCalendars.find((candidate) => candidate.writable);
         if (!thread || !calendar) throw new Error("A writable calendar is required");
         const start = dayjs().add(1, "hour").minute(0).second(0).millisecond(0);
         draft = {
@@ -442,25 +456,25 @@ export const api = {
 
     async deleteEvent(eventId: string): Promise<CalendarEvent> {
       if (inTauri) return invoke<CalendarEvent>("delete_calendar_event", { eventId });
-      const existing = previewCalendarEvents.find((candidate) => candidate.id === eventId);
+      const existing = browserCalendarEvents.find((candidate) => candidate.id === eventId);
       if (!existing) throw new Error("Calendar event was not found");
       const deleted = {
         ...existing,
         revision: existing.revision + 1,
-        syncState: "pending" as const,
+        syncState: "local" as const,
         deleted: true,
       };
-      previewCalendarEvents = previewCalendarEvents.map((candidate) =>
+      browserCalendarEvents = browserCalendarEvents.map((candidate) =>
         candidate.id === eventId ? deleted : candidate);
       return copyCalendarEvent(deleted);
     },
 
     async createLocalCalendar(input: CreateLocalCalendarInput): Promise<Calendar> {
       if (inTauri) return invoke<Calendar>("create_local_calendar", { input });
-      previewCalendarSequence += 1;
+      browserCalendarSequence += 1;
       const calendar: Calendar = {
-        id: `preview-calendar-${previewCalendarSequence}`,
-        sourceId: previewCalendarSource.id,
+        id: `browser-calendar-${browserCalendarSequence}`,
+        sourceId: browserCalendarSource.id,
         providerId: null,
         name: input.name,
         description: "",
@@ -469,10 +483,10 @@ export const api = {
         accessRole: "owner",
         writable: true,
         visible: true,
-        isDefault: previewCalendars.length === 0,
-        sortOrder: previewCalendars.length,
+        isDefault: browserCalendars.length === 0,
+        sortOrder: browserCalendars.length,
       };
-      previewCalendars = [...previewCalendars, calendar];
+      browserCalendars = [...browserCalendars, calendar];
       return { ...calendar };
     },
 
@@ -481,10 +495,10 @@ export const api = {
         await invoke<void>("set_calendar_visibility", { calendarId, visible });
         return;
       }
-      if (!previewCalendars.some((calendar) => calendar.id === calendarId)) {
+      if (!browserCalendars.some((calendar) => calendar.id === calendarId)) {
         throw new Error("Calendar was not found");
       }
-      previewCalendars = previewCalendars.map((calendar) =>
+      browserCalendars = browserCalendars.map((calendar) =>
         calendar.id === calendarId ? { ...calendar, visible } : calendar);
     },
 

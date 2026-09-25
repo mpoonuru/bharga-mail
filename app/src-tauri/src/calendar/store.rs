@@ -250,12 +250,25 @@ fn queue_operation(
     source_id: &str,
     event: &CalendarEvent,
     kind: OperationKind,
+    notify_attendees: bool,
 ) -> rusqlite::Result<()> {
+    let provider: String = tx.query_row(
+        "SELECT provider FROM calendar_sources WHERE id=?1",
+        [source_id],
+        |row| row.get(0),
+    )?;
+    if provider == "local" {
+        tx.execute(
+            "UPDATE calendar_events SET sync_state='local', updated_at=?2 WHERE id=?1",
+            params![event.id, Utc::now().timestamp()],
+        )?;
+        return Ok(());
+    }
     tx.execute(
         "INSERT INTO calendar_operations
          (id, source_id, calendar_id, event_id, kind, local_revision,
-          expected_provider_version, attempts, next_retry_at, last_error, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 0, NULL, ?8)",
+          expected_provider_version, notify_attendees, attempts, next_retry_at, last_error, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, 0, NULL, ?9)",
         params![
             format!("calendar-op:{}", Uuid::new_v4()),
             source_id,
@@ -264,6 +277,7 @@ fn queue_operation(
             kind.as_str(),
             event.revision,
             event.provider_version,
+            notify_attendees,
             Utc::now().timestamp(),
         ],
     )?;
@@ -914,7 +928,7 @@ impl Store {
                 if source.recurrence_id.is_none() {
                     masters.insert(source.uid.clone(), event.id.clone());
                 }
-                queue_operation(tx, &source_id, &event, OperationKind::Create)?;
+                queue_operation(tx, &source_id, &event, OperationKind::Create, false)?;
                 events.push(event);
             }
             Ok(events)
@@ -947,7 +961,7 @@ impl Store {
             )?;
             let event = read_event(tx, &event.id)?
                 .ok_or_else(|| invalid("responded event was not found"))?;
-            queue_operation(tx, &source_id, &event, operation)?;
+            queue_operation(tx, &source_id, &event, operation, false)?;
             tx.execute(
                 "INSERT INTO outbox
                  (id, account_id, thread_id, recipient, subject, body, attachments,
@@ -972,11 +986,25 @@ impl Store {
     }
 
     pub fn create_calendar_event(&self, input: EventMutation) -> rusqlite::Result<CalendarEvent> {
+        self.create_calendar_event_with_notifications(input, false)
+    }
+
+    pub fn create_calendar_event_with_notifications(
+        &self,
+        input: EventMutation,
+        notify_attendees: bool,
+    ) -> rusqlite::Result<CalendarEvent> {
         let input = validate_mutation(&input)?;
         self.with_calendar_transaction(|tx| {
             let (source_id, event) = insert_event(tx, &input, None, None, None)?;
-            queue_operation(tx, &source_id, &event, OperationKind::Create)?;
-            Ok(event)
+            queue_operation(
+                tx,
+                &source_id,
+                &event,
+                OperationKind::Create,
+                notify_attendees,
+            )?;
+            read_event(tx, &event.id)?.ok_or_else(|| invalid("created event was not found"))
         })
     }
 
@@ -985,11 +1013,26 @@ impl Store {
         id: &str,
         input: EventMutation,
     ) -> rusqlite::Result<CalendarEvent> {
+        self.update_calendar_event_with_notifications(id, input, false)
+    }
+
+    pub fn update_calendar_event_with_notifications(
+        &self,
+        id: &str,
+        input: EventMutation,
+        notify_attendees: bool,
+    ) -> rusqlite::Result<CalendarEvent> {
         let input = validate_mutation(&input)?;
         self.with_calendar_transaction(|tx| {
             let (source_id, event) = update_event(tx, id, &input)?;
-            queue_operation(tx, &source_id, &event, OperationKind::Update)?;
-            Ok(event)
+            queue_operation(
+                tx,
+                &source_id,
+                &event,
+                OperationKind::Update,
+                notify_attendees,
+            )?;
+            read_event(tx, &event.id)?.ok_or_else(|| invalid("updated event was not found"))
         })
     }
 
@@ -998,6 +1041,7 @@ impl Store {
         master_id: &str,
         recurrence_id: &str,
         mut input: EventMutation,
+        notify_attendees: bool,
     ) -> rusqlite::Result<SeriesSplit> {
         input.recurrence = None;
         let input = validate_mutation(&input)?;
@@ -1040,7 +1084,7 @@ impl Store {
                    event_id=excluded.event_id, cancelled=0",
                 params![master_id, recurrence_id, exception.id],
             )?;
-            queue_operation(tx, &source_id, &exception, operation)?;
+            queue_operation(tx, &source_id, &exception, operation, notify_attendees)?;
             Ok(SeriesSplit {
                 original: master,
                 following: None,
@@ -1076,6 +1120,7 @@ impl Store {
         master_id: &str,
         original_input: EventMutation,
         following_input: EventMutation,
+        notify_attendees: bool,
     ) -> rusqlite::Result<SeriesSplit> {
         let original_input = validate_mutation(&original_input)?;
         let following_input = validate_mutation(&following_input)?;
@@ -1084,10 +1129,22 @@ impl Store {
                 .filter(|event| event.recurrence.is_some() && event.parent_event_id.is_none())
                 .ok_or_else(|| invalid("recurring series does not exist"))?;
             let (original_source, original) = update_event(tx, master_id, &original_input)?;
-            queue_operation(tx, &original_source, &original, OperationKind::Update)?;
+            queue_operation(
+                tx,
+                &original_source,
+                &original,
+                OperationKind::Update,
+                notify_attendees,
+            )?;
             let (following_source, following) =
                 insert_event(tx, &following_input, None, None, None)?;
-            queue_operation(tx, &following_source, &following, OperationKind::Create)?;
+            queue_operation(
+                tx,
+                &following_source,
+                &following,
+                OperationKind::Create,
+                notify_attendees,
+            )?;
             debug_assert_eq!(master.id, original.id);
             Ok(SeriesSplit {
                 original,
@@ -1112,8 +1169,8 @@ impl Store {
             )?;
             let event =
                 read_event(tx, id)?.ok_or_else(|| invalid("deleted event was not found"))?;
-            queue_operation(tx, &source_id, &event, OperationKind::Delete)?;
-            Ok(event)
+            queue_operation(tx, &source_id, &event, OperationKind::Delete, false)?;
+            read_event(tx, id)?.ok_or_else(|| invalid("deleted event was not found"))
         })
     }
 
@@ -1121,7 +1178,8 @@ impl Store {
         self.with_calendar_connection(|connection| {
             connection.query_row(
                 "SELECT id, source_id, calendar_id, event_id, kind, local_revision,
-                        expected_provider_version, attempts, next_retry_at, last_error
+                        expected_provider_version, notify_attendees, attempts,
+                        next_retry_at, last_error
                  FROM calendar_operations WHERE event_id=?1
                  ORDER BY created_at DESC, rowid DESC LIMIT 1",
                 [event_id],
@@ -1134,9 +1192,10 @@ impl Store {
                         kind: OperationKind::parse(&row.get::<_, String>(4)?),
                         revision: row.get(5)?,
                         expected_provider_version: row.get(6)?,
-                        attempts: row.get(7)?,
-                        next_retry_at: row.get(8)?,
-                        last_error: row.get(9)?,
+                        notify_attendees: row.get::<_, i64>(7)? != 0,
+                        attempts: row.get(8)?,
+                        next_retry_at: row.get(9)?,
+                        last_error: row.get(10)?,
                     })
                 },
             )
@@ -1190,7 +1249,8 @@ impl Store {
         self.with_calendar_connection(|connection| {
             let mut statement = connection.prepare(
                 "SELECT id, source_id, calendar_id, event_id, kind, local_revision,
-                        expected_provider_version, attempts, next_retry_at, last_error
+                        expected_provider_version, notify_attendees, attempts,
+                        next_retry_at, last_error
                  FROM calendar_operations
                  WHERE source_id=?1 AND next_retry_at<=?2
                  ORDER BY created_at, rowid LIMIT 100",
@@ -1205,9 +1265,10 @@ impl Store {
                         kind: OperationKind::parse(&row.get::<_, String>(4)?),
                         revision: row.get(5)?,
                         expected_provider_version: row.get(6)?,
-                        attempts: row.get(7)?,
-                        next_retry_at: row.get(8)?,
-                        last_error: row.get(9)?,
+                        notify_attendees: row.get::<_, i64>(7)? != 0,
+                        attempts: row.get(8)?,
+                        next_retry_at: row.get(9)?,
+                        last_error: row.get(10)?,
                     })
                 })?
                 .collect();
@@ -1253,6 +1314,17 @@ impl Store {
                 "UPDATE calendar_operations SET attempts=attempts+1,
                  next_retry_at=?2, last_error=?3 WHERE id=?1",
                 params![operation_id, retry_at, error_code],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn reset_calendar_operation_retries(&self, source_id: &str) -> rusqlite::Result<()> {
+        self.with_calendar_connection(|connection| {
+            connection.execute(
+                "UPDATE calendar_operations SET next_retry_at=0, last_error=NULL
+                 WHERE source_id=?1",
+                [source_id],
             )?;
             Ok(())
         })
@@ -1487,7 +1559,7 @@ impl Store {
                         [&event.calendar_id],
                         |row| row.get(0),
                     )?;
-                    queue_operation(tx, &source_id, &event, OperationKind::Update)?;
+                    queue_operation(tx, &source_id, &event, OperationKind::Update, false)?;
                     resolved.push(event);
                 }
                 ConflictResolution::UseRemote | ConflictResolution::Duplicate => {
@@ -1509,7 +1581,7 @@ impl Store {
                         let duplicate = EventMutation::from(&local);
                         let (source_id, duplicate) =
                             insert_event(tx, &duplicate, None, None, None)?;
-                        queue_operation(tx, &source_id, &duplicate, OperationKind::Create)?;
+                        queue_operation(tx, &source_id, &duplicate, OperationKind::Create, false)?;
                         resolved.push(duplicate);
                     }
                 }
@@ -1620,6 +1692,14 @@ impl Store {
     pub fn set_calendar_order(&self, calendar_ids: &[String]) -> rusqlite::Result<()> {
         if calendar_ids.is_empty() || calendar_ids.len() > 500 {
             return Err(invalid("calendar order is invalid"));
+        }
+        if calendar_ids
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            != calendar_ids.len()
+        {
+            return Err(invalid("calendar order contains duplicate entries"));
         }
         self.with_calendar_transaction(|tx| {
             let visible_count: i64 = tx.query_row(

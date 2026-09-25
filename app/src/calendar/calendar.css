@@ -529,6 +529,7 @@
 .calendar-danger-button { border-color: transparent; background: var(--danger); color: white; }
 .calendar-danger-quiet { margin-right: auto; border-color: color-mix(in oklch, var(--danger) 30%, var(--border)); background: transparent; color: var(--danger); }
 .calendar-save-error { color: var(--danger); font-size: 11px; }
+.calendar-field-note { color: var(--text-muted); font-size: 11px; line-height: 1.45; margin: 0; }
 .calendar-scope-dialog { display: grid; gap: 7px; }
 .calendar-scope-dialog h2 { font-size: 17px; font-weight: 680; }
 .calendar-scope-dialog p { margin-bottom: 7px; color: var(--text-3); font-size: 12px; line-height: 1.5; }

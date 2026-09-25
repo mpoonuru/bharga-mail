@@ -658,8 +658,13 @@ impl CalendarConnector for GoogleConnector {
             }
         };
         let mut url = self.endpoint(&path)?;
+        let notification_mode = if operation.notify_attendees {
+            NotificationMode::All
+        } else {
+            self.notification_mode
+        };
         url.query_pairs_mut()
-            .append_pair("sendUpdates", self.notification_mode.as_str());
+            .append_pair("sendUpdates", notification_mode.as_str());
         let (_, value, headers) = self
             .request_json(
                 method,

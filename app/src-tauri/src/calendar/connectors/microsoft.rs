@@ -3,7 +3,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::{Duration, NaiveDateTime, SecondsFormat, Utc};
+use chrono::{
+    Datelike, Duration, LocalResult, NaiveDate, NaiveDateTime, SecondsFormat, TimeZone, Utc,
+    Weekday,
+};
 use reqwest::{header, Client, Method, StatusCode, Url};
 use serde_json::{json, Value};
 
@@ -138,7 +141,6 @@ pub struct MicrosoftConnector {
     access_token: String,
     calendar_id: Option<String>,
     store: Option<Arc<Store>>,
-    send_updates: bool,
     client: Client,
 }
 
@@ -155,7 +157,6 @@ impl MicrosoftConnector {
             access_token: access_token.into(),
             calendar_id: None,
             store: None,
-            send_updates: false,
             client: Client::new(),
         })
     }
@@ -169,10 +170,6 @@ impl MicrosoftConnector {
     ) -> Self {
         self.calendar_id = Some(calendar_id.into());
         self.store = store;
-        self
-    }
-    pub fn send_updates(mut self, value: bool) -> Self {
-        self.send_updates = value;
         self
     }
     fn endpoint(&self, path: &str) -> Result<Url, ConnectorError> {
@@ -205,7 +202,11 @@ impl MicrosoftConnector {
         let mut request = self
             .client
             .request(method, url)
-            .bearer_auth(&self.access_token);
+            .bearer_auth(&self.access_token)
+            // Normalizing Graph responses to UTC avoids treating a provider-local
+            // clock value as an instant. originalStartTimeZone remains available
+            // for recurrence and display semantics.
+            .header("Prefer", "outlook.timezone=\"UTC\"");
         if let Some(body) = body {
             request = request.json(body);
         }
@@ -251,6 +252,15 @@ fn iana_timezone(value: Option<&str>) -> String {
     }
 }
 
+fn graph_timezone(value: &str) -> &str {
+    match value {
+        "Europe/Berlin" => "W. Europe Standard Time",
+        "America/Los_Angeles" => "Pacific Standard Time",
+        "America/New_York" => "Eastern Standard Time",
+        value => value,
+    }
+}
+
 fn graph_moment(value: &Value, all_day: bool) -> Result<EventMoment, ConnectorError> {
     let raw = value["dateTime"].as_str().ok_or_else(|| {
         error(
@@ -267,15 +277,34 @@ fn graph_moment(value: &Value, all_day: bool) -> Result<EventMoment, ConnectorEr
     let utc = if let Ok(value) = chrono::DateTime::parse_from_rfc3339(raw) {
         value.with_timezone(&Utc)
     } else {
-        NaiveDateTime::parse_from_str(raw.trim_end_matches('Z'), "%Y-%m-%dT%H:%M:%S%.f")
-            .map(|value| value.and_utc())
-            .map_err(|_| {
-                error(
+        let local =
+            NaiveDateTime::parse_from_str(raw.trim_end_matches('Z'), "%Y-%m-%dT%H:%M:%S%.f")
+                .map_err(|_| {
+                    error(
+                        ConnectorErrorKind::Permanent,
+                        "invalid-event",
+                        "Microsoft event time is invalid",
+                    )
+                })?;
+        let timezone = iana_timezone(value["timeZone"].as_str());
+        let timezone = timezone.parse::<chrono_tz::Tz>().map_err(|_| {
+            error(
+                ConnectorErrorKind::Permanent,
+                "invalid-event",
+                "Microsoft event timezone is invalid",
+            )
+        })?;
+        match timezone.from_local_datetime(&local) {
+            LocalResult::Single(value) => value.with_timezone(&Utc),
+            LocalResult::Ambiguous(first, _) => first.with_timezone(&Utc),
+            LocalResult::None => {
+                return Err(error(
                     ConnectorErrorKind::Permanent,
                     "invalid-event",
-                    "Microsoft event time is invalid",
-                )
-            })?
+                    "Microsoft event time falls in a timezone gap",
+                ))
+            }
+        }
     };
     Ok(EventMoment::Timed {
         utc: utc.to_rfc3339_opts(SecondsFormat::Secs, true),
@@ -320,31 +349,63 @@ fn graph_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Connec
                 .collect()
         })
         .unwrap_or_default();
-    let recurrence = value["recurrence"].as_object().map(|_| {
-        let frequency = match value["recurrence"]["pattern"]["type"]
+    let timezone = iana_timezone(
+        value["originalStartTimeZone"]
             .as_str()
-            .unwrap_or("daily")
-        {
-            "weekly" => "WEEKLY",
-            "absoluteMonthly" | "relativeMonthly" => "MONTHLY",
-            "absoluteYearly" | "relativeYearly" => "YEARLY",
-            _ => "DAILY",
-        };
-        let mut rule = format!(
-            "FREQ={frequency};INTERVAL={}",
-            value["recurrence"]["pattern"]["interval"]
-                .as_i64()
-                .unwrap_or(1)
-        );
-        if let Some(count) = value["recurrence"]["range"]["numberOfOccurrences"].as_i64() {
-            rule.push_str(&format!(";COUNT={count}"));
-        }
-        RecurrenceSet {
-            rules: vec![rule],
-            dates: Vec::new(),
-            excluded_dates: Vec::new(),
-        }
-    });
+            .or_else(|| value["start"]["timeZone"].as_str()),
+    );
+    let recurrence = value["recurrence"]
+        .as_object()
+        .map(|_| -> Result<RecurrenceSet, ConnectorError> {
+            let frequency = match value["recurrence"]["pattern"]["type"]
+                .as_str()
+                .unwrap_or("daily")
+            {
+                "weekly" => "WEEKLY",
+                "absoluteMonthly" | "relativeMonthly" => "MONTHLY",
+                "absoluteYearly" | "relativeYearly" => "YEARLY",
+                _ => "DAILY",
+            };
+            let mut rule = format!(
+                "FREQ={frequency};INTERVAL={}",
+                value["recurrence"]["pattern"]["interval"]
+                    .as_i64()
+                    .unwrap_or(1)
+            );
+            if let Some(count) = value["recurrence"]["range"]["numberOfOccurrences"].as_i64() {
+                rule.push_str(&format!(";COUNT={count}"));
+            } else if let Some(end_date) = value["recurrence"]["range"]["endDate"].as_str() {
+                let until = graph_until(end_date, &timezone, all_day)?;
+                rule.push_str(&format!(";UNTIL={until}"));
+            }
+            if let Some(days) = value["recurrence"]["pattern"]["daysOfWeek"].as_array() {
+                let days = days
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .filter_map(graph_day_code)
+                    .collect::<Vec<_>>();
+                if !days.is_empty() {
+                    rule.push_str(&format!(";BYDAY={}", days.join(",")));
+                }
+            }
+            if let Some(day) = value["recurrence"]["pattern"]["dayOfMonth"].as_i64() {
+                rule.push_str(&format!(";BYMONTHDAY={day}"));
+            }
+            if let Some(month) = value["recurrence"]["pattern"]["month"].as_i64() {
+                rule.push_str(&format!(";BYMONTH={month}"));
+            }
+            if let Some(index) = value["recurrence"]["pattern"]["index"].as_str() {
+                if let Some(position) = graph_index_position(index) {
+                    rule.push_str(&format!(";BYSETPOS={position}"));
+                }
+            }
+            Ok(RecurrenceSet {
+                rules: vec![rule],
+                dates: Vec::new(),
+                excluded_dates: Vec::new(),
+            })
+        })
+        .transpose()?;
     Ok(CalendarEvent {
         id: format!("microsoft:{id}"),
         calendar_id: calendar_id.into(),
@@ -362,11 +423,7 @@ fn graph_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Connec
         source_thread_id: None,
         start: graph_moment(&value["start"], all_day)?,
         end: graph_moment(&value["end"], all_day)?,
-        timezone: iana_timezone(
-            value["originalStartTimeZone"]
-                .as_str()
-                .or_else(|| value["start"]["timeZone"].as_str()),
-        ),
+        timezone,
         recurrence,
         recurrence_id: value["originalStart"].as_str().map(str::to_string),
         parent_event_id: value["seriesMasterId"]
@@ -414,20 +471,391 @@ fn graph_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Connec
     })
 }
 
+fn graph_until(end_date: &str, timezone: &str, all_day: bool) -> Result<String, ConnectorError> {
+    let invalid_end = || {
+        error(
+            ConnectorErrorKind::Permanent,
+            "invalid-event",
+            "Microsoft recurrence end date is invalid",
+        )
+    };
+    let date = NaiveDate::parse_from_str(end_date, "%Y-%m-%d").map_err(|_| invalid_end())?;
+    if all_day {
+        return Ok(date.format("%Y%m%d").to_string());
+    }
+    let local = date.and_hms_opt(23, 59, 59).ok_or_else(invalid_end)?;
+    let timezone = timezone
+        .parse::<chrono_tz::Tz>()
+        .map_err(|_| invalid_end())?;
+    let instant = match timezone.from_local_datetime(&local) {
+        LocalResult::Single(value) => value,
+        LocalResult::Ambiguous(_, latest) => latest,
+        LocalResult::None => return Err(invalid_end()),
+    };
+    Ok(instant
+        .with_timezone(&Utc)
+        .format("%Y%m%dT%H%M%SZ")
+        .to_string())
+}
+
+fn graph_day_code(day: &str) -> Option<&'static str> {
+    match day {
+        "monday" => Some("MO"),
+        "tuesday" => Some("TU"),
+        "wednesday" => Some("WE"),
+        "thursday" => Some("TH"),
+        "friday" => Some("FR"),
+        "saturday" => Some("SA"),
+        "sunday" => Some("SU"),
+        _ => None,
+    }
+}
+
+fn rrule_day(day: &str) -> Option<&'static str> {
+    match day
+        .trim()
+        .trim_start_matches(['+', '-'])
+        .trim_start_matches(char::is_numeric)
+    {
+        "MO" => Some("monday"),
+        "TU" => Some("tuesday"),
+        "WE" => Some("wednesday"),
+        "TH" => Some("thursday"),
+        "FR" => Some("friday"),
+        "SA" => Some("saturday"),
+        "SU" => Some("sunday"),
+        _ => None,
+    }
+}
+
+fn graph_index_position(index: &str) -> Option<i64> {
+    match index {
+        "first" => Some(1),
+        "second" => Some(2),
+        "third" => Some(3),
+        "fourth" => Some(4),
+        "last" => Some(-1),
+        _ => None,
+    }
+}
+
+fn graph_index(position: &str) -> Option<&'static str> {
+    match position {
+        "1" => Some("first"),
+        "2" => Some("second"),
+        "3" => Some("third"),
+        "4" => Some("fourth"),
+        "-1" => Some("last"),
+        _ => None,
+    }
+}
+
+fn weekday_name(day: Weekday) -> &'static str {
+    match day {
+        Weekday::Mon => "monday",
+        Weekday::Tue => "tuesday",
+        Weekday::Wed => "wednesday",
+        Weekday::Thu => "thursday",
+        Weekday::Fri => "friday",
+        Weekday::Sat => "saturday",
+        Weekday::Sun => "sunday",
+    }
+}
+
+fn event_start_date(event: &CalendarEvent) -> Result<NaiveDate, ConnectorError> {
+    match &event.start {
+        EventMoment::AllDay { date } => NaiveDate::parse_from_str(date, "%Y-%m-%d"),
+        EventMoment::Timed { utc } => {
+            chrono::DateTime::parse_from_rfc3339(utc).map(|value| value.date_naive())
+        }
+    }
+    .map_err(|_| {
+        error(
+            ConnectorErrorKind::Permanent,
+            "invalid-recurrence",
+            "Microsoft recurrence start date is invalid",
+        )
+    })
+}
+
+fn recurrence_json(event: &CalendarEvent) -> Result<Option<Value>, ConnectorError> {
+    let Some(recurrence) = &event.recurrence else {
+        return Ok(None);
+    };
+    if recurrence.rules.len() != 1
+        || !recurrence.dates.is_empty()
+        || !recurrence.excluded_dates.is_empty()
+    {
+        return Err(error(
+            ConnectorErrorKind::Permanent,
+            "unsupported-recurrence",
+            "This recurrence set cannot be represented safely by Microsoft Calendar",
+        ));
+    }
+    let properties = recurrence.rules[0]
+        .split(';')
+        .filter_map(|part| part.split_once('='))
+        .map(|(key, value)| (key.to_ascii_uppercase(), value.to_ascii_uppercase()))
+        .collect::<std::collections::HashMap<_, _>>();
+    let supported = [
+        "FREQ",
+        "INTERVAL",
+        "COUNT",
+        "UNTIL",
+        "BYDAY",
+        "BYSETPOS",
+        "BYMONTHDAY",
+        "BYMONTH",
+    ];
+    if properties
+        .keys()
+        .any(|key| !supported.contains(&key.as_str()))
+        || (properties.contains_key("COUNT") && properties.contains_key("UNTIL"))
+    {
+        return Err(error(
+            ConnectorErrorKind::Permanent,
+            "unsupported-recurrence",
+            "This recurrence rule contains fields Microsoft Calendar cannot preserve safely",
+        ));
+    }
+    let start_date = event_start_date(event)?;
+    let interval = properties
+        .get("INTERVAL")
+        .map(|value| value.parse::<u32>())
+        .transpose()
+        .map_err(|_| {
+            error(
+                ConnectorErrorKind::Permanent,
+                "invalid-recurrence",
+                "Microsoft recurrence interval is invalid",
+            )
+        })?
+        .unwrap_or(1);
+    let mut pattern = json!({ "interval": interval });
+    match properties.get("FREQ").map(String::as_str) {
+        Some("DAILY") => {
+            if ["BYDAY", "BYSETPOS", "BYMONTHDAY", "BYMONTH"]
+                .iter()
+                .any(|key| properties.contains_key(*key))
+            {
+                return Err(error(
+                    ConnectorErrorKind::Permanent,
+                    "unsupported-recurrence",
+                    "Microsoft daily recurrence cannot preserve these rule fields",
+                ));
+            }
+            pattern["type"] = json!("daily");
+        }
+        Some("WEEKLY") => {
+            if ["BYSETPOS", "BYMONTHDAY", "BYMONTH"]
+                .iter()
+                .any(|key| properties.contains_key(*key))
+            {
+                return Err(error(
+                    ConnectorErrorKind::Permanent,
+                    "unsupported-recurrence",
+                    "Microsoft weekly recurrence cannot preserve these rule fields",
+                ));
+            }
+            pattern["type"] = json!("weekly");
+            let days = if let Some(value) = properties.get("BYDAY") {
+                let raw = value.split(',').collect::<Vec<_>>();
+                let days = raw
+                    .iter()
+                    .filter_map(|day| rrule_day(day))
+                    .collect::<Vec<_>>();
+                if days.len() != raw.len() || raw.iter().any(|day| day.len() != 2) {
+                    return Err(error(
+                        ConnectorErrorKind::Permanent,
+                        "unsupported-recurrence",
+                        "Microsoft weekly recurrence requires plain weekday values",
+                    ));
+                }
+                days
+            } else {
+                vec![weekday_name(start_date.weekday())]
+            };
+            pattern["daysOfWeek"] = json!(days);
+            pattern["firstDayOfWeek"] = json!("monday");
+        }
+        Some("MONTHLY") => {
+            if properties.contains_key("BYMONTH")
+                || (properties.contains_key("BYDAY") != properties.contains_key("BYSETPOS"))
+                || (properties.contains_key("BYMONTHDAY") && properties.contains_key("BYDAY"))
+            {
+                return Err(error(
+                    ConnectorErrorKind::Permanent,
+                    "unsupported-recurrence",
+                    "Microsoft monthly recurrence cannot preserve this rule combination",
+                ));
+            }
+            if let (Some(days), Some(position)) =
+                (properties.get("BYDAY"), properties.get("BYSETPOS"))
+            {
+                let index = graph_index(position).ok_or_else(|| {
+                    error(
+                        ConnectorErrorKind::Permanent,
+                        "unsupported-recurrence",
+                        "Microsoft Calendar supports only first through fourth or last relative recurrences",
+                    )
+                })?;
+                let days = days.split(',').filter_map(rrule_day).collect::<Vec<_>>();
+                if days.is_empty() {
+                    return Err(error(
+                        ConnectorErrorKind::Permanent,
+                        "unsupported-recurrence",
+                        "Microsoft relative recurrence requires a weekday",
+                    ));
+                }
+                pattern["type"] = json!("relativeMonthly");
+                pattern["daysOfWeek"] = json!(days);
+                pattern["index"] = json!(index);
+            } else {
+                pattern["type"] = json!("absoluteMonthly");
+                let day = properties
+                    .get("BYMONTHDAY")
+                    .map(String::as_str)
+                    .unwrap_or_else(|| {
+                        // The provider requires an explicit day even when RFC 5545
+                        // implies the DTSTART day.
+                        ""
+                    });
+                let day = if day.is_empty() {
+                    start_date.day()
+                } else {
+                    day.parse::<u32>().map_err(|_| {
+                        error(
+                            ConnectorErrorKind::Permanent,
+                            "invalid-recurrence",
+                            "Microsoft monthly recurrence day is invalid",
+                        )
+                    })?
+                };
+                pattern["dayOfMonth"] = json!(day);
+            }
+        }
+        Some("YEARLY") => {
+            if ["BYDAY", "BYSETPOS"]
+                .iter()
+                .any(|key| properties.contains_key(*key))
+            {
+                return Err(error(
+                    ConnectorErrorKind::Permanent,
+                    "unsupported-recurrence",
+                    "Microsoft relative yearly recurrence is not supported safely",
+                ));
+            }
+            pattern["type"] = json!("absoluteYearly");
+            let month = properties
+                .get("BYMONTH")
+                .map(|value| value.parse::<u32>())
+                .transpose()
+                .map_err(|_| {
+                    error(
+                        ConnectorErrorKind::Permanent,
+                        "invalid-recurrence",
+                        "Microsoft yearly recurrence month is invalid",
+                    )
+                })?
+                .unwrap_or(start_date.month());
+            let day = properties
+                .get("BYMONTHDAY")
+                .map(|value| value.parse::<u32>())
+                .transpose()
+                .map_err(|_| {
+                    error(
+                        ConnectorErrorKind::Permanent,
+                        "invalid-recurrence",
+                        "Microsoft yearly recurrence day is invalid",
+                    )
+                })?
+                .unwrap_or(start_date.day());
+            pattern["month"] = json!(month);
+            pattern["dayOfMonth"] = json!(day);
+        }
+        _ => {
+            return Err(error(
+                ConnectorErrorKind::Permanent,
+                "unsupported-recurrence",
+                "Microsoft Calendar does not support this recurrence frequency",
+            ))
+        }
+    }
+    let mut range = json!({
+        "type": "noEnd",
+        "startDate": start_date.format("%Y-%m-%d").to_string(),
+    });
+    if let Some(count) = properties.get("COUNT") {
+        let count = count.parse::<u32>().map_err(|_| {
+            error(
+                ConnectorErrorKind::Permanent,
+                "invalid-recurrence",
+                "Microsoft recurrence count is invalid",
+            )
+        })?;
+        range["type"] = json!("numbered");
+        range["numberOfOccurrences"] = json!(count);
+    } else if let Some(until) = properties.get("UNTIL") {
+        let digits = until
+            .chars()
+            .filter(char::is_ascii_digit)
+            .collect::<String>();
+        if digits.len() < 8 {
+            return Err(error(
+                ConnectorErrorKind::Permanent,
+                "invalid-recurrence",
+                "Microsoft recurrence end date is invalid",
+            ));
+        }
+        range["type"] = json!("endDate");
+        range["endDate"] = json!(format!(
+            "{}-{}-{}",
+            &digits[..4],
+            &digits[4..6],
+            &digits[6..8]
+        ));
+    }
+    Ok(Some(json!({ "pattern": pattern, "range": range })))
+}
+
 fn graph_json(
     event: &CalendarEvent,
     transaction_id: Option<&str>,
     include_attendees: bool,
-) -> Value {
-    let moment = |moment: &EventMoment, timezone: &str| match moment {
-        EventMoment::Timed { utc } => json!({ "dateTime": utc, "timeZone": timezone }),
-        EventMoment::AllDay { date } => {
-            json!({ "dateTime": format!("{date}T00:00:00"), "timeZone": timezone })
+) -> Result<Value, ConnectorError> {
+    let moment = |moment: &EventMoment, timezone: &str| -> Result<Value, ConnectorError> {
+        let provider_timezone = graph_timezone(timezone);
+        match moment {
+            EventMoment::Timed { utc } => {
+                let utc = chrono::DateTime::parse_from_rfc3339(utc).map_err(|_| {
+                    error(
+                        ConnectorErrorKind::Permanent,
+                        "invalid-event",
+                        "Microsoft event time is invalid",
+                    )
+                })?;
+                let timezone = timezone.parse::<chrono_tz::Tz>().map_err(|_| {
+                    error(
+                        ConnectorErrorKind::Permanent,
+                        "invalid-event",
+                        "Microsoft event timezone is invalid",
+                    )
+                })?;
+                let local = utc.with_timezone(&timezone);
+                Ok(json!({
+                    "dateTime": local.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                    "timeZone": provider_timezone,
+                }))
+            }
+            EventMoment::AllDay { date } => Ok(json!({
+                "dateTime": format!("{date}T00:00:00"),
+                "timeZone": provider_timezone,
+            })),
         }
     };
     let mut value = json!({
         "subject": event.title, "body": { "contentType": "html", "content": event.description }, "location": { "displayName": event.location },
-        "start": moment(&event.start, &event.timezone), "end": moment(&event.end, &event.timezone), "isAllDay": matches!(event.start, EventMoment::AllDay { .. }),
+        "start": moment(&event.start, &event.timezone)?, "end": moment(&event.end, &event.timezone)?, "isAllDay": matches!(event.start, EventMoment::AllDay { .. }),
         "showAs": if event.transparency == Transparency::Free { "free" } else { "busy" },
         "sensitivity": match event.visibility { EventVisibility::Private => "private", EventVisibility::Confidential => "confidential", _ => "normal" },
         "isReminderOn": !event.reminders.is_empty(), "reminderMinutesBeforeStart": event.reminders.first().map(|reminder| reminder.minutes_before),
@@ -436,7 +864,10 @@ fn graph_json(
     if include_attendees {
         value["attendees"] = Value::Array(event.attendees.iter().map(|attendee| json!({ "emailAddress": { "address": attendee.email, "name": attendee.name }, "type": if attendee.role == AttendeeRole::Optional { "optional" } else { "required" } })).collect());
     }
-    value
+    if let Some(recurrence) = recurrence_json(event)? {
+        value["recurrence"] = recurrence;
+    }
+    Ok(value)
 }
 
 #[async_trait]
@@ -600,7 +1031,7 @@ impl CalendarConnector for MicrosoftConnector {
             OperationKind::Create => (
                 Method::POST,
                 base,
-                Some(graph_json(&event, Some(&operation.id), self.send_updates)),
+                Some(graph_json(&event, Some(&operation.id), true)?),
             ),
             OperationKind::Update => (
                 Method::PATCH,
@@ -608,7 +1039,7 @@ impl CalendarConnector for MicrosoftConnector {
                     "{base}/{}",
                     urlencoding::encode(event.provider_id.as_deref().unwrap_or(&event.uid))
                 ),
-                Some(graph_json(&event, None, self.send_updates)),
+                Some(graph_json(&event, None, true)?),
             ),
             OperationKind::Delete => (
                 Method::DELETE,
@@ -696,6 +1127,107 @@ mod tests {
             headers: vec![("Content-Type", "application/json".into())],
             body: body.into(),
         }
+    }
+
+    fn recurring_graph_event() -> Value {
+        json!({
+            "id": "event-1",
+            "iCalUId": "series@example.test",
+            "subject": "Operations review",
+            "body": { "content": "Agenda" },
+            "location": { "displayName": "Board room" },
+            "start": { "dateTime": "2026-09-28T09:00:00Z", "timeZone": "UTC" },
+            "end": { "dateTime": "2026-09-28T10:00:00Z", "timeZone": "UTC" },
+            "originalStartTimeZone": "UTC",
+            "isAllDay": false,
+            "recurrence": {
+                "pattern": {
+                    "type": "weekly",
+                    "interval": 2,
+                    "daysOfWeek": ["monday", "wednesday"]
+                },
+                "range": {
+                    "type": "endDate",
+                    "startDate": "2026-09-28",
+                    "endDate": "2026-12-31"
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn preserves_graph_weekdays_and_end_date_as_an_rrule() {
+        let event = graph_event(&recurring_graph_event(), "primary").unwrap();
+        let rule = &event.recurrence.unwrap().rules[0];
+        assert!(rule.contains("FREQ=WEEKLY"));
+        assert!(rule.contains("INTERVAL=2"));
+        assert!(rule.contains("BYDAY=MO,WE"));
+        assert!(rule.contains("UNTIL=20261231T235959Z"));
+    }
+
+    #[test]
+    fn writes_a_supported_rrule_as_graph_recurrence() {
+        let event = graph_event(&recurring_graph_event(), "primary").unwrap();
+        let value = graph_json(&event, None, false).unwrap();
+        assert_eq!(value["recurrence"]["pattern"]["type"], "weekly");
+        assert_eq!(value["recurrence"]["pattern"]["interval"], 2);
+        assert_eq!(
+            value["recurrence"]["pattern"]["daysOfWeek"],
+            json!(["monday", "wednesday"])
+        );
+        assert_eq!(value["recurrence"]["range"]["type"], "endDate");
+        assert_eq!(value["recurrence"]["range"]["endDate"], "2026-12-31");
+    }
+
+    #[test]
+    fn converts_between_graph_local_clocks_and_stored_utc_instants() {
+        let incoming = graph_moment(
+            &json!({
+                "dateTime": "2026-09-28T09:00:00.0000000",
+                "timeZone": "W. Europe Standard Time"
+            }),
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            incoming,
+            EventMoment::Timed {
+                utc: "2026-09-28T07:00:00Z".into()
+            }
+        );
+
+        let mut event = graph_event(&recurring_graph_event(), "primary").unwrap();
+        event.start = EventMoment::Timed {
+            utc: "2026-09-28T07:00:00Z".into(),
+        };
+        event.end = EventMoment::Timed {
+            utc: "2026-09-28T08:00:00Z".into(),
+        };
+        event.timezone = "Europe/Berlin".into();
+        let outgoing = graph_json(&event, None, false).unwrap();
+        assert_eq!(outgoing["start"]["dateTime"], "2026-09-28T09:00:00");
+        assert_eq!(outgoing["start"]["timeZone"], "W. Europe Standard Time");
+    }
+
+    #[test]
+    fn rejects_recurrence_exceptions_graph_cannot_represent_without_loss() {
+        let mut event = graph_event(&recurring_graph_event(), "primary").unwrap();
+        event
+            .recurrence
+            .as_mut()
+            .unwrap()
+            .excluded_dates
+            .push("2026-10-12T09:00:00Z".into());
+        let error = graph_json(&event, None, false).unwrap_err();
+        assert_eq!(error.code, "unsupported-recurrence");
+    }
+
+    #[test]
+    fn rejects_rrule_fields_graph_cannot_preserve() {
+        let mut event = graph_event(&recurring_graph_event(), "primary").unwrap();
+        event.recurrence.as_mut().unwrap().rules = vec!["FREQ=WEEKLY;BYDAY=MO;BYHOUR=9".into()];
+        let error = graph_json(&event, None, false).unwrap_err();
+        assert_eq!(error.code, "unsupported-recurrence");
     }
 
     #[tokio::test]

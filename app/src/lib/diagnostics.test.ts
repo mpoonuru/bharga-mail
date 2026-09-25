@@ -32,7 +32,7 @@ describe("redacted diagnostics", () => {
 
   it("redacts event, attendee, URL, credential, and cursor data", () => {
     const snapshot = buildRedactedDiagnostics({
-      version: "0.1.4",
+      version: "0.2.0",
       runtime: "desktop",
       accounts: [],
       models: [],

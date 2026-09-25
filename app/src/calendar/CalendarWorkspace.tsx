@@ -257,17 +257,24 @@ export function CalendarWorkspace({
             const calendar = calendars.find((candidate) => candidate.id === editing.calendarId);
             return calendarApi.getAvailability!([calendar?.sourceId].filter((value): value is string => !!value), range, attendees);
           } : undefined}
+          notificationPolicy={(() => {
+            const calendar = calendars.find((candidate) => candidate.id === editing.calendarId);
+            const provider = calendar ? snapshot.sources[calendar.sourceId]?.provider : undefined;
+            if (provider === "google") return "optional";
+            if (provider === "microsoft" || provider === "calDav") return "providerManaged";
+            return "none";
+          })()}
           onSave={async (input, options) => {
             if (!editing.id) {
-              await store.getState().createEvent(input);
+              await store.getState().createEvent(input, options);
               return;
             }
             if (editing.recurrenceId && options.scope && calendarApi.updateRecurringEvent) {
-              await calendarApi.updateRecurringEvent(editing.id, editing.recurrenceId, options.scope, input);
+              await calendarApi.updateRecurringEvent(editing.id, editing.recurrenceId, options.scope, input, options);
               await store.getState().loadRange();
               return;
             }
-            await store.getState().updateEvent(editing.id, input);
+            await store.getState().updateEvent(editing.id, input, options);
           }}
         />
       )}
