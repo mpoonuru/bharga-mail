@@ -66,6 +66,19 @@ describe("bridge desktop failures", () => {
     })).rejects.toThrow("desktop IPC unavailable");
   });
 
+  it("propagates read-state IPC failures so bulk updates can report partial success", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {},
+    });
+    const invoke = vi.fn().mockRejectedValue(new Error("mail provider unavailable"));
+    vi.doMock("@tauri-apps/api/core", () => ({ invoke }));
+    const { api } = await import("@/lib/bridge");
+
+    await expect(api.setThreadRead("thread-1", "account-1", false))
+      .rejects.toThrow("mail provider unavailable");
+  });
+
   it("delegates validated web links to the native opener command", async () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,

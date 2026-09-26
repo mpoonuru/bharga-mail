@@ -1,4 +1,10 @@
-import { useState, useRef, useEffect, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { motion } from "motion/react";
 import dayjs from "dayjs";
 import { useApp } from "@/store";
@@ -142,7 +148,7 @@ function handleRowKeyDown(
 }
 
 export function Stream() {
-  const { view, threads, accounts, selectedThreadId, selectedMessageId, selectThread, triageInbox, setView, archiveThread, snoozeThread, toggleRead, deleteThread, moveThread, markSpam, flaggedIds, toggleFlag, requestCompose, requestAiReply, createTask, folders, selectedAccountId, selectedFolder, syncing, syncAll, loadOlder, loadingOlder, reachedEnd } = useApp();
+  const { view, threads, accounts, selectedThreadId, selectedMessageId, selectThread, triageInbox, setView, archiveThread, snoozeThread, toggleRead, setThreadsRead, deleteThread, moveThread, markSpam, flaggedIds, toggleFlag, requestCompose, requestAiReply, createTask, folders, selectedAccountId, selectedFolder, syncing, syncAll, loadOlder, loadingOlder, reachedEnd } = useApp();
   // When viewing all accounts together, show which mailbox each thread is from.
   const acctEmail: Record<string, string> = Object.fromEntries(accounts.map((a) => [a.id, a.email]));
   const copyText = (s: string) => { try { void navigator.clipboard.writeText(s); } catch { /* ignore */ } };
@@ -150,7 +156,11 @@ export function Stream() {
   const coarsePointer = useCoarsePointer();
   const [sortMsg, setSortMsg] = useState("");
   const [syncMsg, setSyncMsg] = useState("");
-  const [ctx, setCtx] = useState<{ x: number; y: number; t: Thread; opener: HTMLElement } | null>(null);
+  const [selectionMsg, setSelectionMsg] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set());
+  const selectionAnchorId = useRef<string | null>(null);
+  const [ctx, setCtx] = useState<{ x: number; y: number; t: Thread; ids: string[]; opener: HTMLElement } | null>(null);
   const [ctxSub, setCtxSub] = useState<null | "move">(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
   // Reset the scroll to the top when the view/folder/account changes, so you
@@ -162,6 +172,10 @@ export function Stream() {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   // Which conversations have their accordion expanded (thread id set).
   const [expandedConvos, setExpandedConvos] = useState<Set<string>>(new Set());
+  const clearThreadSelection = () => {
+    setSelectedThreadIds(new Set());
+    selectionAnchorId.current = null;
+  };
   const toggleConvo = (id: string) => setExpandedConvos((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   // On any selection change (smart view, folder, or account) reset the per-list
   // UI state: scroll to top, clear chip filters, and — importantly — un-collapse
@@ -172,6 +186,7 @@ export function Stream() {
     setActiveChips(new Set());
     setCollapsedGroups(new Set());
     setExpandedConvos(new Set());
+    clearThreadSelection();
   }, [view, selectedFolder, selectedAccountId]);
   const toggleGroup = (label: string) => setCollapsedGroups((s) => { const n = new Set(s); if (n.has(label)) n.delete(label); else n.add(label); return n; });
 
@@ -278,6 +293,109 @@ export function Stream() {
   // by its NEWEST message. Multi-message threads carry a count badge + a disclosure
   // chevron and expand inline into their messages (newest→oldest).
   const rows: Row[] = sortRows(filtered.map((t) => ({ t, m: latestMessage(t) })), sortMode);
+  const visibleThreadIds = rows.map((row) => row.t.id);
+  const visibleThreadKey = visibleThreadIds.join("\u0001");
+  const selectedCount = selectedThreadIds.size;
+
+  // Live sync and filtering can remove rows while a selection is active. Keep the
+  // selection constrained to what the person can still see and act on.
+  useEffect(() => {
+    const visible = new Set(visibleThreadIds);
+    setSelectedThreadIds((current) => {
+      const next = new Set([...current].filter((id) => visible.has(id)));
+      if (next.size === current.size && [...next].every((id) => current.has(id))) return current;
+      if (selectionAnchorId.current && !visible.has(selectionAnchorId.current)) selectionAnchorId.current = null;
+      return next;
+    });
+  }, [visibleThreadKey]);
+
+  const selectThreadRange = (targetId: string, additive: boolean) => {
+    const targetIndex = visibleThreadIds.indexOf(targetId);
+    const anchorIndex = selectionAnchorId.current
+      ? visibleThreadIds.indexOf(selectionAnchorId.current)
+      : -1;
+    if (targetIndex < 0) return;
+    if (anchorIndex < 0) {
+      setSelectedThreadIds((current) => {
+        const next = additive ? new Set(current) : new Set<string>();
+        next.add(targetId);
+        return next;
+      });
+      selectionAnchorId.current = targetId;
+      return;
+    }
+    const start = Math.min(anchorIndex, targetIndex);
+    const end = Math.max(anchorIndex, targetIndex);
+    setSelectedThreadIds((current) => {
+      const next = additive ? new Set(current) : new Set<string>();
+      for (const id of visibleThreadIds.slice(start, end + 1)) next.add(id);
+      return next;
+    });
+  };
+
+  const toggleThreadSelection = (id: string, event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => {
+    if (event?.shiftKey) {
+      selectThreadRange(id, event.metaKey || event.ctrlKey);
+      return;
+    }
+    setSelectedThreadIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    selectionAnchorId.current = id;
+  };
+
+  const activateThread = (id: string, open: () => void, event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => {
+    if (event?.shiftKey) {
+      selectThreadRange(id, event.metaKey || event.ctrlKey);
+      return;
+    }
+    if (event?.metaKey || event?.ctrlKey) {
+      toggleThreadSelection(id, event);
+      return;
+    }
+    clearThreadSelection();
+    selectionAnchorId.current = id;
+    open();
+  };
+
+  const selectedIdsInView = () => visibleThreadIds.filter((id) => selectedThreadIds.has(id));
+  const applySelectedReadState = async (read: boolean, ids = selectedIdsInView()) => {
+    if (bulkBusy || ids.length === 0) return;
+    setBulkBusy(true);
+    setSelectionMsg("");
+    const result = await setThreadsRead(ids, read);
+    setBulkBusy(false);
+    const verb = read ? "read" : "unread";
+    setSelectionMsg(result.failed > 0
+      ? `${result.updated} marked ${verb}; ${result.failed} could not be updated`
+      : `${result.updated} marked ${verb}`);
+  };
+
+  const archiveSelected = (ids = selectedIdsInView()) => {
+    for (const id of ids) archiveThread(id);
+    setSelectionMsg(`${ids.length} archived`);
+    clearThreadSelection();
+  };
+
+  const openThreadContext = (t: Thread) => (x: number, y: number, opener: HTMLElement) => {
+    const ids = selectedThreadIds.has(t.id) && selectedThreadIds.size > 0
+      ? selectedIdsInView()
+      : [t.id];
+    if (!selectedThreadIds.has(t.id)) {
+      setSelectedThreadIds(new Set([t.id]));
+      selectionAnchorId.current = t.id;
+    }
+    setCtx({
+      x: Math.max(8, Math.min(x, window.innerWidth - 224)),
+      y: Math.max(8, Math.min(y, window.innerHeight - 580)),
+      t,
+      ids,
+      opener,
+    });
+  };
   const grouped = sortMode === "newest" && !query;
   const now = dayjs();
   const groups: { label: string; items: Row[] }[] = [];
@@ -313,30 +431,52 @@ export function Stream() {
   return (
     <section className="stream">
       <div className="stream-head" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
-        <h2>{TITLES[view] ?? "Inbox"}</h2>
-        <div className="head-actions">
-          <button className="filter" onClick={doSync} disabled={syncing} title="Sync all accounts" style={{ opacity: syncing ? 0.7 : 1 }}>
-            <Icon name="cloud" size={12} weight="duotone" /> {syncing ? "Syncing…" : "Sync"}
-          </button>
-          <button className="filter" onClick={() => setSortMode(NEXT[sortMode])} title="Sort order">
-            <Icon name="snoozed" size={12} weight="duotone" /> {SORT_LABEL[sortMode]}
-          </button>
-          <button className="filter" onClick={sort} disabled={sorting} title="Summarize + prioritize with AI" style={{ opacity: sorting ? 0.7 : 1 }}>
-            <Icon name="ai" size={12} weight="duotone" /> {sorting ? "Sorting…" : "AI sort"}
-          </button>
-        </div>
+        {selectedCount > 0 ? (
+          <div className="selection-bar" role="toolbar" aria-label={`${selectedCount} conversations selected`}>
+            <span className="selection-count"><b>{selectedCount}</b> selected</span>
+            <div className="selection-actions">
+              <button type="button" onClick={() => void applySelectedReadState(true)} disabled={bulkBusy} title="Mark selected as read">
+                <Icon name="envelopeOpen" size={14} /> <span>Read</span>
+              </button>
+              <button type="button" onClick={() => void applySelectedReadState(false)} disabled={bulkBusy} title="Mark selected as unread">
+                <Icon name="envelope" size={14} /> <span>Unread</span>
+              </button>
+              <button type="button" onClick={() => archiveSelected()} disabled={bulkBusy} title="Archive selected">
+                <Icon name="archive" size={14} /> <span>Archive</span>
+              </button>
+              <button type="button" className="selection-clear" onClick={clearThreadSelection} disabled={bulkBusy} title="Clear selection" aria-label="Clear selection">
+                <Icon name="close" size={14} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <h2>{TITLES[view] ?? "Inbox"}</h2>
+            <div className="head-actions">
+              <button className="filter" onClick={doSync} disabled={syncing} title="Sync all accounts" style={{ opacity: syncing ? 0.7 : 1 }}>
+                <Icon name="cloud" size={12} weight="duotone" /> {syncing ? "Syncing…" : "Sync"}
+              </button>
+              <button className="filter" onClick={() => { clearThreadSelection(); setSortMode(NEXT[sortMode]); }} title="Sort order">
+                <Icon name="snoozed" size={12} weight="duotone" /> {SORT_LABEL[sortMode]}
+              </button>
+              <button className="filter" onClick={sort} disabled={sorting} title="Summarize + prioritize with AI" style={{ opacity: sorting ? 0.7 : 1 }}>
+                <Icon name="ai" size={12} weight="duotone" /> {sorting ? "Sorting…" : "AI sort"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
-      {(syncMsg || sortMsg) && (
-        <div className={`stream-status${syncMsg && /fail/i.test(syncMsg) ? " err" : ""}`} title={syncMsg || sortMsg}>
-          {syncMsg || sortMsg}
+      {(syncMsg || sortMsg || selectionMsg) && (
+        <div className={`stream-status${/(fail|could not)/i.test(syncMsg || selectionMsg) ? " err" : ""}`} title={syncMsg || sortMsg || selectionMsg}>
+          {syncMsg || sortMsg || selectionMsg}
         </div>
       )}
       <div className="search-box">
         <Icon name="search" size={15} weight="duotone" />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search mail…" />
-        {q && <button className="search-clear" onClick={() => setQ("")} title="Clear"><Icon name="close" size={13} /></button>}
+        <input value={q} onChange={(e) => { clearThreadSelection(); setQ(e.target.value); }} placeholder="Search mail…" />
+        {q && <button className="search-clear" onClick={() => { clearThreadSelection(); setQ(""); }} title="Clear"><Icon name="close" size={13} /></button>}
       </div>
-      {!query && <SmartChips chips={chips} active={liveChips} onToggle={toggleChip} onClear={() => setActiveChips(new Set())} />}
+      {!query && <SmartChips chips={chips} active={liveChips} onToggle={(id) => { clearThreadSelection(); toggleChip(id); }} onClear={() => { clearThreadSelection(); setActiveChips(new Set()); }} />}
       {priorityFallback && !query && (
         <div className="priority-hint">
           <Icon name="ai" size={12} weight="duotone" /> <span>Not AI-sorted yet — showing unread &amp; urgent.</span>
@@ -356,8 +496,6 @@ export function Stream() {
           )
         )}
         {(() => {
-          const openCtx = (t: Thread) => (x: number, y: number, opener: HTMLElement) =>
-            setCtx({ x: Math.max(8, Math.min(x, window.innerWidth - 224)), y: Math.max(8, Math.min(y, window.innerHeight - 580)), t, opener });
           const renderRow = (r: Row) => {
             const count = r.t.messages.length;
             const isOpen = expandedConvos.has(r.t.id);
@@ -373,14 +511,16 @@ export function Stream() {
                   count={count}
                   expanded={isOpen}
                   onToggleExpand={count > 1 ? () => toggleConvo(r.t.id) : undefined}
-                  selected={selectedThreadId === r.t.id && !selectedMessageId}
-                  onOpen={() => selectThread(r.t.id, r.m.id)}
+                  active={selectedThreadId === r.t.id && !selectedMessageId}
+                  checked={selectedThreadIds.has(r.t.id)}
+                  onSelect={(event) => toggleThreadSelection(r.t.id, event)}
+                  onOpen={(event) => activateThread(r.t.id, () => selectThread(r.t.id, r.m.id), event)}
                   onArchive={() => archiveThread(r.t.id)}
                   onSnooze={() => snoozeThread(r.t.id)}
                   mailbox={!selectedAccountId ? acctEmail[r.t.accountId] : undefined}
                   flagged={flaggedIds.includes(r.t.id)}
                   coarsePointer={coarsePointer}
-                  onContext={openCtx(r.t)}
+                  onContext={openThreadContext(r.t)}
                 />
                 {kids.length > 0 && (
                   <div className="convo-kids">
@@ -391,7 +531,7 @@ export function Stream() {
                         m={cm}
                         selected={selectedMessageId === cm.id}
                         onOpen={() => selectThread(r.t.id, cm.id)}
-                        onContext={openCtx(r.t)}
+                        onContext={openThreadContext(r.t)}
                       />
                     ))}
                   </div>
@@ -427,6 +567,8 @@ export function Stream() {
 
       {ctx && (() => {
         const t = ctx.t;
+        const contextIds = ctx.ids;
+        const multi = contextIds.length > 1;
         const run = (fn: () => void) => () => { fn(); closeContextMenu(); };
         const senderEmail = t.messages?.[0]?.from?.address ?? t.participants[0] ?? "";
         // Move targets: this account's real folders, minus the one it's already in.
@@ -434,8 +576,29 @@ export function Stream() {
         return (
           <>
             <div className="ctx-backdrop" onClick={closeContextMenu} onContextMenu={(e) => { e.preventDefault(); closeContextMenu(); }} />
-            <div ref={ctxMenuRef} className="ctx-menu" style={{ left: ctx.x, top: ctx.y }} role="menu" aria-label="Message actions" onKeyDown={onContextMenuKeyDown}>
-              {ctxSub === "move" ? (
+            <div ref={ctxMenuRef} className="ctx-menu" style={{ left: ctx.x, top: ctx.y }} role="menu" aria-label={multi ? `${contextIds.length} selected conversation actions` : "Message actions"} onKeyDown={onContextMenuKeyDown}>
+              <div className="ctx-summary" aria-hidden="true">
+                <strong>{multi ? `${contextIds.length} conversations selected` : "Conversation actions"}</strong>
+                <span>{multi ? "Changes apply to the full selection" : t.subject}</span>
+              </div>
+              <div className="ctx-sep" />
+              {multi ? (
+                <>
+                  <button role="menuitem" onClick={run(() => { void applySelectedReadState(true, contextIds); })}>
+                    <Icon name="envelopeOpen" size={14} /> Mark as read
+                  </button>
+                  <button role="menuitem" onClick={run(() => { void applySelectedReadState(false, contextIds); })}>
+                    <Icon name="envelope" size={14} /> Mark as unread
+                  </button>
+                  <div className="ctx-sep" />
+                  <button role="menuitem" onClick={run(() => archiveSelected(contextIds))}>
+                    <Icon name="archive" size={14} weight="duotone" /> Archive selected
+                  </button>
+                  <button role="menuitem" onClick={run(clearThreadSelection)}>
+                    <Icon name="close" size={14} /> Clear selection
+                  </button>
+                </>
+              ) : ctxSub === "move" ? (
                 <>
                   <button role="menuitem" className="ctx-back" onClick={() => setCtxSub(null)}><Icon name="reply" size={13} /> Move to folder</button>
                   <div className="ctx-sep" />
@@ -482,10 +645,21 @@ export function Stream() {
 }
 
 function MailRow({
-  t, msg, selected, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, coarsePointer,
+  t, msg, active, checked, onSelect, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, coarsePointer,
   convo, count, expanded, onToggleExpand,
 }: {
-  t: Thread; msg?: Message; selected: boolean; onOpen: () => void; onArchive: () => void; onSnooze: () => void; onContext: (x: number, y: number, opener: HTMLElement) => void; mailbox?: string; flagged?: boolean; coarsePointer: boolean;
+  t: Thread;
+  msg?: Message;
+  active: boolean;
+  checked: boolean;
+  onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  onOpen: (event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => void;
+  onArchive: () => void;
+  onSnooze: () => void;
+  onContext: (x: number, y: number, opener: HTMLElement) => void;
+  mailbox?: string;
+  flagged?: boolean;
+  coarsePointer: boolean;
   convo?: boolean; count?: number; expanded?: boolean; onToggleExpand?: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
@@ -523,7 +697,8 @@ function MailRow({
         </div>
       )}
       <motion.div
-        className={`mail${t.unread ? " unread" : ""}${selected ? " sel" : ""}`}
+        className={`mail${t.unread ? " unread" : ""}${active ? " sel" : ""}${checked ? " multi-sel" : ""}`}
+        data-thread-id={t.id}
         onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, e.currentTarget); }}
         drag={dragPolicy.drag}
         dragConstraints={{ left: 0, right: 0 }}
@@ -537,8 +712,17 @@ function MailRow({
       >
         <button
           type="button"
+          className="mail-select"
+          aria-label={`${checked ? "Deselect" : "Select"} ${t.subject}`}
+          aria-pressed={checked}
+          onClick={onSelect}
+        >
+          {checked && <span aria-hidden>✓</span>}
+        </button>
+        <button
+          type="button"
           className="mail-open"
-          aria-current={selected ? "true" : undefined}
+          aria-current={active ? "true" : undefined}
           aria-label={[
             t.unread ? "Unread" : undefined,
             rowFrom,
@@ -547,7 +731,7 @@ function MailRow({
             shortTime(rowTime),
             shield.show ? shield.label : undefined,
           ].filter(Boolean).join(", ")}
-          onClick={onOpen}
+          onClick={(event) => onOpen(event)}
           onKeyDown={(event) => handleRowKeyDown(event, onOpen, onContext)}
         >
           <span className="mail-av" style={{ background: avPaint.bg, color: avPaint.fg, boxShadow: `0 0 0 1.5px ${avPaint.ring}` }} aria-hidden>{initials(senderName)}</span>

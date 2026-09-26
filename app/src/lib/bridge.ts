@@ -834,13 +834,11 @@ export const api = {
     return invoke<number>("load_older", { accountId, folder, count, group });
   },
 
-  /** Persist read/unread for a thread (and best-effort push to the provider). */
+  /** Persist read/unread for a thread. Desktop failures propagate so callers can
+   *  report or roll back rejected provider updates; preview remains state-only. */
   async setThreadRead(threadId: string, accountId: string, unread: boolean): Promise<void> {
-    try {
-      await invoke<void>("set_thread_read", { threadId, accountId, unread });
-    } catch {
-      /* preview: state-only */
-    }
+    if (!inTauri) return;
+    await invoke<void>("set_thread_read", { threadId, accountId, unread });
   },
 
   /** Archive a thread (local + provider). */

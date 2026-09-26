@@ -256,6 +256,14 @@
   .stream-head h2 { @apply text-[16px] truncate min-w-0; font-weight: 650; }
   .head-actions { @apply flex items-center gap-1.5 shrink-0; }
   .filter { @apply inline-flex items-center gap-1 text-[11px] text-text-2 bg-surface border border-border px-[9px] py-1 rounded-[20px] whitespace-nowrap shrink-0; }
+  .selection-bar { @apply flex min-w-0 flex-1 items-center justify-between gap-2; }
+  .selection-count { @apply text-[13px] text-text-2 whitespace-nowrap; }
+  .selection-count b { @apply text-text text-[15px] font-semibold; }
+  .selection-actions { @apply flex items-center gap-1; }
+  .selection-actions button { @apply inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-transparent px-2 text-[11.5px] text-text-2; transition: background-color var(--motion-instant) var(--ease), border-color var(--motion-instant) var(--ease), color var(--motion-instant) var(--ease); }
+  .selection-actions button:hover:not(:disabled) { @apply border-border bg-surface text-text; }
+  .selection-actions button:disabled { @apply opacity-50 cursor-default; }
+  .selection-actions .selection-clear { @apply px-1.5 text-text-3; }
   .stream-status { @apply mx-[18px] mb-1.5 -mt-1 text-[11.5px] text-text-3 truncate; }
   .stream-status.err { color: var(--danger); }
   .search-box { @apply mx-2.5 mb-1 flex items-center gap-2 px-2.5 py-1.5 rounded-[10px] border border-border bg-bg-2 text-text-3; }
@@ -289,6 +297,12 @@
   /* Mail row — Design B: squircle avatar + sender/time, subject, AI summary line. */
   .mail { @apply flex items-center gap-2 rounded-xl border border-transparent; padding: var(--row-pad); transition: background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), color var(--motion-standard) var(--ease); background: transparent; }
   .mail:hover { @apply bg-surface; }
+  .mail.multi-sel { border-color: color-mix(in oklch, var(--accent) 45%, var(--border)); background: var(--accent-soft); }
+  .mail-select { @apply relative shrink-0 inline-flex h-7 w-7 items-center justify-center border-none bg-transparent p-0 text-[12px] font-bold text-white opacity-0; transition: opacity var(--motion-instant) var(--ease); }
+  .mail-select::before { content: ""; @apply absolute h-5 w-5 rounded-full border border-border-2 bg-bg-2; transition: background-color var(--motion-instant) var(--ease), border-color var(--motion-instant) var(--ease); }
+  .mail-select > span { @apply relative z-[1]; }
+  .mail:hover .mail-select, .mail-select:focus-visible, .mail.multi-sel .mail-select { @apply opacity-100; }
+  .mail.multi-sel .mail-select::before { border-color: var(--accent); background: var(--accent); }
   .mail-open { @apply flex min-w-0 flex-1 items-start gap-3 border-none bg-transparent p-0 text-left text-text; font: inherit; }
   .mail:has(.mail-open:focus-visible), .convo-kid:focus-visible {
     outline-color: var(--accent);
@@ -703,6 +717,9 @@
   /* Right-click context menu on mail rows. */
   .ctx-backdrop { @apply fixed inset-0 z-[60]; }
   .ctx-menu { @apply fixed z-[61] min-w-[210px] max-h-[80vh] overflow-y-auto border border-border-2 rounded-[10px] p-1; background: var(--glass); backdrop-filter: blur(24px); box-shadow: var(--shadow); animation: pop .12s var(--ease); }
+  .ctx-summary { @apply flex max-w-[260px] flex-col gap-0.5 px-2.5 py-2; }
+  .ctx-summary strong { @apply truncate text-[12.5px] font-semibold text-text; }
+  .ctx-summary span { @apply truncate text-[11px] text-text-3; }
   .ctx-menu button { @apply w-full flex items-center gap-2.5 text-left px-2.5 py-2 rounded-md text-[13px] text-text-2 border-none bg-transparent cursor-pointer; }
   .ctx-menu button:hover { @apply bg-surface text-text; }
   .ctx-menu button.danger { color: var(--bad); }
@@ -892,9 +909,10 @@
   :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea, [contenteditable="true"]) {
     min-height: 44px;
   }
-  :is(.rail-toggle, .acct-drag, .acct-more, .folder-pin, .folder-more, .chip-clear, .search-clear, .convo-toggle, .iconbtn, .rt-btn, .attach-x, .attach-preview, .details-toggle, .provider-remove, .recip-chip button, .sig-default, .update-x) {
+  :is(.rail-toggle, .acct-drag, .acct-more, .folder-pin, .folder-more, .chip-clear, .search-clear, .mail-select, .convo-toggle, .iconbtn, .rt-btn, .attach-x, .attach-preview, .details-toggle, .provider-remove, .recip-chip button, .sig-default, .update-x) {
     min-width: 44px;
   }
+  .selection-actions button span { display: none; }
   :is(.bh-checkbox, label:has(> input[type="checkbox"]), label:has(> input[type="radio"])) {
     min-height: 44px;
     min-width: 44px;

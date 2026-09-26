@@ -162,6 +162,8 @@ interface AppState {
   snoozeThread: (id: string) => void;
   archiveThread: (id: string) => void;
   toggleRead: (id: string) => void;
+  /** Set an explicit read state across threads, retaining per-account routing. */
+  setThreadsRead: (ids: string[], read: boolean) => Promise<{ updated: number; failed: number }>;
   deleteThread: (id: string) => void;
   moveThread: (id: string, toFolder: string) => void;
   markSpam: (id: string) => void;
@@ -260,7 +262,7 @@ export const useApp = create<AppState>((set, get) => ({
     const t = get().threads.find((x) => x.id === id);
     if (t?.unread) {
       set({ threads: get().threads.map((x) => (x.id === id ? { ...x, unread: false } : x)) });
-      void api.setThreadRead(id, t.accountId, false);
+      void api.setThreadRead(id, t.accountId, false).catch(() => {});
     }
   },
 
@@ -709,7 +711,38 @@ export const useApp = create<AppState>((set, get) => ({
     const t = get().threads.find((x) => x.id === id);
     const nextUnread = t ? !t.unread : false;
     set({ threads: get().threads.map((x) => (x.id === id ? { ...x, unread: nextUnread } : x)) });
-    if (t) void api.setThreadRead(id, t.accountId, nextUnread);
+    if (t) void api.setThreadRead(id, t.accountId, nextUnread).catch(() => {});
+  },
+  setThreadsRead: async (ids, read) => {
+    const idSet = new Set(ids);
+    const targets = get().threads.filter((thread) => idSet.has(thread.id));
+    if (targets.length === 0) return { updated: 0, failed: 0 };
+
+    const targetUnread = !read;
+    const previousUnread = new Map(targets.map((thread) => [thread.id, thread.unread]));
+    set({
+      threads: get().threads.map((thread) => (
+        idSet.has(thread.id) ? { ...thread, unread: targetUnread } : thread
+      )),
+    });
+
+    const results = await Promise.allSettled(
+      targets.map((thread) => api.setThreadRead(thread.id, thread.accountId, targetUnread)),
+    );
+    const failedIds = new Set(
+      results.flatMap((result, index) => result.status === "rejected" ? [targets[index].id] : []),
+    );
+    if (failedIds.size > 0) {
+      set({
+        threads: get().threads.map((thread) => (
+          failedIds.has(thread.id)
+            ? { ...thread, unread: previousUnread.get(thread.id) ?? thread.unread }
+            : thread
+        )),
+      });
+    }
+
+    return { updated: targets.length - failedIds.size, failed: failedIds.size };
   },
   deleteThread: (id) => {
     const t = get().threads.find((x) => x.id === id);

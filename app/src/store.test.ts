@@ -28,6 +28,42 @@ describe("navigation", () => {
   });
 });
 
+describe("bulk thread state", () => {
+  it("sets one read state across accounts and persists each selected thread", async () => {
+    const selected = [
+      { ...useApp.getState().threads[0], id: "personal-thread", accountId: "personal", unread: true },
+      { ...useApp.getState().threads[1], id: "work-thread", accountId: "work", unread: false },
+    ];
+    useApp.setState({ threads: selected });
+    const persist = vi.spyOn(api, "setThreadRead").mockResolvedValue(undefined);
+
+    const result = await useApp.getState().setThreadsRead(selected.map((thread) => thread.id), true);
+
+    expect(useApp.getState().threads.every((thread) => !thread.unread)).toBe(true);
+    expect(persist).toHaveBeenCalledTimes(2);
+    expect(persist).toHaveBeenCalledWith("personal-thread", "personal", false);
+    expect(persist).toHaveBeenCalledWith("work-thread", "work", false);
+    expect(result).toEqual({ updated: 2, failed: 0 });
+  });
+
+  it("restores only failed threads when a provider rejects part of a bulk update", async () => {
+    const selected = [
+      { ...useApp.getState().threads[0], id: "ok-thread", accountId: "personal", unread: true },
+      { ...useApp.getState().threads[1], id: "failed-thread", accountId: "work", unread: true },
+    ];
+    useApp.setState({ threads: selected });
+    vi.spyOn(api, "setThreadRead").mockImplementation(async (threadId) => {
+      if (threadId === "failed-thread") throw new Error("provider unavailable");
+    });
+
+    const result = await useApp.getState().setThreadsRead(selected.map((thread) => thread.id), true);
+
+    expect(useApp.getState().threads.find((thread) => thread.id === "ok-thread")?.unread).toBe(false);
+    expect(useApp.getState().threads.find((thread) => thread.id === "failed-thread")?.unread).toBe(true);
+    expect(result).toEqual({ updated: 1, failed: 1 });
+  });
+});
+
 describe("theme & density", () => {
   it("toggles theme and reflects it on <html>", () => {
     const before = useApp.getState().theme;
