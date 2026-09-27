@@ -20,6 +20,25 @@ afterEach(() => {
 });
 
 describe("Stage motion", () => {
+  it("keeps mail actions outside the native window drag surface", () => {
+    useApp.setState({
+      accounts: [account],
+      threads: [threads[0]],
+      selectedThreadId: threads[0].id,
+      selectedMessageId: null,
+    });
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    act(() => root?.render(<Stage />));
+
+    const markRead = host.querySelector<HTMLButtonElement>('button[aria-label="Mark as read (U)"]');
+    expect(markRead).not.toBeNull();
+    expect(markRead?.type).toBe("button");
+    expect(markRead?.closest("[data-tauri-drag-region]")).toBeNull();
+  });
+
   it("keeps the reading pane and its children free of translated entrances", () => {
     expect(THREAD_CROSSFADE.duration).toBe(0.12);
     useApp.setState({

@@ -18,6 +18,7 @@ export function IconButton({ icon, title, onClick, label, size = 16, weight = "d
   return (
     <Tooltip label={title} side={tipSide}>
       <button
+        type="button"
         className="iconbtn"
         aria-label={title}
         onClick={onClick}

@@ -430,10 +430,10 @@ export function Stream() {
 
   return (
     <section className="stream">
-      <div className="stream-head" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
+      <div className="stream-head">
         {selectedCount > 0 ? (
           <div className="selection-bar" role="toolbar" aria-label={`${selectedCount} conversations selected`}>
-            <span className="selection-count"><b>{selectedCount}</b> selected</span>
+            <span className="selection-count" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}><b>{selectedCount}</b> selected</span>
             <div className="selection-actions">
               <button type="button" onClick={() => void applySelectedReadState(true)} disabled={bulkBusy} title="Mark selected as read">
                 <Icon name="envelopeOpen" size={14} /> <span>Read</span>
@@ -451,7 +451,7 @@ export function Stream() {
           </div>
         ) : (
           <>
-            <h2>{TITLES[view] ?? "Inbox"}</h2>
+            <h2 data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>{TITLES[view] ?? "Inbox"}</h2>
             <div className="head-actions">
               <button className="filter" onClick={doSync} disabled={syncing} title="Sync all accounts" style={{ opacity: syncing ? 0.7 : 1 }}>
                 <Icon name="cloud" size={12} weight="duotone" /> {syncing ? "Syncing…" : "Sync"}
@@ -584,56 +584,56 @@ export function Stream() {
               <div className="ctx-sep" />
               {multi ? (
                 <>
-                  <button role="menuitem" onClick={run(() => { void applySelectedReadState(true, contextIds); })}>
+                  <button type="button" role="menuitem" onClick={run(() => { void applySelectedReadState(true, contextIds); })}>
                     <Icon name="envelopeOpen" size={14} /> Mark as read
                   </button>
-                  <button role="menuitem" onClick={run(() => { void applySelectedReadState(false, contextIds); })}>
+                  <button type="button" role="menuitem" onClick={run(() => { void applySelectedReadState(false, contextIds); })}>
                     <Icon name="envelope" size={14} /> Mark as unread
                   </button>
                   <div className="ctx-sep" />
-                  <button role="menuitem" onClick={run(() => archiveSelected(contextIds))}>
+                  <button type="button" role="menuitem" onClick={run(() => archiveSelected(contextIds))}>
                     <Icon name="archive" size={14} weight="duotone" /> Archive selected
                   </button>
-                  <button role="menuitem" onClick={run(clearThreadSelection)}>
+                  <button type="button" role="menuitem" onClick={run(clearThreadSelection)}>
                     <Icon name="close" size={14} /> Clear selection
                   </button>
                 </>
               ) : ctxSub === "move" ? (
                 <>
-                  <button role="menuitem" className="ctx-back" onClick={() => setCtxSub(null)}><Icon name="reply" size={13} /> Move to folder</button>
+                  <button type="button" role="menuitem" className="ctx-back" onClick={() => setCtxSub(null)}><Icon name="reply" size={13} /> Move to folder</button>
                   <div className="ctx-sep" />
                   {moveTargets.length === 0 && <div className="ctx-empty">No other folders</div>}
                   {moveTargets.map((f) => (
-                    <button key={f.name} role="menuitem" onClick={run(() => moveThread(t.id, f.name))}>
+                    <button key={f.name} type="button" role="menuitem" onClick={run(() => moveThread(t.id, f.name))}>
                       <Icon name="folder" size={14} /> {f.name}
                     </button>
                   ))}
                 </>
               ) : (
                 <>
-                  <button role="menuitem" onClick={run(() => selectThread(t.id))}><Icon name="inbox" size={14} /> Open</button>
+                  <button type="button" role="menuitem" onClick={run(() => selectThread(t.id))}><Icon name="inbox" size={14} /> Open</button>
                   <div className="ctx-sep" />
-                  <button role="menuitem" onClick={run(() => requestCompose(t.id, "reply"))}><Icon name="reply" size={14} /> Reply</button>
-                  <button role="menuitem" onClick={run(() => requestCompose(t.id, "replyAll"))}><Icon name="replyAll" size={14} /> Reply all</button>
-                  <button role="menuitem" onClick={run(() => requestCompose(t.id, "forward"))}><Icon name="forward" size={14} /> Forward</button>
-                  <button role="menuitem" onClick={run(() => requestAiReply(t.id))}><Icon name="ai" size={14} weight="duotone" /> Draft reply with AI</button>
+                  <button type="button" role="menuitem" onClick={run(() => requestCompose(t.id, "reply"))}><Icon name="reply" size={14} /> Reply</button>
+                  <button type="button" role="menuitem" onClick={run(() => requestCompose(t.id, "replyAll"))}><Icon name="replyAll" size={14} /> Reply all</button>
+                  <button type="button" role="menuitem" onClick={run(() => requestCompose(t.id, "forward"))}><Icon name="forward" size={14} /> Forward</button>
+                  <button type="button" role="menuitem" onClick={run(() => requestAiReply(t.id))}><Icon name="ai" size={14} weight="duotone" /> Draft reply with AI</button>
                   <div className="ctx-sep" />
-                  <button role="menuitem" onClick={run(() => toggleRead(t.id))}>
+                  <button type="button" role="menuitem" onClick={run(() => toggleRead(t.id))}>
                     <Icon name={t.unread ? "envelopeOpen" : "envelope"} size={14} /> Mark as {t.unread ? "read" : "unread"}
                   </button>
-                  <button role="menuitem" onClick={run(() => toggleFlag(t.id))}><Icon name="priority" size={14} weight={flaggedIds.includes(t.id) ? "fill" : "regular"} /> {flaggedIds.includes(t.id) ? "Unflag" : "Flag"}</button>
-                  <button role="menuitem" onClick={run(() => archiveThread(t.id))}><Icon name="archive" size={14} weight="duotone" /> Archive</button>
-                  <button role="menuitem" onClick={run(() => snoozeThread(t.id))}><Icon name="snoozed" size={14} /> Snooze</button>
+                  <button type="button" role="menuitem" onClick={run(() => toggleFlag(t.id))}><Icon name="priority" size={14} weight={flaggedIds.includes(t.id) ? "fill" : "regular"} /> {flaggedIds.includes(t.id) ? "Unflag" : "Flag"}</button>
+                  <button type="button" role="menuitem" onClick={run(() => archiveThread(t.id))}><Icon name="archive" size={14} weight="duotone" /> Archive</button>
+                  <button type="button" role="menuitem" onClick={run(() => snoozeThread(t.id))}><Icon name="snoozed" size={14} /> Snooze</button>
                   {moveTargets.length > 0 && (
-                    <button role="menuitem" className="ctx-submenu" onClick={() => setCtxSub("move")}><Icon name="folder" size={14} /> Move to folder<span className="ctx-caret">›</span></button>
+                    <button type="button" role="menuitem" className="ctx-submenu" onClick={() => setCtxSub("move")}><Icon name="folder" size={14} /> Move to folder<span className="ctx-caret">›</span></button>
                   )}
-                  <button role="menuitem" onClick={run(() => createTask(`Follow up: ${t.subject}`, t.id))}><Icon name="tasks" size={14} /> Turn into task</button>
+                  <button type="button" role="menuitem" onClick={run(() => createTask(`Follow up: ${t.subject}`, t.id))}><Icon name="tasks" size={14} /> Turn into task</button>
                   <div className="ctx-sep" />
-                  <button role="menuitem" onClick={run(() => copyText(senderEmail))}><Icon name="copy" size={14} /> Copy sender email</button>
-                  <button role="menuitem" onClick={run(() => copyText(t.subject))}><Icon name="copy" size={14} /> Copy subject</button>
+                  <button type="button" role="menuitem" onClick={run(() => copyText(senderEmail))}><Icon name="copy" size={14} /> Copy sender email</button>
+                  <button type="button" role="menuitem" onClick={run(() => copyText(t.subject))}><Icon name="copy" size={14} /> Copy subject</button>
                   <div className="ctx-sep" />
-                  <button role="menuitem" onClick={run(() => markSpam(t.id))}><Icon name="flag" size={14} /> Report spam</button>
-                  <button role="menuitem" className="danger" onClick={run(() => deleteThread(t.id))}><Icon name="trash" size={14} /> Delete</button>
+                  <button type="button" role="menuitem" onClick={run(() => markSpam(t.id))}><Icon name="flag" size={14} /> Report spam</button>
+                  <button type="button" role="menuitem" className="danger" onClick={run(() => deleteThread(t.id))}><Icon name="trash" size={14} /> Delete</button>
                 </>
               )}
             </div>

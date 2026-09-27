@@ -139,6 +139,35 @@ describe("Stream row keyboard behavior", () => {
 });
 
 describe("Stream conversation selection", () => {
+  it("keeps bulk actions outside the native window drag surface", () => {
+    const { container } = renderStream([threads[0], threads[1]]);
+    const selector = container.querySelector<HTMLButtonElement>(".mail-select");
+
+    act(() => selector?.click());
+
+    const markRead = container.querySelector<HTMLButtonElement>('.selection-actions button[title="Mark selected as read"]');
+    expect(markRead).not.toBeNull();
+    expect(markRead?.closest("[data-tauri-drag-region]")).toBeNull();
+  });
+
+  it("renders context actions as non-submitting buttons", () => {
+    const { container } = renderStream([threads[0], threads[1]]);
+    const row = container.querySelector<HTMLElement>(".mail");
+
+    act(() => row?.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      button: 2,
+      clientX: 24,
+      clientY: 24,
+    })));
+
+    const markRead = [...container.querySelectorAll<HTMLButtonElement>('.ctx-menu [role="menuitem"]')]
+      .find((button) => button.textContent?.trim() === "Mark as read");
+    expect(markRead).not.toBeNull();
+    expect(markRead?.type).toBe("button");
+  });
+
   it("selects a contiguous visible range with Shift+click without opening the range endpoint", () => {
     const { container, selectThread } = renderStream([threads[0], threads[1], threads[2], threads[3]]);
     const rows = [...container.querySelectorAll<HTMLButtonElement>(".mail-open")];

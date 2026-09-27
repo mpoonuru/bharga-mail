@@ -522,7 +522,7 @@ export function Stage() {
       <div className="stage-presence" style={{ display: "grid" }}>
       <AnimatePresence initial={false}>
         <motion.div className="stage-inner" key={thread.id} style={{ gridArea: "1 / 1" }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={crossfadeTransition}>
-          <div className="stage-bar" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
+          <div className="stage-bar">
             <IconButton icon="focus" title="Focus mode (F)" onClick={toggleFocus} />
             <IconButton icon="reply" title="Reply" onClick={() => composerRef.current?.open("reply")} />
             <IconButton icon="replyAll" title="Reply all" onClick={() => composerRef.current?.open("replyAll")} />
@@ -534,7 +534,7 @@ export function Stage() {
             />
             <IconButton icon="snoozed" title="Snooze" onClick={() => snoozeThread(thread.id)} />
             <IconButton icon="tasks" title="Turn into task" onClick={makeTask} />
-            <div className="spacer" />
+            <div className="spacer" data-tauri-drag-region onDoubleClick={titlebarDoubleClick} />
             <div className="font-step" role="group" aria-label="Text size">
               <Tooltip label="Smaller text" side="bottom"><button className="iconbtn" aria-label="Smaller text" onClick={() => setContentPx(contentPx - 1)} disabled={contentPx <= 12}>A−</button></Tooltip>
               <Tooltip label="Reset text size" side="bottom"><button className="iconbtn font-reset" aria-label="Reset text size" onClick={() => setContentPx(14.5)}>A</button></Tooltip>
