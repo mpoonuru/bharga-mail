@@ -13,13 +13,13 @@ export type SettingsSection =
   | "about";
 
 export const SETTINGS_SECTIONS: ReadonlyArray<readonly [SettingsSection, string, IconName]> = [
-  ["accounts", "Accounts", "inbox"],
+  ["accounts", "Accounts", "account"],
   ["appearance", "Appearance", "sun"],
   ["ai-privacy", "AI and privacy", "ai"],
   ["signatures", "Signatures", "compose"],
   ["security-data", "Security and data", "shieldWarning"],
-  ["diagnostics", "Diagnostics", "tasks"],
-  ["about", "About", "settings"],
+  ["diagnostics", "Diagnostics", "diagnostics"],
+  ["about", "About", "info"],
 ];
 
 interface SettingsShellProps {
@@ -66,7 +66,7 @@ export function SettingsShell({ active, onChange, children }: SettingsShellProps
               onClick={() => onChange(id)}
               onKeyDown={(event) => selectFromKeyboard(event, index)}
             >
-              <Icon name={icon} size={16} />
+              <Icon name={icon} size={15} />
               <span>{label}</span>
             </button>
           ))}
