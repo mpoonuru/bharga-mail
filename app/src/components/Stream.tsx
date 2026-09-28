@@ -511,7 +511,7 @@ export function Stream() {
                   count={count}
                   expanded={isOpen}
                   onToggleExpand={count > 1 ? () => toggleConvo(r.t.id) : undefined}
-                  active={selectedThreadId === r.t.id && !selectedMessageId}
+                  active={selectedThreadId === r.t.id}
                   checked={selectedThreadIds.has(r.t.id)}
                   onSelect={(event) => toggleThreadSelection(r.t.id, event)}
                   onOpen={(event) => activateThread(r.t.id, () => selectThread(r.t.id, r.m.id), event)}

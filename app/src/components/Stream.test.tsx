@@ -139,6 +139,20 @@ describe("Stream row keyboard behavior", () => {
 });
 
 describe("Stream conversation selection", () => {
+  it("keeps the opened conversation highlighted when a concrete message is displayed", () => {
+    const thread = threads[0];
+    const { container } = renderStream([thread]);
+
+    act(() => useApp.setState({
+      selectedThreadId: thread.id,
+      selectedMessageId: thread.messages[0].id,
+    }));
+
+    const row = container.querySelector<HTMLElement>(`.mail[data-thread-id="${thread.id}"]`);
+    expect(row?.classList.contains("sel")).toBe(true);
+    expect(row?.querySelector(".mail-open")?.getAttribute("aria-current")).toBe("true");
+  });
+
   it("keeps bulk actions outside the native window drag surface", () => {
     const { container } = renderStream([threads[0], threads[1]]);
     const selector = container.querySelector<HTMLButtonElement>(".mail-select");
