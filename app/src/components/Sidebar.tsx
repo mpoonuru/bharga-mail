@@ -28,9 +28,41 @@ const WORKSPACE: { id: View; icon: IconName; label: string }[] = [
   { id: "tasks", icon: "tasks", label: "Tasks" },
 ];
 
-const FOLDER_ICON: Record<string, IconName> = {
-  inbox: "inbox", sent: "send", drafts: "compose", trash: "close", junk: "close", archive: "awaiting",
+const FOLDER_ICON_BY_ROLE: Record<string, IconName> = {
+  inbox: "inbox",
+  sent: "send",
+  drafts: "compose",
+  trash: "trash",
+  junk: "shieldWarning",
+  archive: "archive",
 };
+
+const FOLDER_ICON_BY_NAME: Record<string, IconName> = {
+  inbox: "inbox",
+  sent: "send",
+  "sent items": "send",
+  "sent messages": "send",
+  draft: "compose",
+  drafts: "compose",
+  trash: "trash",
+  deleted: "trash",
+  "deleted items": "trash",
+  "deleted messages": "trash",
+  junk: "shieldWarning",
+  "junk email": "shieldWarning",
+  "junk e-mail": "shieldWarning",
+  spam: "shieldWarning",
+  archive: "archive",
+  archives: "archive",
+};
+
+function folderIcon(role: string | undefined, name: string): IconName {
+  const roleIcon = FOLDER_ICON_BY_ROLE[role?.trim().toLowerCase() ?? ""];
+  if (roleIcon) return roleIcon;
+
+  const leaf = name.split(/[./]/).at(-1)?.replace(/[_-]+/g, " ").trim().toLowerCase() ?? "";
+  return FOLDER_ICON_BY_NAME[leaf] ?? "folder";
+}
 
 // Pinned-folder key separator — must match the store's togglePinFolder (U+0001).
 const PIN_SEP = "";
@@ -246,7 +278,7 @@ function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEd
                     onBlur={() => setEdit(null)} />
                 ) : (
                   <button className={`nav-item folder-item${selectedFolder === f.name ? " active" : ""}`} onClick={() => setFolder(f.name)} title={f.name}>
-                    <span className="ic"><Icon name={FOLDER_ICON[f.role ?? ""] ?? "inbox"} size={15} weight="duotone" /></span>
+                    <span className="ic"><Icon name={folderIcon(f.role, f.name)} size={15} weight="duotone" /></span>
                     <span className="acct-email">{f.role === "inbox" ? "Inbox" : leaf}</span>
                     {(() => { const u = folderUnread(f.name); return u ? <span className="count">{u}</span> : null; })()}
                   </button>

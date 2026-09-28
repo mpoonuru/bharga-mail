@@ -9,11 +9,66 @@ import {
   accountReorderLayout,
   activateAccountReorder,
 } from "@/components/Sidebar";
+import { Icon, type IconName } from "@/components/icons";
 import { useApp } from "@/store";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("mail account disclosure motion", () => {
+  it("renders distinct semantic icons for system and custom mailboxes", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    useApp.setState({
+      accounts: [{ id: "a1", email: "one@example.test", provider: "imap", displayName: "One" }],
+      accountOrder: [],
+      selectedAccountId: "a1",
+      selectedFolder: null,
+      folders: [
+        { name: "INBOX", role: "inbox", unread: 0, total: 0 },
+        { name: "Drafts", role: "drafts", unread: 0, total: 0 },
+        { name: "Sent Messages", role: "sent", unread: 0, total: 0 },
+        { name: "Deleted Messages", role: "trash", unread: 0, total: 0 },
+        { name: "Junk", role: "junk", unread: 0, total: 0 },
+        { name: "Archive", role: "archive", unread: 0, total: 0 },
+        { name: "Projects", unread: 0, total: 0 },
+        { name: "Spam", unread: 0, total: 0 },
+        { name: "Deleted Items", unread: 0, total: 0 },
+        { name: "Sent Items", unread: 0, total: 0 },
+      ],
+      threads: [],
+    });
+
+    const expectedIconMarkup = (name: IconName): string => {
+      const iconContainer = document.createElement("div");
+      const iconRoot = createRoot(iconContainer);
+      act(() => iconRoot.render(createElement(Icon, { name, size: 15, weight: "duotone" })));
+      const markup = iconContainer.querySelector("svg")?.innerHTML ?? "";
+      act(() => iconRoot.unmount());
+      return markup;
+    };
+    const renderedIconMarkup = (label: string): string => {
+      const button = [...container.querySelectorAll<HTMLButtonElement>(".folder-item")]
+        .find((candidate) => candidate.querySelector(".acct-email")?.textContent === label);
+      if (!button) throw new Error(`${label} folder button not found`);
+      return button.querySelector("svg")?.innerHTML ?? "";
+    };
+
+    act(() => root.render(createElement(Sidebar)));
+
+    expect(renderedIconMarkup("Inbox")).toBe(expectedIconMarkup("inbox"));
+    expect(renderedIconMarkup("Drafts")).toBe(expectedIconMarkup("compose"));
+    expect(renderedIconMarkup("Sent Messages")).toBe(expectedIconMarkup("send"));
+    expect(renderedIconMarkup("Deleted Messages")).toBe(expectedIconMarkup("trash"));
+    expect(renderedIconMarkup("Junk")).toBe(expectedIconMarkup("shieldWarning"));
+    expect(renderedIconMarkup("Archive")).toBe(expectedIconMarkup("archive"));
+    expect(renderedIconMarkup("Projects")).toBe(expectedIconMarkup("folder"));
+    expect(renderedIconMarkup("Spam")).toBe(expectedIconMarkup("shieldWarning"));
+    expect(renderedIconMarkup("Deleted Items")).toBe(expectedIconMarkup("trash"));
+    expect(renderedIconMarkup("Sent Items")).toBe(expectedIconMarkup("send"));
+
+    act(() => root.unmount());
+  });
+
   it("collapses folders without rebuilding the selected mailbox", () => {
     const container = document.createElement("div");
     const root = createRoot(container);
