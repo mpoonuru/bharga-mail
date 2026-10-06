@@ -41,6 +41,8 @@ interface AppState {
   cmdOpen: boolean;
   modelPickerOpen: boolean;
   composeOpen: boolean;
+  accountConnectorOpen: boolean;
+  accountConnectorOpener: HTMLElement | null;
   // responsive: on narrow layouts, whether the Stage (reading pane) is shown
   // over the Stream, and whether the sidebar drawer is open.
   mobileStage: boolean;
@@ -51,6 +53,8 @@ interface AppState {
   setCmd: (o: boolean) => void;
   setModelPicker: (o: boolean) => void;
   setCompose: (o: boolean) => void;
+  openAccountConnector: (opener?: HTMLElement | null) => void;
+  closeAccountConnector: () => void;
   /** Thread id for which a "reply with AI draft" was requested (e.g. from the command bar). */
   aiReplyFor: string | null;
   requestAiReply: (id: string) => void;
@@ -272,6 +276,8 @@ export const useApp = create<AppState>((set, get) => ({
   cmdOpen: false,
   modelPickerOpen: false,
   composeOpen: false,
+  accountConnectorOpen: false,
+  accountConnectorOpener: null,
   mobileStage: false,
   drawerOpen: false,
   toggleTheme: () => {
@@ -289,6 +295,11 @@ export const useApp = create<AppState>((set, get) => ({
   setCmd: (cmdOpen) => set({ cmdOpen }),
   setModelPicker: (modelPickerOpen) => set({ modelPickerOpen }),
   setCompose: (composeOpen) => set({ composeOpen }),
+  openAccountConnector: (accountConnectorOpener = null) => set({
+    accountConnectorOpen: true,
+    accountConnectorOpener,
+  }),
+  closeAccountConnector: () => set({ accountConnectorOpen: false }),
   aiReplyFor: null,
   requestAiReply: (id) => set({ aiReplyFor: id, selectedThreadId: id, mobileStage: true }),
   clearAiReply: () => set({ aiReplyFor: null }),

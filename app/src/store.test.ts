@@ -11,6 +11,15 @@ beforeEach(async () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("navigation", () => {
+  it("opens and closes the shared account connector", () => {
+    const opener = document.createElement("button");
+    useApp.getState().openAccountConnector(opener);
+    expect(useApp.getState().accountConnectorOpen).toBe(true);
+    expect(useApp.getState().accountConnectorOpener).toBe(opener);
+    useApp.getState().closeAccountConnector();
+    expect(useApp.getState().accountConnectorOpen).toBe(false);
+  });
+
   it("selecting a thread opens the mobile stage", () => {
     useApp.getState().selectThread("t2");
     expect(useApp.getState().selectedThreadId).toBe("t2");

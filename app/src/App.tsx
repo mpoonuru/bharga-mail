@@ -11,6 +11,7 @@ import { Settings } from "@/components/Settings";
 import { CommandBar } from "@/components/CommandBar";
 import { ModelPicker } from "@/components/ModelPicker";
 import { UndoToast } from "@/components/UndoToast";
+import { AccountConnectorDialog } from "@/components/accounts/AccountConnectorDialog";
 import { Icon } from "@/components/icons";
 import { useHotkeys } from "@/lib/useHotkeys";
 import { useViewport } from "@/lib/useViewport";
@@ -108,6 +109,7 @@ export function App() {
       {layout === "narrow" ? <NarrowLayout /> : <WideLayout rail={layout === "medium"} focusMode={focusMode} composeOpen={composeOpen} view={view} />}
       <CommandBar />
       <ModelPicker />
+      <AccountConnectorDialog />
       <UndoToast />
       {updateVer && (
         <div className="update-banner" role="status">
