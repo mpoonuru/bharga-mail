@@ -139,6 +139,8 @@
   .sidebar.rail .acct-row .acct-main { @apply pr-0 justify-center; }
   .sidebar.rail .acct-dot { @apply w-3 h-3; }
   .sidebar.rail .compose-btn { @apply w-[40px] h-[40px] p-0 mx-auto mt-1 mb-2.5 rounded-[12px]; }
+  .sidebar.rail .rail-account-add { @apply min-h-10 w-10 mx-auto my-1 rounded-xl; color: var(--accent); background: var(--accent-soft); }
+  .sidebar.rail .rail-account-add:hover { background: color-mix(in oklch, var(--accent) 22%, transparent); }
   .sidebar.rail .model-chip { @apply py-[10px] px-0; }
   .brand { @apply flex items-center gap-2.5 pt-2 px-2.5 pb-[14px]; }
   /* The logo art already carries its own dark rounded-square background, so the
@@ -185,6 +187,13 @@
   .acct-more:hover, .acct-more.open { @apply opacity-100 text-text bg-surface; }
   .acct-more:disabled { @apply opacity-60 cursor-default; }
   .nav-label-row { @apply flex items-center justify-between; }
+  .account-heading-actions { @apply relative flex items-center gap-0.5; }
+  .account-add, .account-actions { @apply inline-flex min-h-8 min-w-8 items-center justify-center rounded-lg border-none bg-transparent text-text-3 cursor-pointer; transition: color var(--motion-instant) var(--ease), background-color var(--motion-instant) var(--ease); }
+  .account-add:hover, .account-actions:hover, .account-actions.open { @apply text-text; background: var(--surface); }
+  .account-actions-menu { @apply right-0 top-full; }
+  .account-empty-compact { @apply mx-1.5 mb-1 rounded-xl border border-dashed border-border-2 px-3 py-2.5 flex flex-col gap-0.5; background: var(--surface); }
+  .account-empty-compact b { @apply text-[12px] font-semibold text-text-2; }
+  .account-empty-compact span { @apply text-[11px] leading-[1.35] text-text-3; }
   .order-toggle { @apply min-h-8 border-none bg-transparent text-[10.5px] text-text-3 cursor-pointer rounded-md px-1.5 py-1; transition: color var(--motion-instant) var(--ease), background-color var(--motion-instant) var(--ease); }
   .order-toggle:hover, .order-toggle:focus-visible, .order-toggle[aria-pressed="true"] { @apply text-text bg-surface; }
   .account-order-instructions { @apply px-2 pb-1 text-[11px] leading-[1.4] text-text-2; }

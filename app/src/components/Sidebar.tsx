@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { flushSync } from "react-dom";
 import { Reorder, useDragControls } from "motion/react";
 import { useApp } from "@/store";
@@ -386,11 +386,14 @@ function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEd
 }
 
 export function Sidebar({ rail = false }: { rail?: boolean }) {
-  const { view, setView, setCompose, setModelPicker, threads, tasks, ai, accounts, selectedAccountId, setAccount, selectedFolder, setFolder, toggleSidebar, accountOrder, setAccountOrder, pinnedFolders, togglePinFolder } = useApp();
+  const { view, setView, setCompose, setModelPicker, threads, tasks, ai, accounts, selectedAccountId, setAccount, selectedFolder, setFolder, toggleSidebar, accountOrder, setAccountOrder, pinnedFolders, togglePinFolder, openAccountConnector } = useApp();
   const [reordering, setReordering] = useState(false);
   const [orderEditing, setOrderEditing] = useState(false);
+  const [accountActionsOpen, setAccountActionsOpen] = useState(false);
   const [orderAnnouncement, setOrderAnnouncement] = useState("");
   const [expandedAccountId, setExpandedAccountId] = useState<string | null>(selectedAccountId);
+  const accountActionsButtonRef = useRef<HTMLButtonElement>(null);
+  const accountActionsMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setExpandedAccountId(selectedAccountId);
   }, [selectedAccountId]);
@@ -411,6 +414,46 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
     next.splice(to, 0, account.id);
     setAccountOrder(next);
     setOrderAnnouncement(`${account.displayName?.trim() || account.email} moved to position ${to + 1} of ${next.length}.`);
+  };
+  const showAccountActions = (edge?: "first" | "last") => {
+    setAccountActionsOpen(true);
+    if (!edge) return;
+    requestAnimationFrame(() => {
+      const items = accountActionsMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
+      items?.[edge === "first" ? 0 : items.length - 1]?.focus();
+    });
+  };
+  const closeAccountActions = (restoreFocus = false) => {
+    setAccountActionsOpen(false);
+    if (restoreFocus) requestAnimationFrame(() => accountActionsButtonRef.current?.focus());
+  };
+  const moveAccountActionFocus = (event: KeyboardEvent<HTMLDivElement>) => {
+    const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+    if (!items.length) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeAccountActions(true);
+      return;
+    }
+    if (event.key === "Tab") {
+      closeAccountActions();
+      return;
+    }
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next: number | null = null;
+    if (event.key === "ArrowDown") next = current < items.length - 1 ? current + 1 : 0;
+    if (event.key === "ArrowUp") next = current > 0 ? current - 1 : items.length - 1;
+    if (event.key === "Home") next = 0;
+    if (event.key === "End") next = items.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    items[next]?.focus();
+  };
+  const addAccount = (opener: HTMLElement) => {
+    setOrderEditing(false);
+    setReordering(false);
+    setAccountActionsOpen(false);
+    openAccountConnector(opener);
   };
   const count = (v: View) => threads.filter((t) => t.view.includes(v) && t.unread).length || undefined;
   const draftModel = ai?.models.find((m) => m.roles.includes("draft"));
@@ -478,78 +521,153 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
           </>
         )}
 
-        {accounts.length > 0 && (
+        {rail ? (
           <>
-            {!rail && (
-              <>
-                <div className="nav-label nav-label-row">
-                  <span>Accounts</span>
-                  {accounts.length > 1 && (
-                    <button
-                      className="order-toggle"
-                      type="button"
-                      aria-pressed={orderEditing}
-                      onClick={() => {
-                        setOrderEditing((active) => !active);
-                        setReordering(false);
-                      }}
-                    >
-                      {orderEditing ? "Done" : "Edit order"}
-                    </button>
-                  )}
-                </div>
-                {orderEditing && (
-                  <p className="account-order-instructions" id="account-order-instructions">
-                    Drag the handles, or focus one and press Arrow Up or Arrow Down.
-                  </p>
-                )}
-                <span className="sr-only" role="status" aria-live="polite">{orderAnnouncement}</span>
-              </>
-            )}
+            <Tooltip label="Add account" block>
+              <button
+                type="button"
+                className="nav-item rail-account-add"
+                aria-label="Add account"
+                onClick={(event) => addAccount(event.currentTarget)}
+              >
+                <span className="ic"><Icon name="plus" size={17} weight="bold" /></span>
+              </button>
+            </Tooltip>
             {accounts.length > 1 && (
               <button
                 className={`nav-item${selectedAccountId === null ? " active" : ""}`}
                 onClick={() => { setExpandedAccountId(null); setAccount(null); }}
-                title={rail ? "All accounts" : undefined}
+                title="All accounts"
               >
                 <span className="ic"><Icon name="inbox" size={17} weight="duotone" /></span>
-                {!rail && "All accounts"}
               </button>
             )}
-            {rail ? (
-              ordered.map((a) => (
+            {ordered.map((a) => (
+              <button
+                key={a.id}
+                className={`nav-item${selectedAccountId === a.id ? " active" : ""}`}
+                onClick={() => { setExpandedAccountId(a.id); setAccount(a.id); }}
+                title={a.email}
+              >
+                <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
+              </button>
+            ))}
+          </>
+        ) : (
+          <>
+            <div className="nav-label nav-label-row">
+              <span>Accounts</span>
+              <div className="account-heading-actions">
                 <button
-                  key={a.id}
-                  className={`nav-item${selectedAccountId === a.id ? " active" : ""}`}
-                  onClick={() => { setExpandedAccountId(a.id); setAccount(a.id); }}
-                  title={a.email}
+                  type="button"
+                  className="account-add"
+                  aria-label="Add account"
+                  title="Add account"
+                  data-account-connector-fallback="true"
+                  onClick={(event) => addAccount(event.currentTarget)}
                 >
-                  <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
+                  <Icon name="plus" size={14} weight="bold" />
                 </button>
-              ))
-            ) : (
-              <Reorder.Group axis="y" values={orderedIds} onReorder={setAccountOrder} as="div" className="acct-list">
-                {ordered.map((a) => (
-                  <AccountRow
-                    key={a.id}
-                    a={a}
-                    expanded={expandedAccountId === a.id}
-                    onToggleDisclosure={() => {
-                      if (selectedAccountId === a.id) {
-                        setExpandedAccountId((current) => current === a.id ? null : a.id);
-                        return;
-                      }
-                      setExpandedAccountId(a.id);
-                      setAccount(a.id);
+                {orderEditing ? (
+                  <button
+                    className="order-toggle"
+                    type="button"
+                    onClick={() => {
+                      setOrderEditing(false);
+                      setReordering(false);
                     }}
-                    onOpenDisclosure={() => setExpandedAccountId(a.id)}
-                    orderEditing={orderEditing}
-                    reordering={reordering}
-                    setReordering={setReordering}
-                    onKeyboardMove={moveAccount}
-                  />
-                ))}
-              </Reorder.Group>
+                  >
+                    Done
+                  </button>
+                ) : accounts.length > 1 ? (
+                  <button
+                    ref={accountActionsButtonRef}
+                    type="button"
+                    className={`account-actions${accountActionsOpen ? " open" : ""}`}
+                    aria-label="Account actions"
+                    aria-haspopup="menu"
+                    aria-expanded={accountActionsOpen}
+                    onClick={() => setAccountActionsOpen((current) => !current)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
+                      event.preventDefault();
+                      showAccountActions(event.key === "ArrowUp" || event.key === "End" ? "last" : "first");
+                    }}
+                  >
+                    <Icon name="more" size={14} weight="bold" />
+                  </button>
+                ) : null}
+                {accountActionsOpen && (
+                  <>
+                    <div className="folder-menu-backdrop" onClick={() => closeAccountActions()} aria-hidden="true" />
+                    <div
+                      ref={accountActionsMenuRef}
+                      className="folder-menu account-actions-menu"
+                      role="menu"
+                      aria-label="Account actions"
+                      onKeyDown={moveAccountActionFocus}
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setAccountActionsOpen(false);
+                          setOrderEditing(true);
+                          setReordering(false);
+                        }}
+                      >
+                        <Icon name="grip" size={12} /> Edit order
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            {orderEditing && (
+              <p className="account-order-instructions" id="account-order-instructions">
+                Drag the handles, or focus one and press Arrow Up or Arrow Down.
+              </p>
+            )}
+            <span className="sr-only" role="status" aria-live="polite">{orderAnnouncement}</span>
+            {accounts.length === 0 ? (
+              <div className="account-empty-compact">
+                <b>No accounts connected</b>
+                <span>Add an account to receive mail.</span>
+              </div>
+            ) : (
+              <>
+                {accounts.length > 1 && (
+                  <button
+                    className={`nav-item${selectedAccountId === null ? " active" : ""}`}
+                    onClick={() => { setExpandedAccountId(null); setAccount(null); }}
+                  >
+                    <span className="ic"><Icon name="inbox" size={17} weight="duotone" /></span>
+                    All accounts
+                  </button>
+                )}
+                <Reorder.Group axis="y" values={orderedIds} onReorder={setAccountOrder} as="div" className="acct-list">
+                  {ordered.map((a) => (
+                    <AccountRow
+                      key={a.id}
+                      a={a}
+                      expanded={expandedAccountId === a.id}
+                      onToggleDisclosure={() => {
+                        if (selectedAccountId === a.id) {
+                          setExpandedAccountId((current) => current === a.id ? null : a.id);
+                          return;
+                        }
+                        setExpandedAccountId(a.id);
+                        setAccount(a.id);
+                      }}
+                      onOpenDisclosure={() => setExpandedAccountId(a.id)}
+                      orderEditing={orderEditing}
+                      reordering={reordering}
+                      setReordering={setReordering}
+                      onKeyboardMove={moveAccount}
+                    />
+                  ))}
+                </Reorder.Group>
+              </>
             )}
           </>
         )}

@@ -14,6 +14,129 @@ import { useApp } from "@/store";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const accountAt = (index: number) => ({
+  id: `a${index}`,
+  email: `person${index}@example.test`,
+  provider: "imap" as const,
+  displayName: `Person ${index}`,
+});
+
+function enterAccountOrderMode(container: HTMLElement): HTMLButtonElement {
+  const actions = container.querySelector<HTMLButtonElement>('[aria-label="Account actions"]');
+  if (!actions) throw new Error("Account actions button not found");
+  act(() => actions.click());
+  const editOrder = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+    .find((button) => button.textContent?.includes("Edit order"));
+  if (!editOrder) throw new Error("Edit order menu item not found");
+  act(() => editOrder.click());
+  const done = [...container.querySelectorAll<HTMLButtonElement>("button")]
+    .find((button) => button.textContent?.trim() === "Done");
+  if (!done) throw new Error("Done button not found");
+  return done;
+}
+
+describe("account creation entry points", () => {
+  it.each([
+    [0, false],
+    [1, false],
+    [2, true],
+  ])("shows Add account for %i accounts and order management only when useful", (count, hasOrderAction) => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    useApp.setState({
+      accounts: Array.from({ length: count }, (_, index) => accountAt(index)),
+      accountOrder: [],
+      selectedAccountId: null,
+      threads: [],
+    });
+
+    act(() => root.render(createElement(Sidebar)));
+
+    expect(container.querySelector('[aria-label="Add account"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Account actions"]') !== null).toBe(hasOrderAction);
+    act(() => root.unmount());
+  });
+
+  it("renders a compact empty state until the first account is connected", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    useApp.setState({ accounts: [], accountOrder: [], selectedAccountId: null, threads: [] });
+
+    act(() => root.render(createElement(Sidebar)));
+
+    expect(container.textContent).toContain("No accounts connected");
+    expect(container.textContent).toContain("Add an account to receive mail.");
+    act(() => root.unmount());
+  });
+
+  it("offers Add account from the compact rail", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    useApp.setState({ accounts: [], accountOrder: [], selectedAccountId: null, threads: [] });
+
+    act(() => root.render(createElement(Sidebar, { rail: true })));
+
+    expect(container.querySelector('[aria-label="Add account"]')).not.toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("exits edit-order mode before opening account creation", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    useApp.setState({
+      accounts: [accountAt(0), accountAt(1)],
+      accountOrder: [],
+      selectedAccountId: null,
+      threads: [],
+      accountConnectorOpen: false,
+    });
+    act(() => root.render(createElement(Sidebar)));
+
+    enterAccountOrderMode(container);
+    expect(container.querySelector("#account-order-instructions")).not.toBeNull();
+
+    const add = container.querySelector<HTMLButtonElement>('[aria-label="Add account"]');
+    if (!add) throw new Error("Add account button not found");
+    act(() => add.click());
+
+    expect(container.querySelector("#account-order-instructions")).toBeNull();
+    expect(useApp.getState().accountConnectorOpen).toBe(true);
+    act(() => root.unmount());
+    useApp.setState({ accountConnectorOpen: false, accountConnectorOpener: null });
+  });
+
+  it("opens order management from the keyboard and restores focus on Escape", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    useApp.setState({
+      accounts: [accountAt(0), accountAt(1)],
+      accountOrder: [],
+      selectedAccountId: null,
+      threads: [],
+    });
+    act(() => root.render(createElement(Sidebar)));
+
+    const actions = container.querySelector<HTMLButtonElement>('[aria-label="Account actions"]');
+    if (!actions) throw new Error("Account actions button not found");
+    actions.focus();
+    await act(async () => {
+      actions.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    const menuItem = container.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    expect(document.activeElement).toBe(menuItem);
+
+    await act(async () => {
+      menuItem?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    expect(document.activeElement).toBe(actions);
+    act(() => root.unmount());
+    container.remove();
+  });
+});
+
 describe("mail account disclosure motion", () => {
   it("renders distinct semantic icons for system and custom mailboxes", () => {
     const container = document.createElement("div");
@@ -123,19 +246,16 @@ describe("mail account disclosure motion", () => {
     act(() => root.render(createElement(Sidebar)));
     expect(container.querySelectorAll(".acct-drag")).toHaveLength(0);
 
-    const editOrderButton = [...container.querySelectorAll("button")]
-      .find((button) => button.textContent?.trim() === "Edit order");
-    if (!(editOrderButton instanceof HTMLButtonElement)) throw new Error("Edit order button not found");
-    act(() => editOrderButton.click());
+    const doneButton = enterAccountOrderMode(container);
 
     const instructions = container.querySelector<HTMLElement>("#account-order-instructions");
     const dragHandles = [...container.querySelectorAll<HTMLButtonElement>(".acct-drag")];
     expect(instructions?.textContent).toContain("Drag the handles");
     expect(dragHandles).toHaveLength(2);
     expect(dragHandles.every((handle) => handle.getAttribute("aria-describedby") === "account-order-instructions")).toBe(true);
-    expect(editOrderButton.textContent).toContain("Done");
+    expect(doneButton.textContent).toContain("Done");
 
-    act(() => editOrderButton.click());
+    act(() => doneButton.click());
     expect(container.querySelector("#account-order-instructions")).toBeNull();
     expect(container.querySelectorAll(".acct-drag")).toHaveLength(0);
     act(() => root.unmount());
@@ -157,10 +277,7 @@ describe("mail account disclosure motion", () => {
     });
 
     act(() => root.render(createElement(Sidebar)));
-    const editOrderButton = [...container.querySelectorAll("button")]
-      .find((button) => button.textContent?.trim() === "Edit order");
-    if (!(editOrderButton instanceof HTMLButtonElement)) throw new Error("Edit order button not found");
-    act(() => editOrderButton.click());
+    enterAccountOrderMode(container);
     const handles = [...container.querySelectorAll<HTMLButtonElement>(".acct-drag")];
 
     expect(container.querySelector("#account-order-instructions")?.textContent).toContain("Arrow Up or Arrow Down");
