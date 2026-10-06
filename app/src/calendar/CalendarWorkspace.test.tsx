@@ -1,4 +1,5 @@
 import { act } from "react";
+import dayjs from "dayjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CalendarWorkspace } from "@/calendar/CalendarWorkspace";
@@ -7,7 +8,10 @@ import { renderTest } from "@/test/render";
 
 let cleanup: (() => void) | undefined;
 
-afterEach(() => cleanup?.());
+afterEach(() => {
+  cleanup?.();
+  vi.useRealTimers();
+});
 
 function fixtureEvent(): CalendarEvent {
   return {
@@ -86,6 +90,8 @@ function calendarFixtureApi(): CalendarApi {
 
 describe("CalendarWorkspace", () => {
   it("renders persisted events and all four view choices without preview copy", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(dayjs("2026-09-25T12:00:00Z").valueOf());
     const setSetting = vi.fn(async () => {});
     const rendered = renderTest(
       <CalendarWorkspace
