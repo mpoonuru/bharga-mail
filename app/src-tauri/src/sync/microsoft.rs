@@ -38,7 +38,7 @@ pub async fn connect(store: &Store) -> Result<String, SyncError> {
             "Microsoft sign-in is not configured in this build",
         ));
     }
-    let tok = oauth::run_pkce_flow(&cfg).await.map_err(|e| SyncError::Transient(e.to_string()))?;
+    let tok = oauth::run_pkce_flow(&cfg).await.map_err(SyncError::from)?;
     let email = fetch_email(&tok.access_token).await.unwrap_or_else(|| "me".into());
     let account_id = format!("ms:{email}");
 
@@ -48,7 +48,9 @@ pub async fn connect(store: &Store) -> Result<String, SyncError> {
         .upsert_account(&account_id, &email, "microsoft", &email)
         .map_err(|e| SyncError::Transient(e.to_string()))?;
 
-    initial_sync(store, &account_id).await?;
+    initial_sync(store, &account_id)
+        .await
+        .map_err(|_| SyncError::InitialSyncFailed)?;
     Ok(account_id)
 }
 

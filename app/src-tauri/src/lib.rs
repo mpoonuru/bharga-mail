@@ -497,23 +497,73 @@ async fn flush_outbox(state: State<'_, AppState>) -> Result<usize, String> {
 
 // ---- Account / sync commands ----
 
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MailCommandError {
+    code: &'static str,
+    message: &'static str,
+    retryable: bool,
+}
+
+fn mail_command_error(error: sync::SyncError) -> MailCommandError {
+    match error {
+        sync::SyncError::NotConfigured(_) => MailCommandError {
+            code: "not_configured",
+            message: "This provider is not configured in this Bharga Mail build.",
+            retryable: false,
+        },
+        sync::SyncError::AuthRequired => MailCommandError {
+            code: "credential_rejected",
+            message: "The provider requires you to sign in again.",
+            retryable: false,
+        },
+        sync::SyncError::Cancelled => MailCommandError {
+            code: "cancelled",
+            message: "Sign-in was cancelled.",
+            retryable: false,
+        },
+        sync::SyncError::RedirectMismatch => MailCommandError {
+            code: "redirect_mismatch",
+            message: "The sign-in response could not be verified.",
+            retryable: false,
+        },
+        sync::SyncError::AuthorizationTimeout => MailCommandError {
+            code: "provider_unavailable",
+            message: "Sign-in timed out. Try again.",
+            retryable: true,
+        },
+        sync::SyncError::InitialSyncFailed => MailCommandError {
+            code: "initial_sync_failed",
+            message: "The account was connected, but its first sync did not finish.",
+            retryable: true,
+        },
+        sync::SyncError::ProviderUnavailable | sync::SyncError::Transient(_) => {
+            MailCommandError {
+                code: "provider_unavailable",
+                message: "The mail provider is temporarily unavailable. Try again.",
+                retryable: true,
+            }
+        }
+    }
+}
+
 #[tauri::command]
 fn list_mail_provider_capabilities() -> Vec<sync::provider_config::MailProviderCapability> {
     sync::provider_config::mail_provider_capabilities()
 }
 
 #[tauri::command]
-async fn connect_gmail(state: State<'_, AppState>) -> Result<String, String> {
+async fn connect_gmail(state: State<'_, AppState>) -> Result<String, MailCommandError> {
     sync::gmail::connect(&state.store)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(mail_command_error)
 }
 
 #[tauri::command]
-async fn connect_microsoft(state: State<'_, AppState>) -> Result<String, String> {
+async fn connect_microsoft(state: State<'_, AppState>) -> Result<String, MailCommandError> {
     sync::microsoft::connect(&state.store)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(mail_command_error)
 }
 
 /// Full IMAP/SMTP account setup with separate incoming/outgoing servers,
@@ -1468,6 +1518,38 @@ mod account_removal_tests {
         assert!(!compare_legacy_imap_credentials(Some("incoming"), Some("outgoing")).unwrap());
         assert!(compare_legacy_imap_credentials(Some("shared"), Some("shared")).unwrap());
         assert!(compare_legacy_imap_credentials(Some("incoming"), None).is_err());
+    }
+}
+
+#[cfg(test)]
+mod mail_account_command_tests {
+    use super::mail_command_error;
+    use crate::sync::SyncError;
+
+    #[test]
+    fn missing_provider_configuration_is_safe_and_not_retryable() {
+        let error = mail_command_error(SyncError::NotConfigured("internal field name"));
+        assert_eq!(error.code, "not_configured");
+        assert_eq!(
+            error.message,
+            "This provider is not configured in this Bharga Mail build."
+        );
+        assert!(!error.retryable);
+        assert!(!error.message.contains("internal field name"));
+    }
+
+    #[test]
+    fn transient_provider_details_are_redacted() {
+        let error = mail_command_error(SyncError::Transient(
+            "https://provider.test/callback?code=private".into(),
+        ));
+        assert_eq!(error.code, "provider_unavailable");
+        assert_eq!(
+            error.message,
+            "The mail provider is temporarily unavailable. Try again."
+        );
+        assert!(error.retryable);
+        assert!(!error.message.contains("private"));
     }
 }
 

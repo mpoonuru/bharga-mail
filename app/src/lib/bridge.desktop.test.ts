@@ -79,6 +79,33 @@ describe("bridge desktop failures", () => {
       .rejects.toThrow("mail provider unavailable");
   });
 
+  it("reads provider capabilities without substituting preview readiness", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {},
+    });
+    const invoke = vi.fn().mockResolvedValue([
+      {
+        provider: "gmail",
+        available: false,
+        configured: false,
+        reason: "build_not_configured",
+      },
+    ]);
+    vi.doMock("@tauri-apps/api/core", () => ({ invoke }));
+    const { api } = await import("@/lib/bridge");
+
+    await expect(api.listMailProviderCapabilities()).resolves.toEqual([
+      {
+        provider: "gmail",
+        available: false,
+        configured: false,
+        reason: "build_not_configured",
+      },
+    ]);
+    expect(invoke).toHaveBeenCalledWith("list_mail_provider_capabilities", undefined);
+  });
+
   it("delegates validated web links to the native opener command", async () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,

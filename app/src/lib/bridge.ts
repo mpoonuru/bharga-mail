@@ -19,6 +19,7 @@ import type {
   FolderInfo,
   InvitationInspection,
   InvitationResponseInput,
+  MailProviderCapability,
   CalDavDiscoveryInput,
   SaveCalDavSourceInput,
   RemoteCalendar,
@@ -572,6 +573,18 @@ export const api = {
     // In the desktop app an empty list means "no account connected yet" and
     // an IPC error must remain an error rather than inventing an identity.
     return invoke<Account[]>("list_accounts");
+  },
+
+  /** Provider readiness from the running desktop core; preview never simulates OAuth. */
+  async listMailProviderCapabilities(): Promise<MailProviderCapability[]> {
+    if (!inTauri) {
+      return [
+        { provider: "gmail", available: false, configured: false, reason: "desktop_required" },
+        { provider: "microsoft", available: false, configured: false, reason: "desktop_required" },
+        { provider: "imap", available: false, configured: false, reason: "desktop_required" },
+      ];
+    }
+    return invoke<MailProviderCapability[]>("list_mail_provider_capabilities");
   },
 
   async listTasks(): Promise<Task[]> {

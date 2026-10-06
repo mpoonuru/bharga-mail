@@ -2437,6 +2437,31 @@ mod tests {
     }
 
     #[test]
+    fn repeated_provider_identity_does_not_duplicate_accounts() {
+        let store = Store::in_memory().unwrap();
+        store
+            .upsert_account(
+                "gmail:person@example.test",
+                "person@example.test",
+                "gmail",
+                "Person",
+            )
+            .unwrap();
+        store
+            .upsert_account(
+                "gmail:person@example.test",
+                "person@example.test",
+                "gmail",
+                "Person Updated",
+            )
+            .unwrap();
+
+        let accounts = store.accounts();
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].display_name, "Person Updated");
+    }
+
+    #[test]
     fn imap_account_roundtrip() {
         let s = Store::in_memory().unwrap();
         let acct = ImapAccount {

@@ -24,6 +24,38 @@ export interface Account {
   syncError?: string;
 }
 
+export type MailProviderKind = "gmail" | "microsoft" | "imap";
+export type MailProviderCapabilityReason =
+  | "ready"
+  | "desktop_required"
+  | "build_not_configured"
+  | "unsupported";
+
+export interface MailProviderCapability {
+  provider: MailProviderKind;
+  available: boolean;
+  configured: boolean;
+  reason: MailProviderCapabilityReason;
+}
+
+export type MailConnectionErrorCode =
+  | "not_configured"
+  | "cancelled"
+  | "offline"
+  | "consent_denied"
+  | "tenant_restricted"
+  | "redirect_mismatch"
+  | "credential_rejected"
+  | "provider_unavailable"
+  | "initial_sync_failed"
+  | "unexpected";
+
+export interface MailConnectionError {
+  code: MailConnectionErrorCode;
+  message: string;
+  retryable: boolean;
+}
+
 export interface FolderInfo {
   name: string;
   role?: string; // inbox|sent|drafts|trash|junk|archive

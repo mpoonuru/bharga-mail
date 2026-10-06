@@ -32,8 +32,33 @@ pub enum SyncError {
     AuthRequired,
     #[error("{0}")]
     NotConfigured(&'static str),
+    #[error("authorization cancelled")]
+    Cancelled,
+    #[error("authorization callback rejected")]
+    RedirectMismatch,
+    #[error("authorization timed out")]
+    AuthorizationTimeout,
+    #[error("provider unavailable")]
+    ProviderUnavailable,
+    #[error("initial sync failed")]
+    InitialSyncFailed,
     #[error("transient: {0}")]
     Transient(String),
+}
+
+impl From<oauth::OAuthError> for SyncError {
+    fn from(error: oauth::OAuthError) -> Self {
+        match error {
+            oauth::OAuthError::Cancelled => Self::Cancelled,
+            oauth::OAuthError::StateMismatch | oauth::OAuthError::NoCode => {
+                Self::RedirectMismatch
+            }
+            oauth::OAuthError::Timeout => Self::AuthorizationTimeout,
+            oauth::OAuthError::Browser(_)
+            | oauth::OAuthError::Loopback(_)
+            | oauth::OAuthError::Exchange(_) => Self::ProviderUnavailable,
+        }
+    }
 }
 
 pub(crate) fn http_status_error(status: reqwest::StatusCode, operation: &str) -> SyncError {

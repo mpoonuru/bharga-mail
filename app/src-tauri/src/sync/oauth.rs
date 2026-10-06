@@ -8,6 +8,9 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rand::Rng;
 use sha2::{Digest, Sha256};
+use std::time::{Duration, Instant};
+
+const AUTHORIZATION_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Debug, thiserror::Error)]
 pub enum OAuthError {
@@ -17,8 +20,20 @@ pub enum OAuthError {
     Loopback(String),
     #[error("token exchange failed: {0}")]
     Exchange(String),
+    #[error("authorization was cancelled")]
+    Cancelled,
+    #[error("authorization callback state did not match")]
+    StateMismatch,
+    #[error("authorization timed out")]
+    Timeout,
     #[error("no authorization code received")]
     NoCode,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CallbackOutcome {
+    Code(String),
+    Ignore,
 }
 
 pub struct OAuthConfig {
@@ -131,35 +146,90 @@ pub async fn refresh(cfg: &OAuthConfig, refresh_token: &str) -> Result<TokenSet,
 }
 
 fn capture_code(server: &tiny_http::Server, expected_state: &str) -> Result<String, OAuthError> {
-    // Handle one request: parse ?code=&state= from the path, reply with a friendly page.
-    for request in server.incoming_requests() {
+    let deadline = Instant::now() + AUTHORIZATION_TIMEOUT;
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(OAuthError::Timeout);
+        }
+        let wait = deadline
+            .saturating_duration_since(now)
+            .min(Duration::from_secs(1));
+        let Some(request) = server
+            .recv_timeout(wait)
+            .map_err(|error| OAuthError::Loopback(error.to_string()))?
+        else {
+            continue;
+        };
         let url = request.url().to_string();
-        let (code, state) = parse_query(&url);
+        let outcome = parse_callback(&url, expected_state);
         let body = "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>\
                     <h2>Bharga Mail</h2><p>You can close this tab and return to the app.</p></body></html>";
         let _ = request.respond(
             tiny_http::Response::from_string(body)
                 .with_header("Content-Type: text/html".parse::<tiny_http::Header>().unwrap()),
         );
-        if state.as_deref() != Some(expected_state) {
-            continue; // ignore mismatched/extra hits (favicon etc.)
+        match outcome? {
+            CallbackOutcome::Code(code) => return Ok(code),
+            CallbackOutcome::Ignore => continue,
         }
-        return code.ok_or(OAuthError::NoCode);
     }
-    Err(OAuthError::NoCode)
 }
 
-fn parse_query(url: &str) -> (Option<String>, Option<String>) {
+fn parse_callback(url: &str, expected_state: &str) -> Result<CallbackOutcome, OAuthError> {
     let q = url.split('?').nth(1).unwrap_or("");
     let mut code = None;
     let mut state = None;
+    let mut error = None;
     for pair in q.split('&') {
         let mut it = pair.splitn(2, '=');
         match (it.next(), it.next()) {
             (Some("code"), Some(v)) => code = Some(urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default()),
             (Some("state"), Some(v)) => state = Some(urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default()),
+            (Some("error"), Some(v)) => error = Some(urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default()),
             _ => {}
         }
     }
-    (code, state)
+    if code.is_none() && state.is_none() && error.is_none() {
+        return Ok(CallbackOutcome::Ignore);
+    }
+    if state.as_deref() != Some(expected_state) {
+        return Err(OAuthError::StateMismatch);
+    }
+    if error.as_deref() == Some("access_denied") {
+        return Err(OAuthError::Cancelled);
+    }
+    if error.is_some() {
+        return Err(OAuthError::Exchange("authorization failed".into()));
+    }
+    code.map(CallbackOutcome::Code).ok_or(OAuthError::NoCode)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_callback, CallbackOutcome, OAuthError};
+
+    #[test]
+    fn callback_denial_is_cancelled() {
+        assert!(matches!(
+            parse_callback("/?error=access_denied&state=expected", "expected"),
+            Err(OAuthError::Cancelled)
+        ));
+    }
+
+    #[test]
+    fn callback_state_mismatch_is_rejected() {
+        assert!(matches!(
+            parse_callback("/?code=secret&state=wrong", "expected"),
+            Err(OAuthError::StateMismatch)
+        ));
+    }
+
+    #[test]
+    fn callback_without_authorization_fields_is_ignored() {
+        assert!(matches!(
+            parse_callback("/favicon.ico", "expected"),
+            Ok(CallbackOutcome::Ignore)
+        ));
+    }
 }
