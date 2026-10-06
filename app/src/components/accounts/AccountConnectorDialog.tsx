@@ -101,6 +101,17 @@ export function AccountConnectorDialog() {
       close();
     } catch (cause) {
       const failure = toMailConnectionError(cause);
+      if (failure.code === "initial_sync_failed" && failure.accountId) {
+        try {
+          await load();
+          setAccount(failure.accountId);
+          setStatus(failure.message);
+          close();
+        } catch {
+          setError(failure);
+        }
+        return;
+      }
       if (failure.code !== "cancelled") setError(failure);
     } finally {
       pendingRef.current = false;

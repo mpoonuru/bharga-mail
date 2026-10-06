@@ -54,6 +54,7 @@ export interface MailConnectionError {
   code: MailConnectionErrorCode;
   message: string;
   retryable: boolean;
+  accountId?: string;
 }
 
 export interface FolderInfo {

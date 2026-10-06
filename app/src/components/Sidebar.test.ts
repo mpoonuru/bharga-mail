@@ -135,6 +135,27 @@ describe("account creation entry points", () => {
     act(() => root.unmount());
     container.remove();
   });
+
+  it("exits order management when fewer than two accounts remain", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    useApp.setState({
+      accounts: [accountAt(0), accountAt(1)],
+      accountOrder: [],
+      selectedAccountId: null,
+      threads: [],
+    });
+    act(() => root.render(createElement(Sidebar)));
+    enterAccountOrderMode(container);
+    expect(container.querySelector("#account-order-instructions")).not.toBeNull();
+
+    act(() => useApp.setState({ accounts: [accountAt(0)] }));
+
+    expect(container.querySelector("#account-order-instructions")).toBeNull();
+    expect(container.querySelectorAll(".acct-drag")).toHaveLength(0);
+    expect(container.querySelector('[aria-label="Account actions"]')).toBeNull();
+    act(() => root.unmount());
+  });
 });
 
 describe("mail account disclosure motion", () => {

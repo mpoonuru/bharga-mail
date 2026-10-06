@@ -299,7 +299,16 @@ export const useApp = create<AppState>((set, get) => ({
     accountConnectorOpen: true,
     accountConnectorOpener,
   }),
-  closeAccountConnector: () => set({ accountConnectorOpen: false }),
+  closeAccountConnector: () => {
+    const closingOpener = get().accountConnectorOpener;
+    set({ accountConnectorOpen: false });
+    requestAnimationFrame(() => {
+      const current = get();
+      if (!current.accountConnectorOpen && current.accountConnectorOpener === closingOpener) {
+        set({ accountConnectorOpener: null });
+      }
+    });
+  },
   aiReplyFor: null,
   requestAiReply: (id) => set({ aiReplyFor: id, selectedThreadId: id, mobileStage: true }),
   clearAiReply: () => set({ aiReplyFor: null }),

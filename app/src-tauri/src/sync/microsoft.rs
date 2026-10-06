@@ -50,7 +50,9 @@ pub async fn connect(store: &Store) -> Result<String, SyncError> {
 
     initial_sync(store, &account_id)
         .await
-        .map_err(|_| SyncError::InitialSyncFailed)?;
+        .map_err(|_| SyncError::InitialSyncFailed {
+            account_id: account_id.clone(),
+        })?;
     Ok(account_id)
 }
 

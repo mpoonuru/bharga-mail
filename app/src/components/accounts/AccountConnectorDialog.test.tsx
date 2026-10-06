@@ -122,6 +122,36 @@ describe("AccountConnectorDialog", () => {
       .toContain("Your organization blocked this sign-in.");
   });
 
+  it("keeps and selects an account when only its first sync fails", async () => {
+    vi.spyOn(api, "listMailProviderCapabilities").mockResolvedValue([
+      { provider: "gmail", available: true, configured: true, reason: "ready" },
+      { provider: "microsoft", available: false, configured: false, reason: "build_not_configured" },
+      { provider: "imap", available: true, configured: true, reason: "ready" },
+    ]);
+    const load = vi.fn().mockResolvedValue(undefined);
+    const setAccount = vi.fn();
+    useApp.setState({
+      accountConnectorOpen: true,
+      connectGmail: vi.fn().mockRejectedValue({
+        code: "initial_sync_failed",
+        message: "The account was connected, but its first sync did not finish.",
+        retryable: true,
+        accountId: "gmail:person@example.test",
+      }),
+      load,
+      setAccount,
+    });
+    renderDialog();
+    await act(async () => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+    await act(async () => buttonContaining("Continue with Google").click());
+
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(setAccount).toHaveBeenCalledWith("gmail:person@example.test");
+    expect(useApp.getState().accountConnectorOpen).toBe(false);
+    expect(document.querySelector('[role="status"]')?.textContent)
+      .toContain("connected, but its first sync did not finish");
+  });
+
   it("restores focus to a connected fallback when the opener disappears", async () => {
     vi.spyOn(api, "listMailProviderCapabilities").mockResolvedValue([]);
     const opener = document.createElement("button");

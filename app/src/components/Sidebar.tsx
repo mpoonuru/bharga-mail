@@ -397,6 +397,12 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
   useEffect(() => {
     setExpandedAccountId(selectedAccountId);
   }, [selectedAccountId]);
+  useEffect(() => {
+    if (accounts.length >= 2) return;
+    setOrderEditing(false);
+    setReordering(false);
+    setAccountActionsOpen(false);
+  }, [accounts.length]);
   // Accounts in the user's saved order; any not yet in the order sort to the end.
   const ordered = [...accounts].sort((x, y) => {
     const ix = accountOrder.indexOf(x.id), iy = accountOrder.indexOf(y.id);

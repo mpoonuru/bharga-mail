@@ -47,10 +47,7 @@ pub(crate) fn capabilities_from(
 
     vec![
         oauth_capability(MailProviderKind::Gmail, configured(gmail_client_id)),
-        oauth_capability(
-            MailProviderKind::Microsoft,
-            configured(microsoft_client_id),
-        ),
+        oauth_capability(MailProviderKind::Microsoft, configured(microsoft_client_id)),
         MailProviderCapability {
             provider: MailProviderKind::Imap,
             available: true,
@@ -90,8 +87,7 @@ mod tests {
 
     #[test]
     fn non_empty_client_ids_enable_oauth_providers() {
-        let capabilities =
-            capabilities_from(Some("google-public-id"), Some("microsoft-public-id"));
+        let capabilities = capabilities_from(Some("google-public-id"), Some("microsoft-public-id"));
         assert!(capabilities[0].available);
         assert!(capabilities[0].configured);
         assert!(capabilities[1].available);

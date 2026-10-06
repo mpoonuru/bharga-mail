@@ -41,7 +41,7 @@ pub enum SyncError {
     #[error("provider unavailable")]
     ProviderUnavailable,
     #[error("initial sync failed")]
-    InitialSyncFailed,
+    InitialSyncFailed { account_id: String },
     #[error("transient: {0}")]
     Transient(String),
 }

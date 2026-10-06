@@ -16,6 +16,18 @@ describe("mail provider errors", () => {
     });
   });
 
+  it("preserves a validated account identity for partial connection success", () => {
+    expect(toMailConnectionError({
+      code: "initial_sync_failed",
+      message: "The account was connected, but its first sync did not finish.",
+      retryable: true,
+      accountId: "gmail:person@example.test",
+    })).toMatchObject({
+      code: "initial_sync_failed",
+      accountId: "gmail:person@example.test",
+    });
+  });
+
   it("does not expose ordinary error details", () => {
     expect(toMailConnectionError(new Error("token response contained private details"))).toEqual({
       code: "unexpected",

@@ -503,6 +503,8 @@ struct MailCommandError {
     code: &'static str,
     message: &'static str,
     retryable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account_id: Option<String>,
 }
 
 fn mail_command_error(error: sync::SyncError) -> MailCommandError {
@@ -511,37 +513,44 @@ fn mail_command_error(error: sync::SyncError) -> MailCommandError {
             code: "not_configured",
             message: "This provider is not configured in this Bharga Mail build.",
             retryable: false,
+            account_id: None,
         },
         sync::SyncError::AuthRequired => MailCommandError {
             code: "credential_rejected",
             message: "The provider requires you to sign in again.",
             retryable: false,
+            account_id: None,
         },
         sync::SyncError::Cancelled => MailCommandError {
             code: "cancelled",
             message: "Sign-in was cancelled.",
             retryable: false,
+            account_id: None,
         },
         sync::SyncError::RedirectMismatch => MailCommandError {
             code: "redirect_mismatch",
             message: "The sign-in response could not be verified.",
             retryable: false,
+            account_id: None,
         },
         sync::SyncError::AuthorizationTimeout => MailCommandError {
             code: "provider_unavailable",
             message: "Sign-in timed out. Try again.",
             retryable: true,
+            account_id: None,
         },
-        sync::SyncError::InitialSyncFailed => MailCommandError {
+        sync::SyncError::InitialSyncFailed { account_id } => MailCommandError {
             code: "initial_sync_failed",
             message: "The account was connected, but its first sync did not finish.",
             retryable: true,
+            account_id: Some(account_id),
         },
         sync::SyncError::ProviderUnavailable | sync::SyncError::Transient(_) => {
             MailCommandError {
                 code: "provider_unavailable",
                 message: "The mail provider is temporarily unavailable. Try again.",
                 retryable: true,
+                account_id: None,
             }
         }
     }
@@ -1535,6 +1544,7 @@ mod mail_account_command_tests {
             "This provider is not configured in this Bharga Mail build."
         );
         assert!(!error.retryable);
+        assert_eq!(error.account_id, None);
         assert!(!error.message.contains("internal field name"));
     }
 
@@ -1549,7 +1559,17 @@ mod mail_account_command_tests {
             "The mail provider is temporarily unavailable. Try again."
         );
         assert!(error.retryable);
+        assert_eq!(error.account_id, None);
         assert!(!error.message.contains("private"));
+    }
+
+    #[test]
+    fn partial_connection_failure_returns_the_persisted_account_identity() {
+        let error = mail_command_error(SyncError::InitialSyncFailed {
+            account_id: "gmail:person@example.test".into(),
+        });
+        assert_eq!(error.code, "initial_sync_failed");
+        assert_eq!(error.account_id.as_deref(), Some("gmail:person@example.test"));
     }
 }
 

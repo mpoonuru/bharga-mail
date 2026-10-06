@@ -34,9 +34,15 @@ export function toMailConnectionError(error: unknown): MailConnectionError {
   ) {
     return FALLBACK;
   }
+  const accountId = candidate.code === "initial_sync_failed"
+    && typeof candidate.accountId === "string"
+    && candidate.accountId.trim().length > 0
+    ? candidate.accountId
+    : undefined;
   return {
     code: candidate.code as MailConnectionErrorCode,
     message: candidate.message,
     retryable: candidate.retryable,
+    ...(accountId ? { accountId } : {}),
   };
 }
