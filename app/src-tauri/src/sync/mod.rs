@@ -14,6 +14,7 @@ pub mod microsoft;
 pub mod mime;
 pub mod oauth;
 pub mod outbox;
+pub mod provider_config;
 pub mod smtp;
 pub mod tokens;
 
@@ -29,6 +30,8 @@ pub enum ProviderProtocol {
 pub enum SyncError {
     #[error("auth required")]
     AuthRequired,
+    #[error("{0}")]
+    NotConfigured(&'static str),
     #[error("transient: {0}")]
     Transient(String),
 }

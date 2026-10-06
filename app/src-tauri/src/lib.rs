@@ -498,6 +498,11 @@ async fn flush_outbox(state: State<'_, AppState>) -> Result<usize, String> {
 // ---- Account / sync commands ----
 
 #[tauri::command]
+fn list_mail_provider_capabilities() -> Vec<sync::provider_config::MailProviderCapability> {
+    sync::provider_config::mail_provider_capabilities()
+}
+
+#[tauri::command]
 async fn connect_gmail(state: State<'_, AppState>) -> Result<String, String> {
     sync::gmail::connect(&state.store)
         .await
@@ -1591,6 +1596,7 @@ pub fn run() {
             cancel_send,
             list_outbox,
             flush_outbox,
+            list_mail_provider_capabilities,
             connect_gmail,
             connect_microsoft,
             test_imap_account,

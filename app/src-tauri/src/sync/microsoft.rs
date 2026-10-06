@@ -7,7 +7,7 @@
 use serde_json::Value;
 
 use super::oauth::{self, OAuthConfig, OAuthPurpose, TokenSet};
-use super::{tokens, SyncError};
+use super::{provider_config, tokens, SyncError};
 use crate::store::{Message, Party, Store, Thread};
 
 const GRAPH: &str = "https://graph.microsoft.com/v1.0";
@@ -16,7 +16,9 @@ fn config() -> OAuthConfig {
     OAuthConfig {
         auth_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".into(),
         token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token".into(),
-        client_id: std::env::var("BHARGA_MS_CLIENT_ID").unwrap_or_default(),
+        client_id: provider_config::microsoft_client_id()
+            .unwrap_or_default()
+            .to_owned(),
         scopes: vec![
             "offline_access".into(),
             "User.Read".into(),
@@ -32,7 +34,9 @@ fn config() -> OAuthConfig {
 pub async fn connect(store: &Store) -> Result<String, SyncError> {
     let cfg = config();
     if cfg.client_id.is_empty() {
-        return Err(SyncError::Transient("BHARGA_MS_CLIENT_ID not set".into()));
+        return Err(SyncError::NotConfigured(
+            "Microsoft sign-in is not configured in this build",
+        ));
     }
     let tok = oauth::run_pkce_flow(&cfg).await.map_err(|e| SyncError::Transient(e.to_string()))?;
     let email = fetch_email(&tok.access_token).await.unwrap_or_else(|| "me".into());

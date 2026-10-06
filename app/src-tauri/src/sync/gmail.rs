@@ -9,7 +9,7 @@ use base64::{engine::general_purpose::URL_SAFE, Engine};
 use serde_json::Value;
 
 use super::oauth::{self, OAuthConfig, OAuthPurpose, TokenSet};
-use super::{tokens, SyncError};
+use super::{provider_config, tokens, SyncError};
 use crate::store::{Message, Party, Store, Thread};
 
 const GMAIL_API: &str = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -18,7 +18,9 @@ fn config() -> OAuthConfig {
     OAuthConfig {
         auth_url: "https://accounts.google.com/o/oauth2/v2/auth".into(),
         token_url: "https://oauth2.googleapis.com/token".into(),
-        client_id: std::env::var("BHARGA_GMAIL_CLIENT_ID").unwrap_or_default(),
+        client_id: provider_config::gmail_client_id()
+            .unwrap_or_default()
+            .to_owned(),
         scopes: vec![
             "https://www.googleapis.com/auth/gmail.readonly".into(),
             "https://www.googleapis.com/auth/gmail.send".into(),
@@ -35,7 +37,9 @@ fn config() -> OAuthConfig {
 pub async fn connect(store: &Store) -> Result<String, SyncError> {
     let cfg = config();
     if cfg.client_id.is_empty() {
-        return Err(SyncError::Transient("BHARGA_GMAIL_CLIENT_ID not set".into()));
+        return Err(SyncError::NotConfigured(
+            "Google sign-in is not configured in this build",
+        ));
     }
     let tokens_set = oauth::run_pkce_flow(&cfg).await.map_err(|e| SyncError::Transient(e.to_string()))?;
     let email = fetch_email(&tokens_set.access_token).await.unwrap_or_else(|| "me".into());
