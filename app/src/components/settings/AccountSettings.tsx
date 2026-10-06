@@ -16,10 +16,6 @@ type AccountOperation = {
   healthKey?: string;
 };
 
-interface AccountSettingsProps {
-  runtime: "desktop" | "preview";
-}
-
 const PROVIDER_LABELS: Record<Account["provider"], string> = {
   gmail: "Gmail",
   microsoft: "Microsoft 365",
@@ -30,19 +26,15 @@ const PROVIDER_LABELS: Record<Account["provider"], string> = {
 const accountHealthKey = (account: Account | undefined) =>
   account ? `${account.lastSyncAt ?? ""}|${account.syncError ?? ""}` : "missing";
 
-export function AccountSettings({ runtime }: AccountSettingsProps) {
+export function AccountSettings() {
   const accounts = useApp((state) => state.accounts);
   const load = useApp((state) => state.load);
-  const connectGmail = useApp((state) => state.connectGmail);
-  const connectMicrosoft = useApp((state) => state.connectMicrosoft);
+  const openAccountConnector = useApp((state) => state.openAccountConnector);
   const groupConversations = useApp((state) => state.groupConversations);
   const [operations, setOperations] = useState<Record<string, AccountOperation>>({});
   const [menuAccountId, setMenuAccountId] = useState<string | null>(null);
-  const [chooserOpen, setChooserOpen] = useState(false);
-  const [imapOpen, setImapOpen] = useState(false);
   const [editAccount, setEditAccount] = useState<{ id: string; initial: Partial<ImapAccountInput>; returnFocus: HTMLElement | null } | null>(null);
   const [removalAccount, setRemovalAccount] = useState<{ account: Account; returnFocus: HTMLElement | null } | null>(null);
-  const [connectorError, setConnectorError] = useState("");
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const accountMenuRefs = useRef(new Map<string, HTMLButtonElement>());
   const openMenuRef = useRef<HTMLDivElement>(null);
@@ -76,19 +68,6 @@ export function AccountSettings({ runtime }: AccountSettingsProps) {
         message: cause instanceof Error ? cause.message : String(cause),
         healthKey: accountHealthKey(refreshed),
       });
-    }
-  }
-
-  async function connect(provider: "gmail" | "microsoft") {
-    if (runtime !== "desktop") return;
-    setConnectorError("");
-    try {
-      if (provider === "gmail") await connectGmail();
-      else await connectMicrosoft();
-      await load();
-      setChooserOpen(false);
-    } catch (cause) {
-      setConnectorError(cause instanceof Error ? cause.message : String(cause));
     }
   }
 
@@ -146,7 +125,13 @@ export function AccountSettings({ runtime }: AccountSettingsProps) {
           <h2>Accounts</h2>
           <p className="sub">Connect mailboxes and see their current sync health.</p>
         </div>
-        <button ref={addButtonRef} type="button" className="af-btn primary" onClick={() => { setConnectorError(""); setChooserOpen(true); }}>
+        <button
+          ref={addButtonRef}
+          type="button"
+          className="af-btn primary"
+          aria-label="Add account"
+          onClick={(event) => openAccountConnector(event.currentTarget)}
+        >
           <Icon name="plus" size={14} /> Add account
         </button>
       </div>
@@ -224,24 +209,6 @@ export function AccountSettings({ runtime }: AccountSettingsProps) {
         </div>
       )}
 
-      <Modal open={chooserOpen} onClose={() => setChooserOpen(false)} title="Add mail account" maxWidth={560}>
-        <div className="account-connector-list">
-          <button type="button" disabled={runtime !== "desktop"} onClick={() => void connect("gmail")}>
-            <Icon name="cloud" size={20} /><span><b>Gmail</b><small>{runtime === "desktop" ? "Sign in with Google" : "Desktop app required"}</small></span>
-          </button>
-          <button type="button" disabled={runtime !== "desktop"} onClick={() => void connect("microsoft")}>
-            <Icon name="cloud" size={20} /><span><b>Microsoft 365</b><small>{runtime === "desktop" ? "Sign in with Microsoft" : "Desktop app required"}</small></span>
-          </button>
-          <button type="button" onClick={() => { setChooserOpen(false); setImapOpen(true); }}>
-            <Icon name="server" size={20} /><span><b>Other IMAP / SMTP</b><small>Enter explicit incoming and outgoing servers</small></span>
-          </button>
-        </div>
-        {connectorError && <div className="settings-alert error" role="alert">{connectorError}</div>}
-      </Modal>
-
-      <Modal open={imapOpen} onClose={() => setImapOpen(false)} title="Add IMAP / SMTP account">
-        <AccountForm onClose={() => setImapOpen(false)} onStatus={() => setImapOpen(false)} />
-      </Modal>
       <Modal
         open={!!editAccount}
         onClose={() => setEditAccount(null)}

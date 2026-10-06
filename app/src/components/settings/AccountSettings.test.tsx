@@ -24,12 +24,18 @@ afterEach(async () => {
   await act(async () => new Promise<void>((resolve) => setTimeout(resolve, 180)));
   while (mounted.length) mounted.pop()?.();
   document.body.replaceChildren();
-  useApp.setState({ accounts: [], removeAccount: originalRemoveAccount, load: originalLoad });
+  useApp.setState({
+    accounts: [],
+    removeAccount: originalRemoveAccount,
+    load: originalLoad,
+    accountConnectorOpen: false,
+    accountConnectorOpener: null,
+  });
   vi.restoreAllMocks();
 });
 
 describe("AccountSettings", () => {
-  it("shows account health and opens one add-account chooser", () => {
+  it("shows account health and opens the application-level account connector", () => {
     useApp.setState({
       accounts: [{
         id: "imap:work@example.test",
@@ -40,25 +46,24 @@ describe("AccountSettings", () => {
         lastSyncAt: 1_700_000_000,
       }],
     });
-    const { host } = renderSubject(<AccountSettings runtime="preview" />);
+    const { host } = renderSubject(<AccountSettings />);
 
     expect(host.textContent).toContain("Work");
     expect(host.textContent).toContain("IMAP");
     expect(host.textContent).toContain("4 unread");
     expect(host.textContent).toContain("Last synced");
 
-    const add = [...host.querySelectorAll("button")]
-      .find((button) => button.textContent?.trim() === "Add account");
+    const add = host.querySelector<HTMLButtonElement>('[aria-label="Add account"]');
     if (!add) throw new Error("Add account button not found");
     act(() => add.click());
 
-    expect(document.querySelector('[role="dialog"]')?.getAttribute("aria-labelledby")).toBeTruthy();
-    expect(document.body.textContent?.match(/Desktop app required/g)).toHaveLength(2);
+    expect(useApp.getState().accountConnectorOpen).toBe(true);
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(0);
   });
 
   it("shows a focused empty state", () => {
     useApp.setState({ accounts: [] });
-    const { host } = renderSubject(<AccountSettings runtime="desktop" />);
+    const { host } = renderSubject(<AccountSettings />);
     expect(host.textContent).toContain("No accounts yet");
     expect(host.textContent).toContain("Add account");
   });
@@ -75,7 +80,7 @@ describe("AccountSettings", () => {
         syncError: "Authentication required",
       }],
     });
-    const { host } = renderSubject(<AccountSettings runtime="desktop" />);
+    const { host } = renderSubject(<AccountSettings />);
     expect(host.textContent).toContain("Authentication required");
     expect(host.querySelector(".account-health-dot.error")).not.toBeNull();
   });
@@ -92,7 +97,7 @@ describe("AccountSettings", () => {
       ],
       load: vi.fn().mockResolvedValue(undefined),
     });
-    const { host } = renderSubject(<AccountSettings runtime="desktop" />);
+    const { host } = renderSubject(<AccountSettings />);
     const syncButtons = [...host.querySelectorAll<HTMLButtonElement>(".account-card .af-btn")]
       .filter((button) => button.textContent?.includes("Sync"));
 
@@ -118,7 +123,7 @@ describe("AccountSettings", () => {
     };
     vi.spyOn(api, "syncNow").mockResolvedValue(0);
     useApp.setState({ accounts: [account], load: vi.fn().mockResolvedValue(undefined) });
-    const { host } = renderSubject(<AccountSettings runtime="desktop" />);
+    const { host } = renderSubject(<AccountSettings />);
     const sync = [...host.querySelectorAll<HTMLButtonElement>(".account-card .af-btn")]
       .find((button) => button.textContent?.includes("Sync"));
     await act(async () => sync?.click());
@@ -140,7 +145,7 @@ describe("AccountSettings", () => {
     };
     vi.spyOn(api, "syncNow").mockRejectedValue(new Error("Network unavailable"));
     useApp.setState({ accounts: [account], load: vi.fn().mockResolvedValue(undefined) });
-    const { host } = renderSubject(<AccountSettings runtime="desktop" />);
+    const { host } = renderSubject(<AccountSettings />);
     const sync = [...host.querySelectorAll<HTMLButtonElement>(".account-card .af-btn")]
       .find((button) => button.textContent?.includes("Sync"));
     await act(async () => sync?.click());
@@ -164,7 +169,7 @@ describe("AccountSettings", () => {
         unread: 0,
       }],
     });
-    const { host } = renderSubject(<AccountSettings runtime="desktop" />);
+    const { host } = renderSubject(<AccountSettings />);
     const more = host.querySelector<HTMLButtonElement>('[aria-label="More actions for Work"]');
     if (!more) throw new Error("Account action button not found");
     act(() => more.click());
@@ -195,7 +200,7 @@ describe("AccountSettings", () => {
         unread: 0,
       }],
     });
-    const { host } = renderSubject(<AccountSettings runtime="desktop" />);
+    const { host } = renderSubject(<AccountSettings />);
     const more = host.querySelector<HTMLButtonElement>('[aria-label="More actions for Work"]');
     if (!more) throw new Error("Account action button not found");
     act(() => more.click());
@@ -218,7 +223,7 @@ describe("AccountSettings", () => {
       unread: 0,
     };
     useApp.setState({ accounts: [account] });
-    const { host } = renderSubject(<AccountSettings runtime="desktop" />);
+    const { host } = renderSubject(<AccountSettings />);
     const more = host.querySelector<HTMLButtonElement>('[aria-label="More actions for Work"]');
     if (!more) throw new Error("Account action button not found");
     act(() => more.click());
@@ -244,7 +249,7 @@ describe("AccountSettings", () => {
       useApp.setState({ accounts: [] });
     });
     useApp.setState({ accounts: [account], removeAccount });
-    const { host } = renderSubject(<AccountSettings runtime="desktop" />);
+    const { host } = renderSubject(<AccountSettings />);
     act(() => host.querySelector<HTMLButtonElement>('[aria-label="More actions for Work"]')?.click());
     act(() => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
       .find((button) => button.textContent?.includes("Remove account"))?.click());

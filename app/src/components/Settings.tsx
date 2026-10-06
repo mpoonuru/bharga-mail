@@ -25,7 +25,7 @@ export function Settings() {
       <p className="sub">Your mail, your model, your machine.</p>
 
       <SettingsShell active={activeSection} onChange={setActiveSection}>
-        {activeSection === "accounts" && <AccountSettings runtime={runtimeMode()} />}
+        {activeSection === "accounts" && <AccountSettings />}
         {activeSection === "appearance" && <AppearanceSettings />}
         {activeSection === "ai-privacy" && <AiPrivacySettings />}
         {activeSection === "signatures" && <SignatureSettings />}
