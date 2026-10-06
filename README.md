@@ -81,10 +81,26 @@ Tauri 2 (Rust core) · React 19 + TypeScript (Vite) · local SQLite + FTS5 · OS
 
 **Prerequisites:** [Rust](https://rustup.rs) · [Bun](https://bun.sh) · platform toolchain (Xcode Command Line Tools on macOS).
 
+### Mail-provider configuration
+
+The browser preview cannot authorize mail accounts; it is a UI preview only. Plain IMAP/SMTP account connections work in the desktop runtime without an OAuth registration. Official Bharga Mail releases embed public desktop client IDs for Google and Microsoft 365 at compile time.
+
+Source builders can register their own desktop applications and provide the public identifiers before starting or packaging the Tauri app:
+
+```bash
+BHARGA_GMAIL_CLIENT_ID="your-google-desktop-client-id" \
+BHARGA_MS_CLIENT_ID="your-microsoft-desktop-client-id" \
+bun run tauri:dev
+
+# Use the same variables with bun run tauri:build for installers.
+```
+
+Bharga Mail uses OAuth 2.0 Authorization Code with PKCE. An OAuth client secret is neither required nor supported in a desktop build.
+
 ```bash
 git clone https://github.com/mpoonuru/bharga-mail.git
 cd bharga-mail/app
-bun install
+bun install --frozen-lockfile
 
 # run in dev
 bun run tauri:dev

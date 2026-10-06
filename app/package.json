@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "check:mail-providers": "bun ../scripts/check-mail-provider-config.mjs",
     "check:open-source": "node ../scripts/check-open-source-hygiene.mjs",
     "check:version": "bun ../scripts/check-version-integrity.mjs",
     "test": "vitest run",

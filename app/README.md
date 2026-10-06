@@ -56,8 +56,8 @@ The bridge falls back to seed data when not running inside Tauri, so the whole U
 
 ```bash
 cd app
-bun install          # or: npm install
-bun run dev          # http://localhost:1420  (or: npm run dev)
+bun install --frozen-lockfile
+bun run dev          # http://localhost:1420
 ```
 
 ### Tests
@@ -68,12 +68,12 @@ cd src-tauri && cargo test
 ```
 
 ### Full desktop app (Tauri)
-Requires the Rust toolchain and platform webview deps — see https://v2.tauri.app/start/prerequisites/
-`tauri.conf.json` runs `bun run dev/build` as its hooks; change to `npm run …` if you prefer npm.
+Requires the Rust toolchain and platform webview deps — see https://v2.tauri.app/start/prerequisites/.
+`tauri.conf.json` uses Bun for its development and build hooks.
 
 ```bash
 cd app
-bun install
+bun install --frozen-lockfile
 bun run tauri:dev    # launches the native window
 bun run tauri:build  # produces local installers; production signing is a separate release step
 ```
@@ -93,7 +93,7 @@ Uses OAuth 2.0 with PKCE via a loopback redirect (Google's desktop-app pattern �
 1. In Google Cloud Console, create an **OAuth client ID** of type *Desktop app* and enable the Gmail API.
 2. Run the desktop app with the client id in the environment:
    ```bash
-   BHARGA_GMAIL_CLIENT_ID=xxxx.apps.googleusercontent.com npm run tauri:dev
+   BHARGA_GMAIL_CLIENT_ID=xxxx.apps.googleusercontent.com bun run tauri:dev
    ```
 3. Settings → **Connect Gmail** → sign in. Messages sync into the local SQLite store and appear in the inbox.
 

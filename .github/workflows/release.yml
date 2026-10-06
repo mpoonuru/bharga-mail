@@ -22,6 +22,9 @@ jobs:
           - { platform: ubuntu-22.04,   target: "",                   args: "" }
           - { platform: windows-latest, target: "",                   args: "" }
     runs-on: ${{ matrix.platform }}
+    env:
+      BHARGA_GMAIL_CLIENT_ID: ${{ vars.BHARGA_GMAIL_CLIENT_ID }}
+      BHARGA_MS_CLIENT_ID: ${{ vars.BHARGA_MS_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v6
 
@@ -46,7 +49,11 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: app
-        run: bun install
+        run: bun install --frozen-lockfile
+
+      - name: Verify mail provider configuration
+        working-directory: app
+        run: bun run check:mail-providers
 
       - name: Build and publish to the release
         uses: tauri-apps/tauri-action@v0
