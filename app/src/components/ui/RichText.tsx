@@ -104,46 +104,57 @@ export const RichText = forwardRef<RichTextHandle, Props>(function RichText(
   const B = ({ on, title, run, children }: { on?: boolean; title: string; run: () => void; children: React.ReactNode }) => (
     <button type="button" className={`rt-btn${on ? " on" : ""}`} title={title} onMouseDown={(e) => e.preventDefault()} onClick={run}>{children}</button>
   );
-  const Sep = () => <span className="rt-sep" />;
+  const Group = ({ children, end = false }: { children: React.ReactNode; end?: boolean }) => (
+    <span className={`rt-tool-group${end ? " rt-tool-group-end" : ""}`}>{children}</span>
+  );
 
   return (
     <div className={`richtext${full ? " rt-full" : ""}`}>
       <div className="rt-toolbar">
-        <select
-          className="rt-select"
-          value={st?.isHeading ? st.heading : 0}
-          onChange={(e) => setHeading(Number(e.target.value))}
-        >
-          {HEADINGS.map((h) => <option key={h.level} value={h.level}>{h.label}</option>)}
-        </select>
-        <Sep />
-        <B on={st?.bold} title="Bold" run={() => chain().toggleBold().run()}><TextBIcon size={15} /></B>
-        <B on={st?.italic} title="Italic" run={() => chain().toggleItalic().run()}><TextItalicIcon size={15} /></B>
-        <B on={st?.underline} title="Underline" run={() => chain().toggleUnderline().run()}><TextUnderlineIcon size={15} /></B>
-        <B on={st?.strike} title="Strikethrough" run={() => chain().toggleStrike().run()}><TextStrikethroughIcon size={15} /></B>
-        <Sep />
-        <B on={st?.bullet} title="Bulleted list" run={() => chain().toggleBulletList().run()}><ListBulletsIcon size={15} /></B>
-        <B on={st?.ordered} title="Numbered list" run={() => chain().toggleOrderedList().run()}><ListNumbersIcon size={15} /></B>
-        <Sep />
-        <B on={st?.left} title="Align left" run={() => chain().setTextAlign("left").run()}><TextAlignLeftIcon size={15} /></B>
-        <B on={st?.center} title="Align center" run={() => chain().setTextAlign("center").run()}><TextAlignCenterIcon size={15} /></B>
-        <B on={st?.right} title="Align right" run={() => chain().setTextAlign("right").run()}><TextAlignRightIcon size={15} /></B>
-        <B on={st?.justify} title="Justify" run={() => chain().setTextAlign("justify").run()}><TextAlignJustifyIcon size={15} /></B>
-        <Sep />
-        <B on={st?.code} title="Inline code" run={() => chain().toggleCode().run()}><CodeIcon size={15} /></B>
-        <B on={st?.codeBlock} title="Code block" run={() => chain().toggleCodeBlock().run()}><CodeBlockIcon size={15} /></B>
-        <B on={st?.quote} title="Quote" run={() => chain().toggleBlockquote().run()}><QuotesIcon size={15} /></B>
-        <B title="Divider" run={() => chain().setHorizontalRule().run()}><MinusIcon size={15} /></B>
-        <Sep />
-        <B on={st?.link} title="Link" run={setLink}><LinkIcon size={15} /></B>
-        <B title="Remove link" run={() => chain().unsetLink().run()}><LinkBreakIcon size={15} /></B>
-        <B title="Insert image" run={addImage}><ImageIcon size={15} /></B>
-        <B title="Clear formatting" run={() => chain().unsetAllMarks().clearNodes().run()}><EraserIcon size={15} /></B>
-        <Sep />
-        <B title="Undo" run={() => chain().undo().run()}><ArrowCounterClockwiseIcon size={15} /></B>
-        <B title="Redo" run={() => chain().redo().run()}><ArrowClockwiseIcon size={15} /></B>
-        <span className="rt-grow" />
-        <B title="Fullscreen" run={() => setFull((v) => !v)}><ArrowsOutSimpleIcon size={15} /></B>
+        <Group>
+          <select
+            className="rt-select"
+            value={st?.isHeading ? st.heading : 0}
+            onChange={(e) => setHeading(Number(e.target.value))}
+          >
+            {HEADINGS.map((h) => <option key={h.level} value={h.level}>{h.label}</option>)}
+          </select>
+        </Group>
+        <Group>
+          <B on={st?.bold} title="Bold" run={() => chain().toggleBold().run()}><TextBIcon size={15} /></B>
+          <B on={st?.italic} title="Italic" run={() => chain().toggleItalic().run()}><TextItalicIcon size={15} /></B>
+          <B on={st?.underline} title="Underline" run={() => chain().toggleUnderline().run()}><TextUnderlineIcon size={15} /></B>
+          <B on={st?.strike} title="Strikethrough" run={() => chain().toggleStrike().run()}><TextStrikethroughIcon size={15} /></B>
+        </Group>
+        <Group>
+          <B on={st?.bullet} title="Bulleted list" run={() => chain().toggleBulletList().run()}><ListBulletsIcon size={15} /></B>
+          <B on={st?.ordered} title="Numbered list" run={() => chain().toggleOrderedList().run()}><ListNumbersIcon size={15} /></B>
+        </Group>
+        <Group>
+          <B on={st?.left} title="Align left" run={() => chain().setTextAlign("left").run()}><TextAlignLeftIcon size={15} /></B>
+          <B on={st?.center} title="Align center" run={() => chain().setTextAlign("center").run()}><TextAlignCenterIcon size={15} /></B>
+          <B on={st?.right} title="Align right" run={() => chain().setTextAlign("right").run()}><TextAlignRightIcon size={15} /></B>
+          <B on={st?.justify} title="Justify" run={() => chain().setTextAlign("justify").run()}><TextAlignJustifyIcon size={15} /></B>
+        </Group>
+        <Group>
+          <B on={st?.code} title="Inline code" run={() => chain().toggleCode().run()}><CodeIcon size={15} /></B>
+          <B on={st?.codeBlock} title="Code block" run={() => chain().toggleCodeBlock().run()}><CodeBlockIcon size={15} /></B>
+          <B on={st?.quote} title="Quote" run={() => chain().toggleBlockquote().run()}><QuotesIcon size={15} /></B>
+          <B title="Divider" run={() => chain().setHorizontalRule().run()}><MinusIcon size={15} /></B>
+        </Group>
+        <Group>
+          <B on={st?.link} title="Link" run={setLink}><LinkIcon size={15} /></B>
+          <B title="Remove link" run={() => chain().unsetLink().run()}><LinkBreakIcon size={15} /></B>
+          <B title="Insert image" run={addImage}><ImageIcon size={15} /></B>
+          <B title="Clear formatting" run={() => chain().unsetAllMarks().clearNodes().run()}><EraserIcon size={15} /></B>
+        </Group>
+        <Group>
+          <B title="Undo" run={() => chain().undo().run()}><ArrowCounterClockwiseIcon size={15} /></B>
+          <B title="Redo" run={() => chain().redo().run()}><ArrowClockwiseIcon size={15} /></B>
+        </Group>
+        <Group end>
+          <B title="Fullscreen" run={() => setFull((v) => !v)}><ArrowsOutSimpleIcon size={15} /></B>
+        </Group>
       </div>
       <EditorContent editor={editor} className="rt-area" style={{ minHeight }} />
     </div>
