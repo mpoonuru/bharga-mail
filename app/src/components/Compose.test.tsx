@@ -50,6 +50,22 @@ async function dropFiles(files: File[]) {
   });
 }
 
+async function enterWithFiles(files: File[]) {
+  const editor = host?.querySelector(".rt-area");
+  if (!(editor instanceof HTMLDivElement)) throw new Error("Message editor not found");
+
+  const event = new Event("dragenter", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", {
+    value: {
+      files,
+      items: files.map(() => ({ kind: "file" })),
+      types: ["Files"],
+    },
+  });
+
+  await act(async () => editor.dispatchEvent(event));
+}
+
 describe("Compose", () => {
   it("disables send actions when no valid From account exists", async () => {
     useApp.setState({ accounts: [], selectedAccountId: null });
@@ -80,5 +96,20 @@ describe("Compose", () => {
 
     expect(host?.querySelector(".attach-row")?.textContent).toContain("results.pdf");
     expect(host?.querySelector(".attach-row")?.textContent).toContain("notes.txt");
+  });
+
+  it("shows a file-aware drop tray while attachments are dragged over the message", async () => {
+    await renderCompose();
+
+    await enterWithFiles([
+      new File(["first"], "first.pdf", { type: "application/pdf" }),
+      new File(["second"], "second.png", { type: "image/png" }),
+    ]);
+
+    const status = host?.querySelector('[role="status"]');
+    expect(status?.classList.contains("composer-drop-overlay")).toBe(true);
+    expect(status?.querySelector(".composer-drop-tray")).not.toBeNull();
+    expect(status?.textContent).toContain("Release to attach 2 files");
+    expect(status?.textContent).toContain("They’ll be added to this draft");
   });
 });

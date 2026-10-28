@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { useApp } from "@/store";
 import { api } from "@/lib/bridge";
 import { IconButton } from "@/components/ui/IconButton";
+import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/Button";
 import { RichText, type RichTextHandle } from "@/components/ui/RichText";
 import { Attachments, filesToAttachments, type Attach } from "@/components/ui/Attachments";
@@ -32,6 +33,7 @@ export function Compose() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [fileDragActive, setFileDragActive] = useState(false);
+  const [dragFileCount, setDragFileCount] = useState(0);
   const fileDragDepth = useRef(0);
   const editorRef = useRef<RichTextHandle>(null);
   const initialHtml = defaultSig?.html ? `<p></p><p>--<br>${defaultSig.html}</p>` : "";
@@ -110,10 +112,16 @@ export function Compose() {
     return Array.from(event.dataTransfer.types).includes("Files");
   }
 
+  function countDraggedFiles(event: ReactDragEvent<HTMLElement>) {
+    const itemCount = Array.from(event.dataTransfer.items).filter((item) => item.kind === "file").length;
+    return itemCount || event.dataTransfer.files.length;
+  }
+
   function handleFileDragEnter(event: ReactDragEvent<HTMLDivElement>) {
     if (!isFileDrag(event)) return;
     event.preventDefault();
     fileDragDepth.current += 1;
+    setDragFileCount(countDraggedFiles(event));
     setFileDragActive(true);
   }
 
@@ -126,7 +134,10 @@ export function Compose() {
   function handleFileDragLeave() {
     if (fileDragDepth.current === 0) return;
     fileDragDepth.current = Math.max(0, fileDragDepth.current - 1);
-    if (fileDragDepth.current === 0) setFileDragActive(false);
+    if (fileDragDepth.current === 0) {
+      setFileDragActive(false);
+      setDragFileCount(0);
+    }
   }
 
   async function handleFileDrop(event: ReactDragEvent<HTMLDivElement>) {
@@ -136,6 +147,7 @@ export function Compose() {
     event.stopPropagation();
     fileDragDepth.current = 0;
     setFileDragActive(false);
+    setDragFileCount(0);
 
     if (dropped.length === 0) return;
 
@@ -166,7 +178,19 @@ export function Compose() {
         >
           {fileDragActive && (
             <div className="composer-drop-overlay" role="status" aria-live="polite">
-              Drop files to attach
+              <div className="composer-drop-tray">
+                <span className="composer-drop-icon" aria-hidden="true">
+                  <Icon name="attach" size={24} weight="duotone" />
+                </span>
+                <span className="composer-drop-copy">
+                  <strong>
+                    {dragFileCount > 0
+                      ? `Release to attach ${dragFileCount} ${dragFileCount === 1 ? "file" : "files"}`
+                      : "Release to attach files"}
+                  </strong>
+                  <span>They’ll be added to this draft</span>
+                </span>
+              </div>
             </div>
           )}
           {accounts.length > 0 && (
