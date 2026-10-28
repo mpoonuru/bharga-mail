@@ -541,7 +541,9 @@
   .chip { @apply cursor-pointer text-[12px] px-[11px] py-1.5 rounded-[20px] border border-border-2 bg-surface inline-flex items-center gap-1.5; transition: var(--motion-standard) var(--ease); }
   .chip:hover { @apply text-accent border-accent; }
   .chip.solid { @apply bg-accent text-white; border-color: transparent; }
-  .composer { @apply border border-border-2 rounded-card bg-surface px-4 py-[14px]; box-shadow: var(--shadow); }
+  .composer { @apply relative border border-border-2 rounded-card bg-surface px-4 py-[14px]; box-shadow: var(--shadow); transition: border-color var(--motion-instant) var(--ease), box-shadow var(--motion-instant) var(--ease); }
+  .composer.file-drag-active { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 16%, transparent), var(--shadow); }
+  .composer-drop-overlay { @apply absolute inset-2 z-20 flex items-center justify-center rounded-[10px] border border-dashed border-accent text-[13px] font-semibold text-accent pointer-events-none; background: color-mix(in oklch, var(--surface) 88%, var(--accent)); }
   .composer .chead { @apply flex items-center gap-2 text-[11.5px] text-text-3 mb-2.5 pb-2.5 border-b border-border; }
   .composer textarea { @apply w-full border-none bg-transparent text-text text-[14px] leading-[1.6] resize-none min-h-[90px]; font-family: var(--font); }
   .composer .cfoot { @apply flex items-center gap-2 mt-[14px]; }

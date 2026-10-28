@@ -21,6 +21,12 @@ function readAsBase64(file: File): Promise<Attach> {
   });
 }
 
+// Keep picker and drag-and-drop attachment ingestion on the same conversion
+// path so both produce the exact payload expected by the send queue.
+export async function filesToAttachments(files: Iterable<File> | ArrayLike<File>): Promise<Attach[]> {
+  return Promise.all(Array.from(files).map(readAsBase64));
+}
+
 interface Props {
   files: Attach[];
   onAdd: (files: Attach[]) => void;
@@ -45,7 +51,7 @@ export function Attachments({ files, onAdd, onRemove }: Props) {
         multiple
         hidden
         onChange={async (e) => {
-          const picked = await Promise.all(Array.from(e.target.files ?? []).map(readAsBase64));
+          const picked = await filesToAttachments(e.target.files ?? []);
           if (picked.length) onAdd(picked);
           e.target.value = "";
         }}

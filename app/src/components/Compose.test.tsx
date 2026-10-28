@@ -35,6 +35,21 @@ function sendButton(): HTMLButtonElement {
   return button;
 }
 
+async function dropFiles(files: File[]) {
+  const editor = host?.querySelector(".rt-area");
+  if (!(editor instanceof HTMLDivElement)) throw new Error("Message editor not found");
+
+  const event = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", {
+    value: { files, types: ["Files"] },
+  });
+
+  await act(async () => editor.dispatchEvent(event));
+  await vi.waitFor(() => {
+    expect(host?.querySelector(".attach-row")).not.toBeNull();
+  });
+}
+
 describe("Compose", () => {
   it("disables send actions when no valid From account exists", async () => {
     useApp.setState({ accounts: [], selectedAccountId: null });
@@ -53,5 +68,17 @@ describe("Compose", () => {
 
     expect(useApp.getState().composeOpen).toBe(true);
     expect(host?.querySelector('[role="alert"]')?.textContent).toContain(failure);
+  });
+
+  it("attaches every file dropped onto the composer", async () => {
+    await renderCompose();
+
+    await dropFiles([
+      new File(["quarterly results"], "results.pdf", { type: "application/pdf" }),
+      new File(["project notes"], "notes.txt", { type: "text/plain" }),
+    ]);
+
+    expect(host?.querySelector(".attach-row")?.textContent).toContain("results.pdf");
+    expect(host?.querySelector(".attach-row")?.textContent).toContain("notes.txt");
   });
 });

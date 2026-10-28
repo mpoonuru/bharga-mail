@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { motion } from "motion/react";
 import { useApp } from "@/store";
 import { api } from "@/lib/bridge";
 import { IconButton } from "@/components/ui/IconButton";
 import { Button } from "@/components/ui/Button";
 import { RichText, type RichTextHandle } from "@/components/ui/RichText";
-import { Attachments, type Attach } from "@/components/ui/Attachments";
+import { Attachments, filesToAttachments, type Attach } from "@/components/ui/Attachments";
 import { SendLater } from "@/components/ui/SendLater";
 import { RecipientChips, type Contact } from "@/components/ui/RecipientChips";
 import { Select } from "@/components/ui/Select";
@@ -31,6 +31,8 @@ export function Compose() {
   const [drafting, setDrafting] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [fileDragActive, setFileDragActive] = useState(false);
+  const fileDragDepth = useRef(0);
   const editorRef = useRef<RichTextHandle>(null);
   const initialHtml = defaultSig?.html ? `<p></p><p>--<br>${defaultSig.html}</p>` : "";
   const validFrom = accounts.some((account) => account.id === from);
@@ -104,6 +106,48 @@ export function Compose() {
     }
   }
 
+  function isFileDrag(event: ReactDragEvent<HTMLElement>) {
+    return Array.from(event.dataTransfer.types).includes("Files");
+  }
+
+  function handleFileDragEnter(event: ReactDragEvent<HTMLDivElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    fileDragDepth.current += 1;
+    setFileDragActive(true);
+  }
+
+  function handleFileDragOver(event: ReactDragEvent<HTMLDivElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleFileDragLeave() {
+    if (fileDragDepth.current === 0) return;
+    fileDragDepth.current = Math.max(0, fileDragDepth.current - 1);
+    if (fileDragDepth.current === 0) setFileDragActive(false);
+  }
+
+  async function handleFileDrop(event: ReactDragEvent<HTMLDivElement>) {
+    const dropped = Array.from(event.dataTransfer.files);
+    if (!isFileDrag(event) && dropped.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    fileDragDepth.current = 0;
+    setFileDragActive(false);
+
+    if (dropped.length === 0) return;
+
+    setError("");
+    try {
+      const attachments = await filesToAttachments(dropped);
+      setFiles((current) => [...current, ...attachments]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The dropped files could not be attached.");
+    }
+  }
+
   return (
     <section className="stage">
       <motion.div className="stage-inner" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={crossfadeTransition}>
@@ -113,7 +157,18 @@ export function Compose() {
           <IconButton icon="ai" weight="duotone" title="Draft with AI" onClick={help} label={drafting ? "Drafting…" : "Draft for me"} />
         </div>
         <h1 className="subject">New message</h1>
-        <div className="composer">
+        <div
+          className={`composer${fileDragActive ? " file-drag-active" : ""}`}
+          onDragEnterCapture={handleFileDragEnter}
+          onDragOverCapture={handleFileDragOver}
+          onDragLeaveCapture={handleFileDragLeave}
+          onDropCapture={handleFileDrop}
+        >
+          {fileDragActive && (
+            <div className="composer-drop-overlay" role="status" aria-live="polite">
+              Drop files to attach
+            </div>
+          )}
           {accounts.length > 0 && (
             <div className="recip-row">
               <span className="recip-lbl">From</span>
