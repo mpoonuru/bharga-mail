@@ -37,7 +37,14 @@
   --warn-action: #8a5a00;
   --danger: #bd3448;
   --danger-action: #bd3448;
-  --radius: 14px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius: var(--radius-lg);
+  --control-sm: 32px;
+  --control-md: 36px;
+  --control-lg: 44px;
   --font: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
   --motion-instant: 90ms;
@@ -52,23 +59,29 @@
   --bg: #0b0c10; --bg-2: #111319; --surface: #16181f; --surface-2: #1d2029;
   --border: rgba(255,255,255,0.07); --border-2: rgba(255,255,255,0.12);
   --text: #eef0f5; --text-2: #a6abbd; --text-3: #8e95aa;
-  --shadow: 0 20px 60px rgba(0,0,0,0.55); --glass: rgba(22,24,31,0.72);
-  /* Soft "itopup"-style ambient: a cool glow top-left + indigo glow bottom-right.
-     Defined once and layered onto every surface (panels, modal, selected row). */
-  --ambient:
-    radial-gradient(78% 62% at -6% -10%, oklch(0.44 0.075 255 / 0.22), transparent 72%),
-    radial-gradient(72% 60% at 106% 110%, oklch(0.42 0.085 292 / 0.18), transparent 72%);
+  --hover-surface: #1b1e27;
+  --selected-surface: #202943;
+  --selected-border: #405386;
+  --focus-ring: rgb(142 169 255 / 0.28);
+  --overlay: rgb(0 0 0 / 0.56);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.28), 0 10px 28px rgb(0 0 0 / 0.22);
+  --shadow-overlay: 0 24px 70px rgb(0 0 0 / 0.52), 0 2px 8px rgb(0 0 0 / 0.32);
+  --shadow: var(--shadow-overlay); --glass: rgba(22,24,31,0.92);
+  --brand-ambient: radial-gradient(90% 180% at 0% 0%, rgb(72 105 220 / 0.13), transparent 62%);
 }
 [data-theme="light"] {
-  --bg: #eef1f6; --bg-2: #f7f9fc; --surface: #ffffff; --surface-2: #eef1f6;
+  --bg: #f1f3f7; --bg-2: #f8f9fc; --surface: #ffffff; --surface-2: #eef1f6;
   --border: rgba(18,22,40,0.09); --border-2: rgba(18,22,40,0.16);
   --text: #161922; --text-2: #4c5263; --text-3: #697181;
-  --shadow: 0 20px 60px rgba(30,40,70,0.16); --glass: rgba(255,255,255,0.85);
-  /* Sampled from the itopup logo background: a near-white base with very pale
-     cool-blue soft shapes top-left + bottom-right. OKLCH, subtle. */
-  --ambient:
-    radial-gradient(82% 66% at -6% -10%, oklch(0.965 0.018 251 / 0.9), transparent 72%),
-    radial-gradient(76% 64% at 106% 110%, oklch(0.958 0.02 251 / 0.75), transparent 72%);
+  --hover-surface: #f1f3f8;
+  --selected-surface: #e8edff;
+  --selected-border: #b8c5f5;
+  --focus-ring: rgb(72 105 220 / 0.22);
+  --overlay: rgb(16 22 40 / 0.48);
+  --shadow-card: 0 1px 2px rgb(30 40 70 / 0.08), 0 10px 30px rgb(30 40 70 / 0.10);
+  --shadow-overlay: 0 24px 70px rgb(30 40 70 / 0.20), 0 2px 8px rgb(30 40 70 / 0.10);
+  --shadow: var(--shadow-overlay); --glass: rgba(255,255,255,0.96);
+  --brand-ambient: radial-gradient(90% 180% at 0% 0%, rgb(72 105 220 / 0.08), transparent 62%);
 }
 [data-density="compact"] { --row-pad: 8px 12px; --gap: 2px; }
 [data-density="cozy"]    { --row-pad: 12px 13px; --gap: 4px; }
@@ -94,7 +107,7 @@
   .app { @apply grid flex-1 min-h-0; grid-template-columns: 234px 366px 1fr; grid-template-rows: minmax(0, 1fr); transition: grid-template-columns var(--motion-structural) var(--ease); }
   /* The solid top bar — whole strip drags the window; left padding clears the
      macOS traffic-light controls in the overlay title bar. */
-  .topbar { @apply flex items-center justify-between gap-3 h-[44px] shrink-0 border-b border-border bg-bg-2 pr-3 select-none; padding-left: 80px; background-image: var(--ambient); }
+  .topbar { @apply flex items-center justify-between gap-3 h-[44px] shrink-0 border-b border-border bg-bg-2 pr-3 select-none; padding-left: 80px; background-image: var(--brand-ambient); }
   .topbar-brand { @apply flex items-center gap-2 min-w-0; }
   .topbar-logo { @apply w-[22px] h-[22px] rounded-[7px] shrink-0 object-cover; }
   .topbar-brand b { @apply text-[13.5px] shrink-0; font-weight: 650; }
@@ -133,7 +146,7 @@
 
   /* ---- Sidebar ---- */
   /* pt clears the macOS traffic-light controls in the overlay titlebar. */
-  .sidebar { @apply flex flex-col gap-[2px] min-w-0 h-full border-r border-border bg-bg-2 px-3 pt-3 pb-[14px]; background-image: var(--ambient); }
+  .sidebar { @apply flex flex-col gap-[2px] min-w-0 h-full border-r border-border bg-bg-2 px-3 pt-3 pb-[14px]; }
   .sidebar.rail { @apply px-2 pt-3 pb-[14px] items-stretch; }
   .sidebar.rail .brand { @apply justify-center pt-2 pb-[14px] px-0; }
   .sidebar.rail .nav-item { @apply justify-center py-[9px] px-0; }
@@ -155,8 +168,8 @@
   .compose-btn { @apply mt-1 mx-0.5 mb-2.5 p-2.5 rounded-[11px] border-none text-white text-[13px] font-semibold flex items-center justify-center gap-2; background: var(--accent-action); transition: var(--motion-standard) var(--ease); }
   .compose-btn:hover { filter: brightness(1.08); }
   .nav-item { @apply flex min-h-8 items-center gap-[11px] px-[11px] py-2 rounded-[10px] text-text-2 text-[13.5px] cursor-pointer border-none bg-transparent w-full text-left; transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
-  .nav-item:hover { @apply bg-surface text-text; }
-  .nav-item.active { @apply text-text; background: var(--accent-soft); font-weight: 550; }
+  .nav-item:hover { @apply text-text; background: var(--hover-surface); }
+  .nav-item.active { @apply text-text; background: var(--selected-surface); font-weight: 600; }
   .nav-item .ic { @apply w-4 text-center inline-flex items-center; opacity: .85; }
   .nav-item .count { @apply ml-auto text-[11px] text-text-3; }
   /* Account disclosure caret (accordion): subtle, sits just after the name. */
@@ -253,7 +266,7 @@
   .folder-err { @apply text-[11px] px-2 py-1 truncate; color: var(--danger); }
   .nav-label { @apply text-[10.5px] uppercase text-text-3 pt-4 px-[11px] pb-1.5 font-semibold; letter-spacing: .09em; }
   .sidebar .spacer { @apply flex-1; }
-  .model-chip { @apply mt-2 px-[11px] py-2.5 border border-border rounded-xl bg-surface cursor-pointer text-left; transition: var(--motion-standard) var(--ease); }
+  .model-chip { @apply mt-2 px-[11px] py-2.5 border border-border rounded-xl bg-surface cursor-pointer text-left; min-height: var(--control-sm); transition: var(--motion-standard) var(--ease); }
   .model-chip:hover { @apply border-border-2; }
   .model-chip .row { @apply flex items-center gap-2; }
   .dot { @apply w-[7px] h-[7px] rounded-full; background: var(--good); box-shadow: 0 0 8px var(--good); }
@@ -261,13 +274,12 @@
   .model-chip b { @apply text-[12px] font-semibold; }
 
   /* ---- Stream (list) ---- */
-  /* Soft ambient field — faint accent "blobs" over the base bg (like the itopup
-     backdrop). Painted on the panel box, so it stays put as the list scrolls. */
-  .stream { @apply bg-bg border-r border-border overflow-hidden flex flex-col min-w-0; background-image: var(--ambient); }
+  /* Mail and reading panes stay neutral; color is reserved for state and action. */
+  .stream { @apply bg-bg border-r border-border overflow-hidden flex flex-col min-w-0; }
   .stream-head { @apply px-[18px] pt-[18px] pb-2.5 flex items-center justify-between gap-2; }
   .stream-head h2 { @apply text-[16px] truncate min-w-0; font-weight: 650; }
   .head-actions { @apply flex items-center gap-1.5 shrink-0; }
-  .filter { @apply inline-flex items-center gap-1 text-[11px] text-text-2 bg-surface border border-border px-[9px] py-1 rounded-[20px] whitespace-nowrap shrink-0; }
+  .filter { @apply inline-flex items-center gap-1 text-[11px] text-text-2 bg-surface border border-border px-[9px] py-1 rounded-[20px] whitespace-nowrap shrink-0; min-height: var(--control-sm); }
   .selection-bar { @apply flex min-w-0 flex-1 items-center justify-between gap-2; }
   .selection-count { @apply text-[13px] text-text-2 whitespace-nowrap; }
   .selection-count b { @apply text-text text-[15px] font-semibold; }
@@ -279,9 +291,9 @@
   .stream-status { @apply mx-[18px] mb-1.5 -mt-1 text-[11.5px] text-text-3 truncate; }
   .stream-status.err { color: var(--danger); }
   .search-box { @apply mx-2.5 mb-1 flex items-center gap-2 px-2.5 py-1.5 rounded-[10px] border border-border bg-bg-2 text-text-3; }
-  .search-box input { @apply flex-1 bg-transparent border-none text-text text-[13px]; font-family: var(--font); }
+  .search-box input { @apply flex-1 bg-transparent border-none text-text text-[13px]; min-height: var(--control-sm); font-family: var(--font); }
   .search-box input::placeholder { @apply text-text-3; }
-  .search-clear { @apply text-text-3 border-none bg-transparent inline-flex items-center p-0; }
+  .search-clear { @apply text-text-3 border-none bg-transparent inline-flex items-center justify-center p-0; min-width: var(--control-sm); min-height: var(--control-sm); }
   .search-clear:hover { @apply text-text; }
   /* Smart chips — AI-derived, multi-select filter bar above the stream. */
   .smart-chips { @apply mx-2.5 mt-1.5 mb-0.5 flex items-center gap-1.5 overflow-x-auto pb-1; scrollbar-width: none; }
@@ -308,9 +320,9 @@
   .load-older--done { @apply text-text-3 border-transparent bg-transparent cursor-default; }
   /* Mail row — Design B: squircle avatar + sender/time, subject, AI summary line. */
   .mail { @apply flex items-center gap-2 rounded-xl border border-transparent; padding: var(--row-pad); transition: background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), color var(--motion-standard) var(--ease); background: transparent; }
-  .mail:hover { @apply bg-surface; }
+  .mail:hover { background: var(--hover-surface); }
   .mail.multi-sel { border-color: color-mix(in oklch, var(--accent) 45%, var(--border)); background: var(--accent-soft); }
-  .mail-select { @apply relative shrink-0 inline-flex h-7 w-7 items-center justify-center border-none bg-transparent p-0 text-[12px] font-bold text-white opacity-0; transition: opacity var(--motion-instant) var(--ease); }
+  .mail-select { @apply relative shrink-0 inline-flex items-center justify-center border-none bg-transparent p-0 text-[12px] font-bold text-white opacity-0; width: var(--control-sm); height: var(--control-sm); transition: opacity var(--motion-instant) var(--ease); }
   .mail-select::before { content: ""; @apply absolute h-5 w-5 rounded-full border border-border-2 bg-bg-2; transition: background-color var(--motion-instant) var(--ease), border-color var(--motion-instant) var(--ease); }
   .mail-select > span { @apply relative z-[1]; }
   .mail:hover .mail-select, .mail-select:focus-visible, .mail.multi-sel .mail-select { @apply opacity-100; }
@@ -322,8 +334,7 @@
     background-color: var(--accent-soft);
     background-image: none;
   }
-  /* Selected row carries the ambient "itopup" design over its surface. */
-  .mail.sel { @apply border-border-2; background-color: var(--surface); background-image: var(--ambient); }
+  .mail.sel { border-color: var(--selected-border); background: var(--selected-surface); }
   .mail-av { @apply shrink-0 w-[38px] h-[38px] flex items-center justify-center text-[14px] font-semibold select-none; border-radius: 13px; }
   .mail-main { @apply min-w-0 flex-1; display: block; }
   .mail-l1 { @apply flex items-center gap-2 mb-[2px]; }
@@ -344,15 +355,15 @@
   .mail-replyglyph { @apply text-text-3 shrink-0; }
   .mail .prev { @apply text-[12px] text-text-3 leading-[1.35] line-clamp-1; }
   /* Conversation count badge + disclosure chevron (Apple-Mail accordion). */
-  .convo-toggle { @apply shrink-0 inline-flex min-h-6 min-w-6 items-center justify-center gap-1 rounded-md px-1.5 py-[2px] border-none cursor-pointer text-[11px] font-semibold; background: var(--accent-soft); color: var(--accent); transition: color var(--motion-instant) var(--ease), background-color var(--motion-instant) var(--ease), border-color var(--motion-instant) var(--ease), opacity var(--motion-instant) var(--ease); }
+  .convo-toggle { @apply shrink-0 inline-flex items-center justify-center gap-1 rounded-md px-1.5 py-[2px] border-none cursor-pointer text-[11px] font-semibold; min-width: var(--control-sm); min-height: var(--control-sm); background: var(--accent-soft); color: var(--accent); transition: color var(--motion-instant) var(--ease), background-color var(--motion-instant) var(--ease), border-color var(--motion-instant) var(--ease), opacity var(--motion-instant) var(--ease); }
   .convo-toggle:hover { background: color-mix(in oklch, var(--accent) 22%, transparent); }
   .convo-count { @apply leading-none; }
   /* Expanded accordion: child messages, indented under their header with a spine. */
   .convo.open { @apply rounded-xl; background: color-mix(in oklch, var(--surface) 55%, transparent); }
   .convo-kids { @apply ml-[26px] pl-3 pb-1 flex flex-col gap-0.5; border-left: 1.5px solid var(--border-2); }
   .convo-kid { @apply flex gap-2.5 items-start px-2 py-[7px] rounded-lg cursor-pointer border border-transparent; transition: var(--motion-instant) var(--ease); }
-  .convo-kid:hover { @apply bg-surface; }
-  .convo-kid.sel { @apply border-border-2; background-color: var(--surface); background-image: var(--ambient); }
+  .convo-kid:hover { background: var(--hover-surface); }
+  .convo-kid.sel { border-color: var(--selected-border); background: var(--selected-surface); }
   .ck-av { @apply shrink-0 w-7 h-7 flex items-center justify-center text-[11px] font-semibold select-none rounded-[9px]; }
   .ck-main { @apply min-w-0 flex-1; display: block; }
   .ck-l1 { @apply flex items-center gap-1.5; }
@@ -376,7 +387,7 @@
   .empty { @apply text-text-3 text-[13px] px-[18px] py-10 text-center; }
   /* Date-grouped accordion section headers. */
   .date-group { @apply flex flex-col; gap: var(--gap); }
-  .date-head { @apply flex items-center gap-1.5 px-2 pt-2 pb-1 text-[11.5px] font-semibold text-text-3 bg-transparent border-none cursor-pointer; }
+  .date-head { @apply flex items-center gap-1.5 px-2 py-1 text-[11.5px] font-semibold text-text-3 bg-transparent border-none cursor-pointer; min-height: var(--control-sm); }
   .date-head:hover { @apply text-text-2; }
   .date-head .date-count { @apply ml-auto inline-flex items-center justify-center min-w-[20px] h-[19px] px-1.5 rounded-full text-[11px] font-semibold leading-none;
     color: var(--accent);
@@ -394,13 +405,13 @@
   .swipe-right { @apply inline-flex items-center gap-1.5; color: #fff; }
 
   /* ---- Stage (reading pane) ---- */
-  .stage { @apply overflow-y-auto overflow-x-hidden bg-bg min-w-0; background-image: var(--ambient); }
+  .stage { @apply overflow-y-auto overflow-x-hidden bg-bg min-w-0; }
   /* Wider, fluid reading pane so emails have room to render properly. */
   .stage-inner { @apply w-full max-w-[920px] mx-auto pt-[14px] px-6 pb-[120px] min-w-0; }
   .stage-bar { @apply sticky top-0 flex items-center gap-2 pt-[14px] pb-2.5 z-[5]; background: linear-gradient(var(--bg), var(--bg) 70%, transparent); }
   .stage-bar .spacer { @apply flex-1; }
-  .iconbtn { @apply min-w-[32px] h-8 px-[9px] rounded-[9px] border border-border bg-surface text-text-2 inline-flex items-center justify-center gap-1.5 text-[14px]; transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
-  .iconbtn:hover { @apply text-text border-border-2; }
+  .iconbtn { @apply px-[9px] rounded-[9px] border border-border bg-surface text-text-2 inline-flex items-center justify-center gap-1.5 text-[14px]; min-width: var(--control-sm); height: var(--control-sm); transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
+  .iconbtn:hover { @apply text-text border-border-2; background: var(--hover-surface); }
   .iconbtn:disabled { @apply opacity-40 cursor-default; transform: none; }
   /* Text-size stepper (A− A A+) — joined segmented control. */
   .font-step { @apply inline-flex items-center; }
@@ -475,7 +486,7 @@
   .msg .addr { @apply text-[11.5px] text-text-3; }
   .msg .meta-right { @apply ml-auto flex items-center gap-2 shrink-0; }
   .msg .when { @apply text-[11px] text-text-3; }
-  .msg .details-toggle { @apply text-text-3 inline-flex items-center cursor-pointer bg-transparent border-none; }
+  .msg .details-toggle { @apply text-text-3 inline-flex items-center justify-center cursor-pointer bg-transparent border-none; min-width: var(--control-sm); min-height: var(--control-sm); }
   .msg .details-toggle:hover { @apply text-text; }
   .msg-details { @apply mt-1.5 mb-2 p-3 rounded-[10px] text-[12px] bg-bg-2 border border-border; }
   .msg-details > div { @apply flex gap-2 py-[3px]; }
@@ -544,8 +555,8 @@
   .chip { @apply cursor-pointer text-[12px] px-[11px] py-1.5 rounded-[20px] border border-border-2 bg-surface inline-flex items-center gap-1.5; transition: var(--motion-standard) var(--ease); }
   .chip:hover { @apply text-accent border-accent; }
   .chip.solid { @apply text-white; border-color: transparent; background: var(--accent-action); }
-  .composer { @apply relative border border-border-2 rounded-card bg-surface px-4 py-[14px]; box-shadow: var(--shadow); transition: border-color var(--motion-instant) var(--ease), box-shadow var(--motion-instant) var(--ease); }
-  .composer.file-drag-active { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 16%, transparent), var(--shadow); }
+  .composer { @apply relative border border-border-2 rounded-card bg-surface px-4 py-[14px]; box-shadow: var(--shadow-card); transition: border-color var(--motion-instant) var(--ease), box-shadow var(--motion-instant) var(--ease); }
+  .composer.file-drag-active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring), var(--shadow-card); }
   .composer-drop-overlay {
     @apply absolute inset-0 z-20 grid place-items-center overflow-hidden rounded-[inherit] pointer-events-none;
     background: color-mix(in oklch, var(--surface) 74%, transparent);
@@ -759,7 +770,7 @@
   .attach-chip:hover:not(:disabled) { @apply border-accent text-text; }
   .attach-chip:disabled { @apply opacity-60 cursor-default; }
   .attach-group { @apply inline-flex items-center; }
-  .attach-preview { @apply inline-flex items-center ml-1 px-1.5 py-1 text-text-3 bg-bg-2 border border-border rounded-lg cursor-pointer; transition: var(--motion-standard) var(--ease); }
+  .attach-preview { @apply inline-flex items-center justify-center ml-1 px-1.5 py-1 text-text-3 bg-bg-2 border border-border rounded-lg cursor-pointer; min-width: var(--control-sm); min-height: var(--control-sm); transition: var(--motion-standard) var(--ease); }
   .attach-preview:hover:not(:disabled) { @apply border-accent text-text; }
   .attach-preview:disabled { @apply opacity-60 cursor-default; }
   .attach-size { @apply text-text-3 text-[10.5px]; }
@@ -801,11 +812,10 @@
   .ta-check { @apply absolute left-2 text-accent; }
 
   /* ---- Modal dialog (ported from iTopup Dialog) ---- */
-  .modal-overlay { @apply fixed inset-0 z-50 flex items-start justify-center p-6 pt-[10vh]; background: rgba(0,0,0,0.45); backdrop-filter: blur(6px); }
+  .modal-overlay { @apply fixed inset-0 z-50 flex items-start justify-center p-6 pt-[10vh]; background: var(--overlay); backdrop-filter: blur(6px); }
   .modal-panel { @apply w-full p-0 overflow-hidden; max-height: 85vh; display: flex; flex-direction: column; }
   .modal-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  /* Solid surface + ambient design (not the muddy translucent glass). */
-  .modal-panel.glass-card { background-color: var(--surface); background-image: var(--ambient); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .modal-panel.glass-card { background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: var(--shadow-overlay); }
   .modal-head { @apply flex items-center justify-between px-5 py-3.5 border-b border-border; }
   .modal-head b { @apply text-[15px]; }
   .modal-body { @apply p-5 overflow-y-auto; }
@@ -816,11 +826,11 @@
     backdrop-filter: blur(16px) saturate(160%);
     -webkit-backdrop-filter: blur(16px) saturate(160%);
     border: 1px solid var(--border-2);
-    box-shadow: 0 4px 24px 0 oklch(0.30 0.05 270 / 0.10), 0 1px 2px 0 oklch(0 0 0 / 0.05);
+    box-shadow: var(--shadow-card);
     @apply rounded-2xl;
   }
-  .glass-card.hoverable { @apply transition-all duration-300; }
-  .glass-card.hoverable:hover { transform: translateY(-2px); box-shadow: 0 12px 40px 0 oklch(0.30 0.05 270 / 0.16); }
+  .glass-card.hoverable { transition: border-color var(--motion-standard) var(--ease), box-shadow var(--motion-standard) var(--ease); }
+  .glass-card.hoverable:hover { border-color: var(--border-2); box-shadow: var(--shadow-card); }
 
   /* ---- Account setup form (inside a modal) ---- */
   .acct-form { @apply flex flex-col; }
@@ -928,7 +938,7 @@
 :is(button, a[href], input, select, textarea, [contenteditable="true"], [role="button"], [tabindex]:not([tabindex^="-"])):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px var(--accent-soft);
+  box-shadow: 0 0 0 4px var(--focus-ring);
 }
 :is(button.danger, .danger[role="button"], .provider-remove):focus-visible {
   outline-color: var(--danger);
@@ -939,7 +949,7 @@
    without drawing a square box through the composition surface. */
 .richtext:has(.ProseMirror:focus-visible) {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 .richtext .ProseMirror:focus-visible {
   outline: none;
@@ -971,6 +981,17 @@
     scrollbar-width: thin; overscroll-behavior-inline: contain;
   }
   .settings-nav button { width: auto; flex: 0 0 auto; }
+}
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  a[href],
+  :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea, [contenteditable="true"]) {
+    min-height: var(--control-lg);
+  }
+  :is(.rail-toggle, .acct-drag, .acct-more, .folder-pin, .folder-more, .chip-clear, .search-clear, .mail-select, .convo-toggle, .iconbtn, .rt-btn, .attach-x, .attach-preview, .details-toggle, .provider-remove, .recip-chip button, .sig-default, .update-x) {
+    min-width: var(--control-lg);
+  }
 }
 @media (max-width: 640px) {
   button,

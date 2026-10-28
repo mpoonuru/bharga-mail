@@ -71,6 +71,13 @@ describe("Stream row motion", () => {
 });
 
 describe("Stream row keyboard behavior", () => {
+  it("gives the mail search field an accessible name", () => {
+    const { container } = renderStream();
+    const search = container.querySelector<HTMLInputElement>('.search-box input');
+
+    expect(search?.getAttribute("aria-label")).toBe("Search mail");
+  });
+
   it("exposes conversation rows as buttons and activates them with Enter or Space", () => {
     const { container, selectThread } = renderStream();
     const row = container.querySelector<HTMLElement>(".mail-open");

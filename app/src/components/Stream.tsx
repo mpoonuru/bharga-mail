@@ -473,7 +473,7 @@ export function Stream() {
       )}
       <div className="search-box">
         <Icon name="search" size={15} weight="duotone" />
-        <input value={q} onChange={(e) => { clearThreadSelection(); setQ(e.target.value); }} placeholder="Search mail…" />
+        <input aria-label="Search mail" value={q} onChange={(e) => { clearThreadSelection(); setQ(e.target.value); }} placeholder="Search mail…" />
         {q && <button className="search-clear" onClick={() => { clearThreadSelection(); setQ(""); }} title="Clear"><Icon name="close" size={13} /></button>}
       </div>
       {!query && <SmartChips chips={chips} active={liveChips} onToggle={(id) => { clearThreadSelection(); toggleChip(id); }} onClear={() => { clearThreadSelection(); setActiveChips(new Set()); }} />}
