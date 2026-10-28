@@ -66,6 +66,19 @@ async function enterWithFiles(files: File[]) {
   await act(async () => editor.dispatchEvent(event));
 }
 
+async function dragFilesOverEditor(files: File[], onEditorDragOver: () => void) {
+  const editor = host?.querySelector(".rt-area");
+  if (!(editor instanceof HTMLDivElement)) throw new Error("Message editor not found");
+  editor.addEventListener("dragover", onEditorDragOver);
+
+  const event = new Event("dragover", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", {
+    value: { files, items: files.map(() => ({ kind: "file" })), types: ["Files"], dropEffect: "none" },
+  });
+
+  await act(async () => editor.dispatchEvent(event));
+}
+
 describe("Compose", () => {
   it("disables send actions when no valid From account exists", async () => {
     useApp.setState({ accounts: [], selectedAccountId: null });
@@ -111,5 +124,17 @@ describe("Compose", () => {
     expect(status?.querySelector(".composer-drop-tray")).not.toBeNull();
     expect(status?.textContent).toContain("Release to attach 2 files");
     expect(status?.textContent).toContain("They’ll be added to this draft");
+  });
+
+  it("keeps file drag-over events away from the rich-text editor", async () => {
+    await renderCompose();
+    const editorDragOver = vi.fn();
+
+    await dragFilesOverEditor(
+      [new File(["archive"], "documents.zip", { type: "application/zip" })],
+      editorDragOver,
+    );
+
+    expect(editorDragOver).not.toHaveBeenCalled();
   });
 });

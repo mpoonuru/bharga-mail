@@ -120,6 +120,7 @@ export function Compose() {
   function handleFileDragEnter(event: ReactDragEvent<HTMLDivElement>) {
     if (!isFileDrag(event)) return;
     event.preventDefault();
+    event.stopPropagation();
     fileDragDepth.current += 1;
     setDragFileCount(countDraggedFiles(event));
     setFileDragActive(true);
@@ -128,6 +129,7 @@ export function Compose() {
   function handleFileDragOver(event: ReactDragEvent<HTMLDivElement>) {
     if (!isFileDrag(event)) return;
     event.preventDefault();
+    event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
   }
 
