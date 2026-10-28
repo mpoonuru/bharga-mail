@@ -111,6 +111,23 @@ describe("Compose", () => {
     expect(host?.querySelector(".attach-row")?.textContent).toContain("notes.txt");
   });
 
+  it("exposes attachment controls as a named group", async () => {
+    await renderCompose();
+
+    const group = host?.querySelector('[role="group"][aria-label="Attachments"]');
+
+    expect(group).not.toBeNull();
+    expect(group?.querySelector('button[aria-label="Attach files"]')).not.toBeNull();
+  });
+
+  it("names each attachment removal action with its filename", async () => {
+    await renderCompose();
+
+    await dropFiles([new File(["quarterly results"], "results.pdf", { type: "application/pdf" })]);
+
+    expect(host?.querySelector('button[aria-label="Remove results.pdf"]')).not.toBeNull();
+  });
+
   it("shows a file-aware drop tray while attachments are dragged over the message", async () => {
     await renderCompose();
 

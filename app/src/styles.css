@@ -33,6 +33,7 @@
   --accent: oklch(0.69 0.15 268);
   --accent-2: oklch(0.66 0.17 295);
   --accent-soft: oklch(0.69 0.15 268 / 0.14);
+  --accent-action: oklch(0.56 0.18 268);
   --good: oklch(0.78 0.15 158);
   --warn: oklch(0.82 0.14 80);
   --danger: oklch(0.71 0.17 18);
@@ -570,7 +571,24 @@
   .composer-drop-copy > span { @apply text-[11.5px] leading-4 text-text-3; }
   .composer .chead { @apply flex items-center gap-2 text-[11.5px] text-text-3 mb-2.5 pb-2.5 border-b border-border; }
   .composer textarea { @apply w-full border-none bg-transparent text-text text-[14px] leading-[1.6] resize-none min-h-[90px]; font-family: var(--font); }
-  .composer .cfoot { @apply flex items-center gap-2 mt-[14px]; }
+  .composer .cfoot { @apply flex flex-wrap items-center gap-2 mt-[14px]; }
+  .composer .cfoot > .af-btn {
+    @apply min-h-10 rounded-[10px] px-4 text-[13.5px] font-semibold;
+    box-shadow: 0 1px 2px oklch(0.25 0.04 270 / 0.16), inset 0 1px 0 rgba(255,255,255,0.16);
+  }
+  .composer .cfoot > .sendlater .iconbtn,
+  .composer .cfoot .composer-attachments > .iconbtn {
+    @apply h-10 min-w-10 rounded-[10px] border-border-2 p-0;
+  }
+  .composer-attachments { @apply flex min-w-0 flex-1 basis-[280px] items-center gap-2; }
+  .composer-attachments .attach-row { @apply mt-0 min-w-0 flex-1; width: auto; }
+  .composer-attachments .attach-chip {
+    @apply min-h-10 min-w-0 max-w-full cursor-default gap-2 rounded-[10px] border-border-2 bg-surface-2 py-1 pl-2.5 pr-1.5 text-[12.5px];
+  }
+  .composer-attachments .attach-name { @apply min-w-0 truncate; }
+  .composer-attachments .attach-size { @apply shrink-0 text-[11.5px]; }
+  .composer-attachments .attach-x { @apply ml-0 min-h-7 min-w-7 rounded-[7px]; }
+  .composer-attachments .attach-x:hover { background: color-mix(in oklch, var(--danger) 12%, transparent); }
   .ghost-pill { @apply ml-auto text-[11px] text-accent flex items-center gap-1.5; }
   .kbd { @apply text-[10.5px] border border-border-2 rounded-[5px] px-[5px] py-px text-text-2 bg-bg-2; }
 
@@ -825,7 +843,7 @@
   .af-btn:disabled { @apply opacity-50 cursor-not-allowed; }
   .af-btn.ghost { @apply border-border-2 bg-surface text-text-2; }
   .af-btn.ghost:not(:disabled):hover { @apply text-text border-accent; }
-  .af-btn.primary { @apply border-transparent text-white; background: var(--accent); }
+  .af-btn.primary { @apply border-transparent text-white; background: var(--accent-action); }
   .af-btn.primary:not(:disabled):hover { filter: brightness(1.08); }
   .btn-spinner { @apply w-[13px] h-[13px] rounded-full inline-block; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; animation: spin .7s linear infinite; }
   .af-btn.ghost .btn-spinner { border-color: var(--border-2); border-top-color: var(--accent); }

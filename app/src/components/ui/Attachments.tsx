@@ -44,7 +44,7 @@ function human(bytes: number) {
 export function Attachments({ files, onAdd, onRemove }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
-    <>
+    <div className="composer-attachments" role="group" aria-label="Attachments">
       <input
         ref={inputRef}
         type="file"
@@ -56,21 +56,35 @@ export function Attachments({ files, onAdd, onRemove }: Props) {
           e.target.value = "";
         }}
       />
-      <button className="iconbtn" title="Attach files" onClick={() => inputRef.current?.click()}>
+      <button
+        type="button"
+        className="iconbtn attachment-picker"
+        aria-label="Attach files"
+        title="Attach files"
+        onClick={() => inputRef.current?.click()}
+      >
         <Icon name="attach" />
       </button>
       {files.length > 0 && (
         <div className="attach-row">
           {files.map((f) => (
             <span className="attach-chip" key={f.name}>
-              <Icon name="attach" size={12} /> {f.name} <span className="attach-size">{human(f.size)}</span>
-              <button className="attach-x" title="Remove" onClick={() => onRemove(f.name)}>
-                <Icon name="close" size={11} />
+              <Icon name="attach" size={14} />
+              <span className="attach-name" title={f.name}>{f.name}</span>
+              <span className="attach-size">{human(f.size)}</span>
+              <button
+                type="button"
+                className="attach-x"
+                aria-label={`Remove ${f.name}`}
+                title={`Remove ${f.name}`}
+                onClick={() => onRemove(f.name)}
+              >
+                <Icon name="close" size={12} />
               </button>
             </span>
           ))}
         </div>
       )}
-    </>
+    </div>
   );
 }
