@@ -48,6 +48,12 @@ export const RichText = forwardRef<RichTextHandle, Props>(function RichText(
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Image.configure({ inline: false, allowBase64: true }),
     ],
+    editorProps: {
+      attributes: {
+        "aria-label": "Message body",
+        "aria-multiline": "true",
+      },
+    },
     content: initialHtml,
     onUpdate: ({ editor }) => onChange?.(editor.getHTML()),
   });

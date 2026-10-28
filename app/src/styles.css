@@ -19,7 +19,6 @@
   --color-text-2: var(--text-2);
   --color-text-3: var(--text-3);
   --color-accent: var(--accent);
-  --color-accent-2: var(--accent-2);
   --color-good: var(--good);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
@@ -29,14 +28,15 @@
 
 /* ---- design tokens (define the CSS vars Tailwind references above) ---- */
 :root {
-  /* OKLCH for perceptually-even, vivid color (modern WebKit/Chromium). */
-  --accent: oklch(0.69 0.15 268);
-  --accent-2: oklch(0.66 0.17 295);
-  --accent-soft: oklch(0.69 0.15 268 / 0.14);
-  --accent-action: oklch(0.56 0.18 268);
-  --good: oklch(0.78 0.15 158);
-  --warn: oklch(0.82 0.14 80);
-  --danger: oklch(0.71 0.17 18);
+  /* Accessible semantic colors shared by both the web preview and native shell. */
+  --accent: #4869dc;
+  --accent-soft: rgb(72 105 220 / 0.12);
+  --accent-action: #4869dc;
+  --good: #137a4b;
+  --warn: #8a5a00;
+  --warn-action: #8a5a00;
+  --danger: #bd3448;
+  --danger-action: #bd3448;
   --radius: 14px;
   --font: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
@@ -47,9 +47,11 @@
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 [data-theme="dark"] {
+  --accent: #8ea9ff; --accent-soft: rgb(142 169 255 / 0.14);
+  --good: #50d492; --warn: #f3b94c; --danger: #f96e79;
   --bg: #0b0c10; --bg-2: #111319; --surface: #16181f; --surface-2: #1d2029;
   --border: rgba(255,255,255,0.07); --border-2: rgba(255,255,255,0.12);
-  --text: #eef0f5; --text-2: #a6abbd; --text-3: #6c7187;
+  --text: #eef0f5; --text-2: #a6abbd; --text-3: #8e95aa;
   --shadow: 0 20px 60px rgba(0,0,0,0.55); --glass: rgba(22,24,31,0.72);
   /* Soft "itopup"-style ambient: a cool glow top-left + indigo glow bottom-right.
      Defined once and layered onto every surface (panels, modal, selected row). */
@@ -60,7 +62,7 @@
 [data-theme="light"] {
   --bg: #eef1f6; --bg-2: #f7f9fc; --surface: #ffffff; --surface-2: #eef1f6;
   --border: rgba(18,22,40,0.09); --border-2: rgba(18,22,40,0.16);
-  --text: #161922; --text-2: #4c5263; --text-3: #828896;
+  --text: #161922; --text-2: #4c5263; --text-3: #697181;
   --shadow: 0 20px 60px rgba(30,40,70,0.16); --glass: rgba(255,255,255,0.85);
   /* Sampled from the itopup logo background: a near-white base with very pale
      cool-blue soft shapes top-left + bottom-right. OKLCH, subtle. */
@@ -150,7 +152,7 @@
   .logo { @apply w-[34px] h-[34px] shrink-0 object-cover rounded-[10px]; box-shadow: 0 4px 12px oklch(0.30 0.08 250 / 0.35); }
   .brand b { @apply text-[14px]; font-weight: 650; }
   .brand .acct { @apply text-[11px] text-text-3 overflow-hidden text-ellipsis whitespace-nowrap max-w-[150px]; }
-  .compose-btn { @apply mt-1 mx-0.5 mb-2.5 p-2.5 rounded-[11px] border-none bg-accent text-white text-[13px] font-semibold flex items-center justify-center gap-2; transition: var(--motion-standard) var(--ease); }
+  .compose-btn { @apply mt-1 mx-0.5 mb-2.5 p-2.5 rounded-[11px] border-none text-white text-[13px] font-semibold flex items-center justify-center gap-2; background: var(--accent-action); transition: var(--motion-standard) var(--ease); }
   .compose-btn:hover { filter: brightness(1.08); }
   .nav-item { @apply flex min-h-8 items-center gap-[11px] px-[11px] py-2 rounded-[10px] text-text-2 text-[13.5px] cursor-pointer border-none bg-transparent w-full text-left; transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
   .nav-item:hover { @apply bg-surface text-text; }
@@ -243,7 +245,7 @@
   .folder-menu-sep { @apply my-1 mx-2 border-t border-border-2; }
   /* Auto-update banner (bottom-right). */
   .update-banner { @apply fixed bottom-4 right-4 z-[100] flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-[12.5px] text-text border border-border-2; background: var(--bg-2); box-shadow: var(--shadow); }
-  .update-btn { @apply ml-1 px-2.5 py-1 rounded-lg text-[12px] font-medium text-white border-none cursor-pointer; background: var(--accent); transition: var(--motion-standard) var(--ease); }
+  .update-btn { @apply ml-1 px-2.5 py-1 rounded-lg text-[12px] font-medium text-white border-none cursor-pointer; background: var(--accent-action); transition: var(--motion-standard) var(--ease); }
   .update-btn:hover:not(:disabled) { filter: brightness(1.08); }
   .update-btn:disabled { @apply opacity-70 cursor-default; }
   .update-x { @apply text-text-3 bg-transparent border-none cursor-pointer inline-flex items-center p-0.5; }
@@ -292,11 +294,11 @@
   .chip-alert { color: var(--danger); border-color: color-mix(in oklch, var(--danger) 35%, transparent); }
   .chip-alert .chip-count { color: color-mix(in oklch, var(--danger) 70%, var(--text)); }
   .chip-alert.on { color: var(--danger); border-color: color-mix(in oklch, var(--danger) 55%, transparent); background: color-mix(in oklch, var(--danger) 12%, transparent); }
-  .chip-alert .chip-new { background: var(--danger); }
+  .chip-alert .chip-new { background: var(--danger-action); }
   .chip-label { @apply leading-none; }
   .chip-count { @apply text-[11px] text-text-3 tabular-nums; }
   .chip.on .chip-count { color: color-mix(in oklch, var(--accent) 80%, var(--text)); }
-  .chip-new { @apply text-[10px] font-semibold leading-none text-white px-1.5 py-0.5 rounded-full; background: var(--accent); }
+  .chip-new { @apply text-[10px] font-semibold leading-none text-white px-1.5 py-0.5 rounded-full; background: var(--accent-action); }
   .chip-clear { @apply shrink-0 inline-flex items-center justify-center w-6 h-6 p-0 rounded-full border border-border bg-bg-2 text-text-3 cursor-pointer; transition: var(--motion-standard) var(--ease); }
   .chip-clear:hover { @apply text-text bg-surface border-border-2; }
   .list { @apply flex-1 min-h-0 overflow-y-auto px-2.5 pt-1 pb-4 flex flex-col; gap: var(--gap); scroll-behavior: smooth; }
@@ -312,7 +314,7 @@
   .mail-select::before { content: ""; @apply absolute h-5 w-5 rounded-full border border-border-2 bg-bg-2; transition: background-color var(--motion-instant) var(--ease), border-color var(--motion-instant) var(--ease); }
   .mail-select > span { @apply relative z-[1]; }
   .mail:hover .mail-select, .mail-select:focus-visible, .mail.multi-sel .mail-select { @apply opacity-100; }
-  .mail.multi-sel .mail-select::before { border-color: var(--accent); background: var(--accent); }
+  .mail.multi-sel .mail-select::before { border-color: var(--accent-action); background: var(--accent-action); }
   .mail-open { @apply flex min-w-0 flex-1 items-start gap-3 border-none bg-transparent p-0 text-left text-text; font: inherit; }
   .mail:has(.mail-open:focus-visible), .convo-kid:focus-visible {
     outline-color: var(--accent);
@@ -369,8 +371,8 @@
   .hl-percent { color: var(--warn); background: color-mix(in oklch, var(--warn) 16%, transparent); }
   .tag { @apply text-[9.5px] font-semibold uppercase px-1.5 py-0.5 rounded-[5px] inline-flex items-center gap-1; letter-spacing: .05em; }
   .tag.ai { @apply text-accent; background: var(--accent-soft); }
-  .tag.urgent { @apply text-danger; background: rgba(255,99,99,.16); }
-  .tag.cal { @apply text-good; background: rgba(70,209,139,.16); }
+  .tag.urgent { @apply text-danger; background: color-mix(in oklch, var(--danger) 12%, transparent); }
+  .tag.cal { @apply text-good; background: color-mix(in oklch, var(--good) 12%, transparent); }
   .empty { @apply text-text-3 text-[13px] px-[18px] py-10 text-center; }
   /* Date-grouped accordion section headers. */
   .date-group { @apply flex flex-col; gap: var(--gap); }
@@ -387,8 +389,8 @@
   /* Swipe-to-action (touch/drag): archive on left-swipe, snooze on right-swipe. */
   .mail-wrap { @apply relative; }
   .mail-wrap .mail { @apply relative z-10; }
-  .swipe-bg { @apply absolute inset-0 flex items-center justify-between px-4 rounded-xl text-white text-[12px] font-semibold; background: linear-gradient(90deg, var(--warn), transparent 40%, transparent 60%, var(--danger)); }
-  .swipe-left { @apply inline-flex items-center gap-1.5; color: var(--text); }
+  .swipe-bg { @apply absolute inset-0 flex items-center justify-between px-4 rounded-xl text-white text-[12px] font-semibold; background: linear-gradient(90deg, var(--warn-action), transparent 40%, transparent 60%, var(--danger-action)); }
+  .swipe-left { @apply inline-flex items-center gap-1.5; color: #fff; }
   .swipe-right { @apply inline-flex items-center gap-1.5; color: #fff; }
 
   /* ---- Stage (reading pane) ---- */
@@ -481,7 +483,7 @@
   .msg-details > div > b { @apply text-text-2 font-medium break-all; }
   .msg-details .mono { @apply font-mono text-[11px]; }
   .msg-details .auth-ok { color: var(--good); }
-  .msg-details .auth-bad { color: var(--bad); }
+  .msg-details .auth-bad { color: var(--danger); }
   .msg-details-note { @apply text-text-3; }
   .msg { min-width: 0; }
   .msg > div { min-width: 0; }
@@ -538,10 +540,10 @@
   .msg .text * { max-width: 100%; }
 
   /* ---- Composer + buttons ---- */
-  .send { @apply inline-flex items-center gap-[7px] bg-accent text-white border-none px-4 py-2 rounded-[9px] text-[13px] font-semibold; }
+  .send { @apply inline-flex items-center gap-[7px] text-white border-none px-4 py-2 rounded-[9px] text-[13px] font-semibold; background: var(--accent-action); }
   .chip { @apply cursor-pointer text-[12px] px-[11px] py-1.5 rounded-[20px] border border-border-2 bg-surface inline-flex items-center gap-1.5; transition: var(--motion-standard) var(--ease); }
   .chip:hover { @apply text-accent border-accent; }
-  .chip.solid { @apply bg-accent text-white; border-color: transparent; }
+  .chip.solid { @apply text-white; border-color: transparent; background: var(--accent-action); }
   .composer { @apply relative border border-border-2 rounded-card bg-surface px-4 py-[14px]; box-shadow: var(--shadow); transition: border-color var(--motion-instant) var(--ease), box-shadow var(--motion-instant) var(--ease); }
   .composer.file-drag-active { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 16%, transparent), var(--shadow); }
   .composer-drop-overlay {
@@ -607,7 +609,7 @@
   .task { @apply flex items-center gap-3 py-[11px] border-b border-border; }
   .task:last-child { @apply border-b-0; }
   .task .box { @apply w-[18px] h-[18px] rounded-md border-[1.5px] border-border-2 shrink-0 cursor-pointer; }
-  .task.done .box { @apply bg-accent border-accent; }
+  .task.done .box { border-color: var(--accent-action); background: var(--accent-action); }
   .task.done .t-title { @apply line-through text-text-3; }
   .task .t-meta { @apply ml-auto text-[11px] text-text-3; }
   .setting-row { @apply flex items-center gap-3.5 py-[14px] border-b border-border; }
@@ -617,7 +619,7 @@
   .setting-row .info p { @apply text-[12px] text-text-3 mt-0.5; }
   .seg { @apply inline-flex border border-border-2 rounded-[9px] overflow-hidden; }
   .seg button { @apply px-3 py-1.5 text-[12px] border-none bg-surface text-text-2; }
-  .seg button.on { @apply bg-accent text-white; }
+  .seg button.on { @apply text-white; background: var(--accent-action); }
   .settings-layout { display: grid; grid-template-columns: 192px minmax(0, 880px); gap: 24px; align-items: start; }
   .settings-nav-wrap { position: sticky; top: 18px; min-width: 0; }
   .settings-nav { display: grid; gap: 3px; }
@@ -709,7 +711,7 @@
   .pop .m { @apply flex items-center gap-2.5 px-2.5 py-[9px] rounded-[9px] text-[13px]; }
   .pop .m:hover { background: var(--accent-soft); }
   .pop .m .badge { @apply ml-auto text-[9.5px] px-1.5 py-0.5 rounded-[5px] bg-surface-2 text-text-2; }
-  .pop .m.on .badge { @apply bg-accent text-white; }
+  .pop .m.on .badge { @apply text-white; background: var(--accent-action); }
   .pop .pf { @apply text-[10.5px] text-text-3 border-t border-border mt-1 pt-2 px-2.5 pb-1; }
 
   /* ---- Undo Send toast ---- */
@@ -720,7 +722,7 @@
   .toast-spinner { @apply w-[14px] h-[14px] rounded-full; border: 2px solid var(--border-2); border-top-color: var(--accent); animation: spin .7s linear infinite; }
 
   /* ---- Rich text editor (TipTap / ProseMirror) ---- */
-  .richtext { @apply border border-border rounded-[10px] overflow-hidden bg-bg-2; }
+  .richtext { @apply border border-border rounded-[10px] overflow-hidden bg-bg-2; transition: border-color var(--motion-instant) var(--ease), box-shadow var(--motion-instant) var(--ease); }
   .richtext.rt-full { @apply fixed inset-4 z-50 flex flex-col; box-shadow: var(--shadow); background: var(--bg); }
   .rt-toolbar { @apply flex items-center gap-x-2 gap-y-0.5 px-2 py-1.5 border-b border-border flex-wrap; }
   .rt-tool-group { @apply inline-flex shrink-0 items-center gap-0.5; }
@@ -728,7 +730,7 @@
   .rt-select { @apply h-8 px-2 rounded-md text-text-2 text-[12px] border border-border-2 bg-surface; font-family: var(--font); }
   .rt-btn { @apply min-w-8 h-8 px-1.5 rounded-md text-text-2 inline-flex items-center justify-center border-none bg-transparent; }
   .rt-btn:hover { @apply bg-surface text-text; }
-  .rt-btn.on { @apply bg-accent text-white; }
+  .rt-btn.on { @apply text-white; background: var(--accent-action); }
   .rt-area { @apply px-3 py-2.5 text-[14px] leading-[1.6] text-text overflow-y-auto; }
   .richtext.rt-full .rt-area { @apply flex-1; }
   .rt-area .ProseMirror { @apply min-h-[inherit]; }
@@ -776,15 +778,15 @@
   .ctx-summary span { @apply truncate text-[11px] text-text-3; }
   .ctx-menu button { @apply w-full flex items-center gap-2.5 text-left px-2.5 py-2 rounded-md text-[13px] text-text-2 border-none bg-transparent cursor-pointer; }
   .ctx-menu button:hover { @apply bg-surface text-text; }
-  .ctx-menu button.danger { color: var(--bad); }
-  .ctx-menu button.danger:hover { background: color-mix(in oklch, var(--bad) 14%, transparent); color: var(--bad); }
+  .ctx-menu button.danger { color: var(--danger); }
+  .ctx-menu button.danger:hover { background: color-mix(in oklch, var(--danger) 14%, transparent); color: var(--danger); }
   .ctx-sep { @apply h-px my-1 bg-border; }
   .ctx-menu button.ctx-submenu { @apply justify-between; }
   .ctx-caret { @apply ml-auto pl-3 text-text-3 text-[15px] leading-none; }
   .ctx-menu button.ctx-back { @apply text-text-3 font-medium; }
   .ctx-empty { @apply px-2.5 py-2 text-[12px] text-text-3; }
-  .menu button.danger { color: var(--bad); }
-  .menu button.danger:hover { background: color-mix(in oklch, var(--bad) 14%, transparent); color: var(--bad); }
+  .menu button.danger { color: var(--danger); }
+  .menu button.danger:hover { background: color-mix(in oklch, var(--danger) 14%, transparent); color: var(--danger); }
 
   /* ---- Custom Select dropdown (ported from iTopup) ---- */
   .ta-select-btn { @apply w-full flex items-center justify-between gap-2 bg-surface border border-border-2 rounded-lg px-2.5 py-2 text-[13px] text-text; transition: var(--motion-standard) var(--ease); }
@@ -836,7 +838,7 @@
   .af-input:focus { @apply border-accent; box-shadow: 0 0 0 3px var(--accent-soft); }
   .af-check { @apply flex items-center gap-2 text-[12px] text-text-2 mt-3; }
   .af-status { @apply flex items-center gap-2 mt-4 px-3 py-2 rounded-lg text-[12.5px]; background: var(--accent-soft); color: var(--text); }
-  .af-status.err { background: oklch(0.71 0.17 18 / 0.14); color: var(--danger); }
+  .af-status.err { background: color-mix(in oklch, var(--danger) 14%, transparent); color: var(--danger); }
   .af-actions { @apply flex items-center justify-between gap-3 mt-4; }
   .af-actions-right { @apply flex items-center gap-2; }
   .af-btn { @apply inline-flex min-h-8 items-center gap-2 px-3.5 py-2 rounded-[10px] text-[13px] font-medium border cursor-pointer; pointer-events: auto; transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
@@ -847,7 +849,7 @@
   .af-btn.primary:not(:disabled):hover { filter: brightness(1.08); }
   .btn-spinner { @apply w-[13px] h-[13px] rounded-full inline-block; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; animation: spin .7s linear infinite; }
   .af-btn.ghost .btn-spinner { border-color: var(--border-2); border-top-color: var(--accent); }
-  .af-btn.danger { @apply border-transparent text-white; background: var(--danger); }
+  .af-btn.danger { @apply border-transparent text-white; background: var(--danger-action); }
 
   /* ---- AI provider management ---- */
   .provider-manager { @apply flex flex-col gap-3; }
@@ -880,7 +882,7 @@
   .provider-roles { @apply mx-3 mt-3 flex flex-wrap gap-1.5; }
   .provider-roles button { @apply min-h-8 rounded-full border border-border bg-transparent px-2.5 py-1.5 text-[11px] text-text-3; }
   .provider-roles button:hover, .provider-roles button:focus-visible { @apply border-accent text-text; }
-  .provider-roles button.selected { @apply border-transparent text-white; background: var(--accent); }
+  .provider-roles button.selected { @apply border-transparent text-white; background: var(--accent-action); }
   .provider-card-foot { @apply mx-3 mt-3 mb-3 flex min-h-9 items-center justify-end gap-3; }
   .provider-message { @apply mr-auto text-[11.5px]; }
   .provider-message.error { @apply text-danger; }
@@ -931,6 +933,17 @@
 :is(button.danger, .danger[role="button"], .provider-remove):focus-visible {
   outline-color: var(--danger);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 16%, transparent);
+}
+/* TipTap owns a rectangular contenteditable node inside the rounded editor.
+   Move its focus treatment to the shell so keyboard focus stays visible
+   without drawing a square box through the composition surface. */
+.richtext:has(.ProseMirror:focus-visible) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.richtext .ProseMirror:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 /* ---- keyframes & motion prefs (not expressible as utilities) ---- */

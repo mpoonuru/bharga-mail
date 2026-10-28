@@ -76,8 +76,8 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
         style={{
           width: s.box,
           height: s.box,
-          background: checked ? "var(--accent)" : "var(--surface)",
-          borderColor: checked ? "var(--accent)" : "var(--border-2)",
+          background: checked ? "var(--accent-action)" : "var(--surface)",
+          borderColor: checked ? "var(--accent-action)" : "var(--border-2)",
           transition: "background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease)",
         }}
       >
