@@ -51,7 +51,7 @@ jobs:
         working-directory: app
         run: bun install --frozen-lockfile
 
-      - name: Verify mail provider configuration
+      - name: Report mail provider configuration
         working-directory: app
         run: bun run check:mail-providers
 
@@ -69,7 +69,7 @@ jobs:
           projectPath: app
           tagName: ${{ github.ref_name }}
           releaseName: "Bharga Mail ${{ github.ref_name }}"
-          releaseBody: "Free download. See the README for install notes — on macOS run the install script (or right-click → Open); this build is ad-hoc signed, not notarized."
+          releaseBody: "Open-source community build. IMAP/SMTP is available; Google and Microsoft one-click sign-in is included only when the public OAuth client IDs are configured for this build. See the README for install notes — on macOS run the install script (or right-click → Open); this build is ad-hoc signed, not notarized."
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
