@@ -17,6 +17,8 @@ interface Props {
   className?: string;
   ariaLabel?: string;
   ariaLabelledBy?: string;
+  /** Editor controls apply a command that restores focus to the editing surface. */
+  restoreFocusOnSelect?: boolean;
 }
 
 export function Select({
@@ -29,6 +31,7 @@ export function Select({
   className,
   ariaLabel,
   ariaLabelledBy,
+  restoreFocusOnSelect = true,
 }: Props) {
   const generatedId = useId();
   const buttonId = id ?? generatedId;
@@ -59,7 +62,7 @@ export function Select({
 
   function choose(option: SelectOption) {
     onChange(option.value);
-    close();
+    close(restoreFocusOnSelect);
   }
 
   return (

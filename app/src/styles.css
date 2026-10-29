@@ -439,7 +439,7 @@
   .recip-chip { @apply inline-flex items-center gap-1 text-[12.5px] text-text rounded-md pl-2 pr-1 py-[3px]; background: var(--surface); }
   .recip-chip button { @apply text-text-3 border-none bg-transparent cursor-pointer text-[15px] leading-none px-0.5; }
   .recip-chip button:hover { @apply text-danger; }
-  .chips-field { @apply flex-1 min-w-[120px] bg-transparent border-none text-[13.5px] text-text py-1; font-family: var(--font); }
+  .chips-field { @apply block w-full min-w-0 bg-transparent border-none text-[13.5px] text-text py-1; font-family: var(--font); }
   .chips-field::placeholder { @apply text-text-3; }
   .chips-entry { @apply relative flex-1 min-w-[120px]; }
   .recip-suggest { @apply absolute left-0 top-full z-[90] mt-1 w-max min-w-[240px] max-w-[380px] rounded-xl border border-border-2 py-1 list-none overflow-hidden; background: var(--bg-2); box-shadow: var(--shadow); }
@@ -733,12 +733,13 @@
   .toast-spinner { @apply w-[14px] h-[14px] rounded-full; border: 2px solid var(--border-2); border-top-color: var(--accent); animation: spin .7s linear infinite; }
 
   /* ---- Rich text editor (TipTap / ProseMirror) ---- */
-  .richtext { @apply border border-border rounded-[10px] overflow-hidden bg-bg-2; transition: border-color var(--motion-instant) var(--ease), box-shadow var(--motion-instant) var(--ease); }
+  .richtext { @apply border border-border rounded-[10px] bg-bg-2; transition: border-color var(--motion-instant) var(--ease), box-shadow var(--motion-instant) var(--ease); }
   .richtext.rt-full { @apply fixed inset-4 z-50 flex flex-col; box-shadow: var(--shadow); background: var(--bg); }
   .rt-toolbar { @apply flex items-center gap-x-2 gap-y-0.5 px-2 py-1.5 border-b border-border flex-wrap; }
   .rt-tool-group { @apply inline-flex shrink-0 items-center gap-0.5; }
   .rt-tool-group-end { @apply ml-auto; }
-  .rt-select { @apply h-8 px-2 rounded-md text-text-2 text-[12px] border border-border-2 bg-surface; font-family: var(--font); }
+  .rt-select { @apply min-w-[116px]; }
+  .rt-select .ta-select-btn { @apply h-8 px-2 py-1 rounded-md text-text-2 text-[12px]; }
   .rt-btn { @apply min-w-8 h-8 px-1.5 rounded-md text-text-2 inline-flex items-center justify-center border-none bg-transparent; }
   .rt-btn:hover { @apply bg-surface text-text; }
   .rt-btn.on { @apply text-white; background: var(--accent-action); }
@@ -952,6 +953,15 @@
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
 .richtext .ProseMirror:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+/* Recipients belong to the whole address row, rather than a boxed sub-field. */
+.recip-row:has(.chips-field:focus-visible) {
+  border-bottom-color: var(--accent);
+  box-shadow: 0 1px 0 var(--accent);
+}
+.chips-input .chips-field:focus-visible {
   outline: none;
   box-shadow: none;
 }

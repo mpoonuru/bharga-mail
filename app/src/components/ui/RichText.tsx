@@ -4,6 +4,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
 import Image from "@tiptap/extension-image";
+import { Select } from "./Select";
 import {
   TextBIcon, TextItalicIcon, TextUnderlineIcon, TextStrikethroughIcon,
   ListBulletsIcon, ListNumbersIcon, TextAlignLeftIcon, TextAlignCenterIcon,
@@ -32,6 +33,10 @@ const HEADINGS = [
   { label: "Heading 3", level: 3 },
   { label: "Heading 4", level: 4 },
 ] as const;
+
+function Group({ children, end = false }: { children: React.ReactNode; end?: boolean }) {
+  return <span className={`rt-tool-group${end ? " rt-tool-group-end" : ""}`}>{children}</span>;
+}
 
 // Full-featured TipTap editor matching the Topup Arena toolbar: headings,
 // bold/italic/underline/strike, lists, alignment, code, code-block, blockquote,
@@ -95,7 +100,7 @@ export const RichText = forwardRef<RichTextHandle, Props>(function RichText(
 
   const setHeading = (level: number) => {
     if (level === 0) chain().setParagraph().run();
-    else chain().toggleHeading({ level: level as 1 | 2 | 3 | 4 }).run();
+    else chain().setHeading({ level: level as 1 | 2 | 3 | 4 }).run();
   };
   const setLink = () => {
     if (st?.link) { chain().unsetLink().run(); return; }
@@ -110,21 +115,18 @@ export const RichText = forwardRef<RichTextHandle, Props>(function RichText(
   const B = ({ on, title, run, children }: { on?: boolean; title: string; run: () => void; children: React.ReactNode }) => (
     <button type="button" className={`rt-btn${on ? " on" : ""}`} title={title} onMouseDown={(e) => e.preventDefault()} onClick={run}>{children}</button>
   );
-  const Group = ({ children, end = false }: { children: React.ReactNode; end?: boolean }) => (
-    <span className={`rt-tool-group${end ? " rt-tool-group-end" : ""}`}>{children}</span>
-  );
-
   return (
     <div className={`richtext${full ? " rt-full" : ""}`}>
       <div className="rt-toolbar">
         <Group>
-          <select
+          <Select
             className="rt-select"
-            value={st?.isHeading ? st.heading : 0}
-            onChange={(e) => setHeading(Number(e.target.value))}
-          >
-            {HEADINGS.map((h) => <option key={h.level} value={h.level}>{h.label}</option>)}
-          </select>
+            ariaLabel="Text style"
+            value={String(st?.isHeading ? st.heading : 0)}
+            onChange={(value) => setHeading(Number(value))}
+            options={HEADINGS.map((h) => ({ value: String(h.level), label: h.label }))}
+            restoreFocusOnSelect={false}
+          />
         </Group>
         <Group>
           <B on={st?.bold} title="Bold" run={() => chain().toggleBold().run()}><TextBIcon size={15} /></B>
