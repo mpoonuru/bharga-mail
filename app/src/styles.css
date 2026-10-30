@@ -413,8 +413,17 @@
   .stage-reader .stage-inner { @apply flex flex-col h-full min-h-0 pt-0 pb-0; }
   .stage-reader .stage-bar { @apply relative shrink-0 flex-wrap; }
   .stage-reader h1.subject { @apply shrink-0; }
+  .stage-reader .meta { @apply flex-wrap; }
+  .stage-reader .meta-right { @apply max-w-full flex-wrap; }
+  .stage-reader :is(.name, .addr) { @apply max-w-full min-w-0; overflow-wrap: anywhere; }
+  .stage-reader .reply-bar { @apply flex-wrap; }
+  .reader-display-controls { @apply flex shrink-0 items-center justify-between flex-wrap gap-2 pb-2; }
+  .reader-display-controls .ta-select-btn { @apply h-8 py-1 text-[12px]; }
+  .reader-layout-select { @apply min-w-[142px]; }
+  .reader-zoom { @apply inline-flex items-center gap-1; }
+  .reader-zoom .ta-select { @apply min-w-[84px]; }
+  .reader-zoom .iconbtn { @apply text-[17px]; }
   .reader-scroll { @apply flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden pb-8; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
-  .stage.stage-reader .reader-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; box-shadow: none; }
   .stage-bar { @apply sticky top-0 flex items-center gap-2 pt-[14px] pb-2.5 z-[5]; background: linear-gradient(var(--bg), var(--bg) 70%, transparent); }
   .stage-bar .spacer { @apply flex-1; }
   .iconbtn { @apply px-[9px] rounded-[9px] border border-border bg-surface text-text-2 inline-flex items-center justify-center gap-1.5 text-[14px]; min-width: var(--control-sm); height: var(--control-sm); transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }
@@ -510,6 +519,9 @@
      internal <style> sets the matching background/ink so plain + simple emails
      adapt cleanly, while emails that ship their own colours keep them. */
   .email-body { @apply min-w-0 relative; }
+  .email-viewport { @apply min-w-0 max-w-full overflow-x-auto overflow-y-hidden rounded-[10px]; scrollbar-width: none; }
+  .email-viewport::-webkit-scrollbar { display: none; }
+  .email-pan { @apply sticky bottom-0 z-[2] h-[18px] overflow-x-auto overflow-y-hidden border border-border rounded-b-[10px] bg-surface; }
   .img-banner { @apply w-full flex items-center gap-2 mb-1.5 px-3 py-2 rounded-lg text-[12px] text-text-2 cursor-pointer; background: var(--accent-soft); border: 1px solid var(--border); transition: var(--motion-standard) var(--ease); }
   .img-banner:hover { @apply text-text border-accent; }
   .email-frame { @apply w-full block rounded-[10px] min-w-0; min-height: 40px; border: 1px solid var(--border); background: var(--bg-2); }
@@ -970,6 +982,11 @@
 }
 .chips-input .chips-field:focus-visible {
   outline: none;
+  box-shadow: none;
+}
+.stage-reader :is(.reader-scroll, .email-pan):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
   box-shadow: none;
 }
 

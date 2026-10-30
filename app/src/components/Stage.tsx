@@ -18,6 +18,8 @@ import { Attachments, type Attach } from "@/components/ui/Attachments";
 import { SendLater } from "@/components/ui/SendLater";
 import { RecipientChips } from "@/components/ui/RecipientChips";
 import { Modal } from "@/components/ui/Modal";
+import { ReaderDisplayProvider, ReaderDisplayControls, useReaderDisplay } from "@/components/reader/ReaderDisplay";
+import { bindEmailFrameLayout, type EmailFrameLayout, type FrameSize } from "@/lib/emailFrameLayout";
 import { fullTime, whenMs } from "@/lib/date";
 import { avatarColor } from "@/lib/colors";
 import { initials, senderLabel, showAddressLine, folderLabel } from "@/lib/avatar";
@@ -53,6 +55,13 @@ interface LinkMenuState {
  */
 export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: string; trimQuote?: boolean }) {
   const ref = useRef<HTMLIFrameElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef<HTMLDivElement>(null);
+  const sizingRef = useRef<EmailFrameLayout | null>(null);
+  const display = useReaderDisplay();
+  const displayRef = useRef(display);
+  displayRef.current = display;
+  const [frameSize, setFrameSize] = useState<FrameSize>({ width: 0, viewportWidth: 0 });
   const detachFrameRef = useRef<() => void>(() => {});
   const linkMenuRef = useRef<HTMLDivElement>(null);
   const linkOpenerRef = useRef<HTMLAnchorElement | null>(null);
@@ -64,6 +73,10 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
   const theme = useApp((s) => s.theme);
   const contentPx = useApp((s) => s.contentPx);
   const dark = theme === "dark";
+
+  useEffect(() => {
+    sizingRef.current?.update({ layout: display.layout, zoom: display.zoom });
+  }, [display.layout, display.zoom]);
 
   const processed = useMemo(
     () => processEmail(html, { showImages, highlight: highlights, dark, sender, trimQuote }),
@@ -101,20 +114,15 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
 <style>
   html,body{margin:0;background:${surface};color:${ink};color-scheme:${dark ? "dark" : "light"};
     font:${contentPx}px/1.7 -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
-    word-break:break-word;overflow-wrap:anywhere;min-height:0!important;height:auto!important;}
+    min-height:0!important;height:auto!important;}
   html{overflow:hidden;}
-  body{display:flow-root;padding:20px clamp(12px,4vw,24px);}
-  img{max-width:100%;height:auto;}
-  table{max-width:100%;table-layout:auto;}
-  td,th{white-space:normal!important;}
-  [style*="white-space"][style*="nowrap"]{white-space:normal!important;}
-  pre{white-space:pre-wrap;overflow-wrap:anywhere;}
+  body{display:flow-root;padding:20px var(--bharga-message-padding,24px);}
   a{color:${link};}
   /* Phishing / risky-link marking (see lib/linkRisk). */
   a[data-risk]{text-decoration:underline wavy #d97706;text-underline-offset:2px;cursor:pointer;}
   a[data-risk=dangerous]{text-decoration-color:#ef4444;background:rgba(239,68,68,.10);border-radius:3px;}
   a[data-risk]::after{content:" \\26A0\\FE0F";font-size:.8em;}
-  *{min-width:0!important;max-width:100%!important;box-sizing:border-box;}
+  *{box-sizing:border-box;}
   /* Tame quoted history: browsers default blockquotes to margin:0 40px (both
      sides, per nesting level), which collapses deeply-nested "On … wrote:"
      replies into a one-word-per-line sliver. Replace with a small left-only
@@ -131,28 +139,6 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
   mark[data-kind=positive]{background:linear-gradient(120deg,rgba(16,185,129,.18),rgba(16,185,129,.06));box-shadow:inset 0 -2px rgba(16,185,129,.25);}
   @keyframes hlin{from{opacity:.35;}to{opacity:1;}}
 </style></head><body>${body}</body></html>`;
-
-  const resize = () => {
-    const f = ref.current;
-    if (!f) return;
-    try {
-      const d = f.contentDocument;
-      if (!d) return;
-      const h = Math.max(
-        d.body?.scrollHeight ?? 0,
-        d.body?.offsetHeight ?? 0,
-        d.body?.getBoundingClientRect().height ?? 0,
-      );
-      // documentElement includes the iframe's current viewport height. Using it
-      // here makes every measurement grow the frame and prevents shrinking.
-      const style = getComputedStyle(f);
-      const border = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
-      const height = `${Math.ceil(h + border)}px`;
-      if (h > 0 && f.style.height !== height) f.style.height = height;
-    } catch {
-      /* cross-origin (shouldn't happen for srcDoc) */
-    }
-  };
 
   const restoreLinkFocus = (opener = linkOpenerRef.current) => {
     window.setTimeout(() => {
@@ -239,27 +225,12 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
     try {
       const frame = ref.current;
       const d = frame?.contentDocument;
-      if (!frame || !d?.body) return;
-      let active = true;
-      let pending: number | null = null;
-      const scheduleResize = () => {
-        if (!active || pending !== null) return;
-        pending = requestAnimationFrame(() => { pending = null; if (active) resize(); });
-      };
-      const bodyObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleResize);
-      bodyObserver?.observe(d.body);
-      let width = frame.clientWidth;
-      const frameObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
-        if (frame.clientWidth !== width) { width = frame.clientWidth; scheduleResize(); }
+      const viewport = viewportRef.current;
+      if (!frame || !d?.body || !viewport) return;
+      const sizing = bindEmailFrameLayout(frame, viewport, displayRef.current, (next) => {
+        setFrameSize((current) => current.width === next.width && current.viewportWidth === next.viewportWidth ? current : next);
       });
-      frameObserver?.observe(frame);
-      const images = [...d.querySelectorAll("img")];
-      images.forEach((img) => {
-        img.addEventListener("load", scheduleResize);
-        img.addEventListener("error", scheduleResize);
-      });
-      void d.fonts?.ready.then(scheduleResize);
-      resize();
+      sizingRef.current = sizing;
       // Every link leaves through the validated native opener. The embedded mail
       // document never receives navigation or popup permissions.
       const onLinkClick = (e: MouseEvent) => {
@@ -290,14 +261,8 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
       d.addEventListener("contextmenu", onLinkContextMenu, true);
       d.addEventListener("keydown", onLinkKeyDown, true);
       detachFrameRef.current = () => {
-        active = false;
-        if (pending !== null) cancelAnimationFrame(pending);
-        bodyObserver?.disconnect();
-        frameObserver?.disconnect();
-        images.forEach((img) => {
-          img.removeEventListener("load", scheduleResize);
-          img.removeEventListener("error", scheduleResize);
-        });
+        sizing.dispose();
+        if (sizingRef.current === sizing) sizingRef.current = null;
         d.removeEventListener("click", onLinkClick, true);
         d.removeEventListener("auxclick", onLinkClick, true);
         d.removeEventListener("contextmenu", onLinkContextMenu, true);
@@ -423,6 +388,9 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
         </div>,
         document.body,
       )}
+      <div ref={viewportRef} className="email-viewport" onScroll={(event) => {
+        if (panRef.current && Math.abs(panRef.current.scrollLeft - event.currentTarget.scrollLeft) > 0.5) panRef.current.scrollLeft = event.currentTarget.scrollLeft;
+      }}>
       <iframe
         ref={ref}
         key={`${showImages ? "i" : "n"}${highlights ? "h" : ""}${dark ? "d" : "l"}${contentPx}`}
@@ -433,6 +401,14 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
         srcDoc={doc}
         onLoad={onLoad}
       />
+      </div>
+      {frameSize.width > frameSize.viewportWidth + 1 && (
+        <div className="email-pan" role="region" aria-label="Scroll message horizontally" tabIndex={0}
+          ref={(node) => { panRef.current = node; if (node && viewportRef.current) node.scrollLeft = viewportRef.current.scrollLeft; }}
+          onScroll={(event) => { if (viewportRef.current && Math.abs(viewportRef.current.scrollLeft - event.currentTarget.scrollLeft) > 0.5) viewportRef.current.scrollLeft = event.currentTarget.scrollLeft; }}>
+          <div style={{ width: frameSize.width, height: 1 }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -553,6 +529,7 @@ export function Stage() {
     <section className="stage stage-reader">
       <div className="stage-presence" style={{ display: "grid" }}>
       <AnimatePresence initial={false}>
+        <ReaderDisplayProvider key={thread.id}>
         <motion.div className="stage-inner" key={thread.id} style={{ gridArea: "1 / 1" }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={crossfadeTransition}>
           <div className="stage-bar">
             <IconButton icon="focus" title="Focus mode (F)" onClick={toggleFocus} />
@@ -584,6 +561,7 @@ export function Stage() {
             </div>
           </div>
 
+          <ReaderDisplayControls />
           <h1 className="subject">{thread.subject}</h1>
 
           <div className="reader-scroll" role="region" aria-label="Conversation content" tabIndex={0}>
@@ -712,6 +690,7 @@ export function Stage() {
               : <iframe src={preview.url} title={preview.name} style={{ width: "100%", height: "70vh", border: "none", borderRadius: 10 }} />)}
           </Modal>
         </motion.div>
+        </ReaderDisplayProvider>
       </AnimatePresence>
       </div>
     </section>
