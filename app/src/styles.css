@@ -408,6 +408,13 @@
   .stage { @apply overflow-y-auto overflow-x-hidden bg-bg min-w-0; }
   /* Wider, fluid reading pane so emails have room to render properly. */
   .stage-inner { @apply w-full max-w-[920px] mx-auto pt-[14px] px-6 pb-[120px] min-w-0; }
+  .stage-reader { @apply overflow-hidden; }
+  .stage-reader .stage-presence { @apply h-full min-h-0; grid-template-rows: minmax(0, 1fr); }
+  .stage-reader .stage-inner { @apply flex flex-col h-full min-h-0 pt-0 pb-0; }
+  .stage-reader .stage-bar { @apply relative shrink-0 flex-wrap; }
+  .stage-reader h1.subject { @apply shrink-0; }
+  .reader-scroll { @apply flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden pb-8; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+  .stage.stage-reader .reader-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; box-shadow: none; }
   .stage-bar { @apply sticky top-0 flex items-center gap-2 pt-[14px] pb-2.5 z-[5]; background: linear-gradient(var(--bg), var(--bg) 70%, transparent); }
   .stage-bar .spacer { @apply flex-1; }
   .iconbtn { @apply px-[9px] rounded-[9px] border border-border bg-surface text-text-2 inline-flex items-center justify-center gap-1.5 text-[14px]; min-width: var(--control-sm); height: var(--control-sm); transition: color var(--motion-standard) var(--ease), background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), opacity var(--motion-standard) var(--ease); }

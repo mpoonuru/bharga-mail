@@ -53,7 +53,7 @@ interface LinkMenuState {
  */
 export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: string; trimQuote?: boolean }) {
   const ref = useRef<HTMLIFrameElement>(null);
-  const detachLinkListenersRef = useRef<() => void>(() => {});
+  const detachFrameRef = useRef<() => void>(() => {});
   const linkMenuRef = useRef<HTMLDivElement>(null);
   const linkOpenerRef = useRef<HTMLAnchorElement | null>(null);
   const [showImages, setShowImages] = useState(false);
@@ -101,16 +101,20 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
 <style>
   html,body{margin:0;background:${surface};color:${ink};color-scheme:${dark ? "dark" : "light"};
     font:${contentPx}px/1.7 -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
-    word-break:break-word;overflow-wrap:anywhere;}
-  body{padding:20px 24px;}
+    word-break:break-word;overflow-wrap:anywhere;min-height:0!important;height:auto!important;}
+  html{overflow:hidden;}
+  body{display:flow-root;padding:20px clamp(12px,4vw,24px);}
   img{max-width:100%;height:auto;}
-  table{max-width:100%;}
+  table{max-width:100%;table-layout:auto;}
+  td,th{white-space:normal!important;}
+  [style*="white-space"][style*="nowrap"]{white-space:normal!important;}
+  pre{white-space:pre-wrap;overflow-wrap:anywhere;}
   a{color:${link};}
   /* Phishing / risky-link marking (see lib/linkRisk). */
   a[data-risk]{text-decoration:underline wavy #d97706;text-underline-offset:2px;cursor:pointer;}
   a[data-risk=dangerous]{text-decoration-color:#ef4444;background:rgba(239,68,68,.10);border-radius:3px;}
   a[data-risk]::after{content:" \\26A0\\FE0F";font-size:.8em;}
-  *{max-width:100%;box-sizing:border-box;}
+  *{min-width:0!important;max-width:100%!important;box-sizing:border-box;}
   /* Tame quoted history: browsers default blockquotes to margin:0 40px (both
      sides, per nesting level), which collapses deeply-nested "On … wrote:"
      replies into a one-word-per-line sliver. Replace with a small left-only
@@ -137,10 +141,14 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
       const h = Math.max(
         d.body?.scrollHeight ?? 0,
         d.body?.offsetHeight ?? 0,
-        d.documentElement?.scrollHeight ?? 0,
-        d.documentElement?.offsetHeight ?? 0,
+        d.body?.getBoundingClientRect().height ?? 0,
       );
-      if (h > 0) f.style.height = `${Math.min(h + 16, 8000)}px`;
+      // documentElement includes the iframe's current viewport height. Using it
+      // here makes every measurement grow the frame and prevents shrinking.
+      const style = getComputedStyle(f);
+      const border = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+      const height = `${Math.ceil(h + border)}px`;
+      if (h > 0 && f.style.height !== height) f.style.height = height;
     } catch {
       /* cross-origin (shouldn't happen for srcDoc) */
     }
@@ -211,7 +219,7 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
     setLinkMenu({ href: destination?.href ?? rawHref, risk: destination ? anchor.getAttribute("data-risk") : "blocked", x, y, opener: anchor });
   };
 
-  useEffect(() => () => detachLinkListenersRef.current(), []);
+  useEffect(() => () => detachFrameRef.current(), []);
 
   useEffect(() => {
     if (!linkMenu) return;
@@ -227,16 +235,31 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
   }, [copyStatus, decision]);
 
   const onLoad = () => {
-    resize();
-    // Re-measure as fonts/images/late layout settle so the last lines aren't clipped.
-    [60, 200, 500, 1200].forEach((ms) => setTimeout(resize, ms));
+    detachFrameRef.current();
     try {
-      const d = ref.current?.contentDocument;
-      d?.querySelectorAll("img").forEach((img) => {
-        if (!(img as HTMLImageElement).complete) img.addEventListener("load", resize, { once: true });
+      const frame = ref.current;
+      const d = frame?.contentDocument;
+      if (!frame || !d?.body) return;
+      let active = true;
+      let pending: number | null = null;
+      const scheduleResize = () => {
+        if (!active || pending !== null) return;
+        pending = requestAnimationFrame(() => { pending = null; if (active) resize(); });
+      };
+      const bodyObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleResize);
+      bodyObserver?.observe(d.body);
+      let width = frame.clientWidth;
+      const frameObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
+        if (frame.clientWidth !== width) { width = frame.clientWidth; scheduleResize(); }
       });
-      if (!d) return;
-      detachLinkListenersRef.current();
+      frameObserver?.observe(frame);
+      const images = [...d.querySelectorAll("img")];
+      images.forEach((img) => {
+        img.addEventListener("load", scheduleResize);
+        img.addEventListener("error", scheduleResize);
+      });
+      void d.fonts?.ready.then(scheduleResize);
+      resize();
       // Every link leaves through the validated native opener. The embedded mail
       // document never receives navigation or popup permissions.
       const onLinkClick = (e: MouseEvent) => {
@@ -266,7 +289,15 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
       d.addEventListener("auxclick", onLinkClick, true);
       d.addEventListener("contextmenu", onLinkContextMenu, true);
       d.addEventListener("keydown", onLinkKeyDown, true);
-      detachLinkListenersRef.current = () => {
+      detachFrameRef.current = () => {
+        active = false;
+        if (pending !== null) cancelAnimationFrame(pending);
+        bodyObserver?.disconnect();
+        frameObserver?.disconnect();
+        images.forEach((img) => {
+          img.removeEventListener("load", scheduleResize);
+          img.removeEventListener("error", scheduleResize);
+        });
         d.removeEventListener("click", onLinkClick, true);
         d.removeEventListener("auxclick", onLinkClick, true);
         d.removeEventListener("contextmenu", onLinkContextMenu, true);
@@ -398,6 +429,7 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
         className="email-frame"
         aria-label="Message body"
         sandbox="allow-same-origin"
+        scrolling="no"
         srcDoc={doc}
         onLoad={onLoad}
       />
@@ -518,7 +550,7 @@ export function Stage() {
   };
 
   return (
-    <section className="stage">
+    <section className="stage stage-reader">
       <div className="stage-presence" style={{ display: "grid" }}>
       <AnimatePresence initial={false}>
         <motion.div className="stage-inner" key={thread.id} style={{ gridArea: "1 / 1" }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={crossfadeTransition}>
@@ -554,6 +586,7 @@ export function Stage() {
 
           <h1 className="subject">{thread.subject}</h1>
 
+          <div className="reader-scroll" role="region" aria-label="Conversation content" tabIndex={0}>
           {thread.aiSummary && (
             <div className="ai-summary">
               <div className="lbl"><Icon name="ai" size={14} weight="duotone" /> AI Summary · by your model</div>
@@ -671,6 +704,7 @@ export function Stage() {
           ))}
 
           <Composer ref={composerRef} thread={thread} />
+          </div>
 
           <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.name ?? "Preview"} maxWidth={820}>
             {preview && (preview.mime.startsWith("image/")
