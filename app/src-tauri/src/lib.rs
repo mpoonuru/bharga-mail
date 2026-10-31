@@ -461,6 +461,7 @@ fn queue_send(
         _ => now + delay_seconds.max(0),
     };
     let item = OutboxItem {
+        error: None,
         id: id.clone(),
         account_id,
         thread_id,
@@ -605,6 +606,8 @@ struct ImapAccountInput {
     same_credentials: bool,
     smtp_username: Option<String>,
     smtp_password: Option<String>,
+    #[serde(default)]
+    sent_folder: Option<String>,
 }
 
 /// Test IMAP + SMTP connectivity with the entered settings, without saving.
@@ -788,6 +791,7 @@ fn save_imap_account(
     )?;
 
     let acct = ImapAccount {
+        sent_folder: input.sent_folder.clone(),
         account_id: account_id.clone(),
         email: input.email.clone(),
         display_name: input.display_name.unwrap_or_default(),
@@ -1243,6 +1247,28 @@ async fn flag_thread(
     Ok(())
 }
 
+/// One conversation with full message bodies (`list_threads` is metadata-only).
+#[tauri::command]
+fn get_thread(id: String, state: State<'_, AppState>) -> Option<Thread> {
+    state.store.thread(&id)
+}
+
+/// Sends that failed permanently. Surfaced in the UI — they used to vanish silently.
+#[tauri::command]
+fn list_dead_letters(state: State<'_, AppState>) -> Vec<OutboxItem> {
+    state.store.dead_letters()
+}
+
+#[tauri::command]
+fn retry_dead_letter(id: String, state: State<'_, AppState>) -> Result<bool, String> {
+    state.store.requeue_dead_letter(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn discard_dead_letter(id: String, state: State<'_, AppState>) -> Result<bool, String> {
+    state.store.discard_dead_letter(&id).map_err(|e| e.to_string())
+}
+
 /// All flagged thread ids (local mirror, which the IMAP sync keeps in step with
 /// the server's `\Flagged` keyword). The frontend merges these into its view.
 #[tauri::command]
@@ -1670,6 +1696,10 @@ pub fn run() {
             list_threads,
             search_mail,
             expected_build_id,
+            get_thread,
+            list_dead_letters,
+            retry_dead_letter,
+            discard_dead_letter,
             list_accounts,
             get_settings,
             set_setting,

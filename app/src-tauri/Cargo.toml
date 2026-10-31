@@ -47,6 +47,9 @@ chrono = { version = "0.4", features = ["serde"] }
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls"] }
 # IMAP inbox fetch (rustls TLS) + RFC822 parsing
 imap = { version = "3.0.0-alpha.15", default-features = false, features = ["rustls-tls"] }
+# Same crate `imap` already pulls in; a direct dep lets us match the server's RFC 6154
+# SPECIAL-USE attributes (\\Sent, \\Drafts, …) instead of guessing roles from names.
+imap-proto = "0.16"
 mailparse = "0.16"
 # Robust HTML→text (html5ever parser) for the HTML fallback when an email has no
 # text/plain part — handles malformed Outlook/Word markup, <style>/<script>,

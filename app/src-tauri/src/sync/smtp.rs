@@ -17,7 +17,7 @@ use crate::store::{Attachment, ImapAccount, Security, Store};
 /// Send one message through the account's SMTP relay, honoring its security mode.
 /// When `sent_folder` is set, a copy of the sent message is saved to that IMAP
 /// folder afterwards (SMTP itself never does this).
-pub fn send(account: &ImapAccount, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[Attachment], sent_folder: Option<&str>) -> Result<(), SyncError> {
+pub fn send(account: &ImapAccount, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[Attachment], sent_folder: Option<&str>) -> Result<SendOutcome, SyncError> {
     let password = tokens::secret(&account.account_id, "smtp-pass").ok_or(SyncError::AuthRequired)?;
     let email = build_message(&account.email, to, cc, bcc, subject, body_html, attachments)?;
 
@@ -36,13 +36,30 @@ pub fn send(account: &ImapAccount, to: &str, cc: &str, bcc: &str, subject: &str,
     // shows up on the server (and thus syncs to webmail / other devices / the
     // "latest sent" view). Best-effort: the message is already delivered, so a
     // failure here is logged, never surfaced as a send failure.
+    let raw = email.formatted();
+    let mut sent_copy_error = None;
     if let Some(folder) = sent_folder {
-        let raw = email.formatted();
-        if let Err(e) = append_to_sent(account, folder, &raw) {
+        if is_gmail(account) {
+            // Gmail files sent mail itself; an APPEND would create a duplicate.
+        } else if let Err(e) = append_to_sent(account, folder, &raw) {
             log::warn!("mail sent but couldn't save a copy to '{folder}': {e}");
+            sent_copy_error = Some(e.to_string());
         }
     }
-    Ok(())
+    Ok(SendOutcome { raw, sent_copy_error })
+}
+
+/// What a successful SMTP send leaves behind for the caller: the exact bytes
+/// that were delivered (to mirror into the local store) and whether the IMAP
+/// Sent copy failed (surfaced to the user instead of being swallowed).
+pub struct SendOutcome {
+    pub raw: Vec<u8>,
+    pub sent_copy_error: Option<String>,
+}
+
+fn is_gmail(account: &ImapAccount) -> bool {
+    let host = account.imap_host.to_ascii_lowercase();
+    host.ends_with("gmail.com") || host.ends_with("googlemail.com")
 }
 
 /// Build the exact message shared by SMTP delivery and the IMAP Sent copy.
@@ -146,7 +163,7 @@ pub fn test_conn(host: &str, port: u16, security: Security) -> Result<(), SyncEr
 }
 
 /// Async wrapper: lettre's `SmtpTransport` is blocking, so run it off the async runtime.
-pub async fn send_async(account: ImapAccount, to: String, cc: String, bcc: String, subject: String, body_html: String, attachments: Vec<Attachment>, sent_folder: Option<String>) -> Result<(), SyncError> {
+pub async fn send_async(account: ImapAccount, to: String, cc: String, bcc: String, subject: String, body_html: String, attachments: Vec<Attachment>, sent_folder: Option<String>) -> Result<SendOutcome, SyncError> {
     tokio::task::spawn_blocking(move || send(&account, &to, &cc, &bcc, &subject, &body_html, &attachments, sent_folder.as_deref()))
         .await
         .map_err(|e| SyncError::Transient(e.to_string()))?
@@ -159,12 +176,45 @@ pub async fn send_for(store: &Store, account_id: &str, to: &str, cc: &str, bcc: 
     // role, else any folder whose name looks like "Sent". None → skip the copy
     // (e.g. folders not listed yet); the send itself still succeeds.
     let folders = store.folders(account_id);
-    let sent_folder = folders
-        .iter()
-        .find(|f| f.role.as_deref() == Some("sent"))
-        .or_else(|| folders.iter().find(|f| f.name.to_ascii_lowercase().contains("sent")))
-        .map(|f| f.name.clone());
-    send_async(account, to.to_string(), cc.to_string(), bcc.to_string(), subject.to_string(), body_html.to_string(), attachments.to_vec(), sent_folder).await
+    // Where the sent copy goes, most authoritative first:
+    //  1. the user's explicit override (Settings → account → Sent folder),
+    //  2. the folder the SERVER flagged \\Sent (RFC 6154 SPECIAL-USE),
+    //  3. a folder whose "sent" role we inferred from its name,
+    //  4. any folder whose name contains "sent".
+    // Servers commonly expose two sent-like folders (e.g. "INBOX.Sent" and
+    // "INBOX.Sent Messages"); only (1)/(2) reliably pick the one the user uses.
+    let sent_folder = account
+        .sent_folder
+        .clone()
+        .filter(|f| !f.trim().is_empty())
+        .or_else(|| folders.iter().find(|f| f.special_use && f.role.as_deref() == Some("sent")).map(|f| f.name.clone()))
+        .or_else(|| folders.iter().find(|f| f.role.as_deref() == Some("sent")).map(|f| f.name.clone()))
+        .or_else(|| folders.iter().find(|f| f.name.to_ascii_lowercase().contains("sent")).map(|f| f.name.clone()));
+    let group = store.setting("group").ok().flatten().map(|v| v != "0").unwrap_or(true);
+    let outcome = send_async(account, to.to_string(), cc.to_string(), bcc.to_string(), subject.to_string(), body_html.to_string(), attachments.to_vec(), sent_folder.clone()).await?;
+    // Per-account send warning the UI shows (cleared on a clean send).
+    let warn_key = format!("send_warning:{account_id}");
+    match (&sent_folder, &outcome.sent_copy_error) {
+        (Some(folder), None) => {
+            // Mirror the copy locally right away so it appears in Sent without a sync.
+            match crate::sync::imap::parse_rfc822(account_id, &outcome.raw, false, group, folder) {
+                Ok(thread) => {
+                    if let Err(e) = store.upsert_thread(&thread) {
+                        log::warn!("sent copy saved on the server but not locally: {e}");
+                    }
+                }
+                Err(e) => log::warn!("could not parse our own sent message for the local copy: {e}"),
+            }
+            let _ = store.set_setting(&warn_key, "");
+        }
+        (Some(folder), Some(err)) => {
+            let _ = store.set_setting(&warn_key, &format!("Sent, but the copy to “{folder}” failed: {err}"));
+        }
+        (None, _) => {
+            let _ = store.set_setting(&warn_key, "Sent, but no Sent folder is known for this account — pick one under Settings → Accounts.");
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

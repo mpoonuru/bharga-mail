@@ -3,6 +3,7 @@
 // so the whole UI is explorable. In the Tauri shell, these call real `#[tauri::command]`s.
 
 import type {
+  DeadLetter,
   Account,
   AiProfile,
   Calendar,
@@ -51,6 +52,8 @@ export interface ImapAccountInput {
   sameCredentials: boolean;
   smtpUsername?: string;
   smtpPassword?: string;
+  /** Optional override: which IMAP folder receives the sent copy. */
+  sentFolder?: string;
 }
 
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -547,6 +550,34 @@ export const api = {
         [t.subject, t.preview, t.participants.join(" "), ...t.messages.map((m) => m.bodyHtml)]
           .join(" ").toLowerCase().includes(lc));
     }
+  },
+
+  /** One conversation WITH full message bodies (the list is metadata-only). */
+  async getThread(id: string): Promise<Thread | null> {
+    try {
+      return await invoke<Thread | null>("get_thread", { id });
+    } catch {
+      return mockThreads.find((t) => t.id === id) ?? null;
+    }
+  },
+
+  /** Sends that failed permanently (bad address, rejected) — never shown before. */
+  async listDeadLetters(): Promise<DeadLetter[]> {
+    try {
+      return await invoke<DeadLetter[]>("list_dead_letters");
+    } catch {
+      return [];
+    }
+  },
+  /** Put a failed send back in the outbox (after the user fixed the cause). */
+  async retryDeadLetter(id: string): Promise<void> {
+    if (!inTauri) return;
+    await invoke<void>("retry_dead_letter", { id });
+  },
+  /** Drop a failed send for good. */
+  async discardDeadLetter(id: string): Promise<void> {
+    if (!inTauri) return;
+    await invoke<void>("discard_dead_letter", { id });
   },
 
   /** Durable user settings (theme, density, font, locale, …) from the core. */

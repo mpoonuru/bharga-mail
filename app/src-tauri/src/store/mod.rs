@@ -13,7 +13,31 @@ use serde::{Deserialize, Serialize};
 
 pub mod seed;
 
-const CALENDAR_SCHEMA_VERSION: i64 = 15;
+type MigrationStep = (i64, fn(&rusqlite::Transaction) -> rusqlite::Result<()>);
+
+/// Ordered schema migrations; `PRAGMA user_version` records the last one applied.
+const MIGRATIONS: &[MigrationStep] = &[
+    (1, migrate_v1_baseline),
+    (2, migrate_v2_integrity),
+    (3, migrate_v3_user_state),
+    (4, migrate_v4_message_meta),
+    (5, migrate_v5_secrets),
+    (6, migrate_v6_thread_folder),
+    (7, migrate_v7_settings),
+    (8, migrate_v8_reset_cache),
+    (9, migrate_v9_outbox_cc_bcc),
+    (10, migrate_v10_rebuild_previews),
+    (11, migrate_v11_thread_flags),
+    (12, migrate_v12_backfill_inline_attachments),
+    (13, migrate_v13_rededup_inline_attachments),
+    (14, migrate_v14_calendar),
+    (15, migrate_v15_calendar_notifications),
+    (16, migrate_v16_sent_folder_special_use),
+];
+
+/// Latest schema version, derived from MIGRATIONS so it can never lag behind it.
+/// Any DB below it gets a verified backup before migrating.
+const SCHEMA_VERSION: i64 = MIGRATIONS[MIGRATIONS.len() - 1].0;
 
 /// Create a consistent, verified SQLite snapshot before a schema upgrade.
 ///
@@ -205,6 +229,10 @@ pub struct ImapAccount {
     pub smtp_username: String,
     #[serde(rename = "sameCredentials", default = "default_true")]
     pub same_credentials: bool,
+    /// Explicit Sent-folder override (Settings → account). Wins over server
+    /// SPECIAL-USE and name guessing when set.
+    #[serde(rename = "sentFolder", default, skip_serializing_if = "Option::is_none")]
+    pub sent_folder: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -241,6 +269,10 @@ pub struct FolderInfo {
     /// Special-use role if known: inbox|sent|drafts|trash|archive|junk.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
+    /// True when `role` came from the server's RFC 6154 SPECIAL-USE attribute
+    /// (authoritative) rather than from the folder name.
+    #[serde(rename = "specialUse", default)]
+    pub special_use: bool,
     pub unread: u32,
     pub total: u32,
 }
@@ -272,6 +304,9 @@ pub struct OutboxItem {
     pub body: String,
     #[serde(default)]
     pub attachments: Vec<Attachment>,
+    /// Why a dead-lettered send failed (dead_letter rows only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     /// epoch seconds; the item is not sent until now >= scheduled_ts.
     #[serde(rename = "scheduledTs")]
     pub scheduled_ts: i64,
@@ -293,7 +328,7 @@ impl Store {
         } else {
             0
         };
-        backup_before_migration(&path, previous_version, CALENDAR_SCHEMA_VERSION)?;
+        backup_before_migration(&path, previous_version, SCHEMA_VERSION)?;
         let conn = Connection::open(path)?;
         let store = Store {
             conn: Mutex::new(conn),
@@ -326,24 +361,7 @@ impl Store {
         // writer; foreign_keys enforces referential integrity (fresh installs).
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
 
-        type Step = (i64, fn(&rusqlite::Transaction) -> rusqlite::Result<()>);
-        let steps: &[Step] = &[
-            (1, migrate_v1_baseline),
-            (2, migrate_v2_integrity),
-            (3, migrate_v3_user_state),
-            (4, migrate_v4_message_meta),
-            (5, migrate_v5_secrets),
-            (6, migrate_v6_thread_folder),
-            (7, migrate_v7_settings),
-            (8, migrate_v8_reset_cache),
-            (9, migrate_v9_outbox_cc_bcc),
-            (10, migrate_v10_rebuild_previews),
-            (11, migrate_v11_thread_flags),
-            (12, migrate_v12_backfill_inline_attachments),
-            (13, migrate_v13_rededup_inline_attachments),
-            (14, migrate_v14_calendar),
-            (15, migrate_v15_calendar_notifications),
-        ];
+        let steps = MIGRATIONS;
         let mut version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         for (v, step) in steps {
             if *v > version {
@@ -756,12 +774,12 @@ impl Store {
 
     // ---- folders (mailboxes) ----
 
-    pub fn upsert_folder(&self, account_id: &str, name: &str, role: Option<&str>) -> rusqlite::Result<()> {
+    pub fn upsert_folder(&self, account_id: &str, name: &str, role: Option<&str>, special_use: bool) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO folders (id, account_id, name, role) VALUES (?1,?2,?3,?4)
-             ON CONFLICT(id) DO UPDATE SET role=excluded.role",
-            params![format!("{account_id}:{name}"), account_id, name, role],
+            "INSERT INTO folders (id, account_id, name, role, special_use) VALUES (?1,?2,?3,?4,?5)
+             ON CONFLICT(id) DO UPDATE SET role=excluded.role, special_use=excluded.special_use",
+            params![format!("{account_id}:{name}"), account_id, name, role, special_use as i64],
         )?;
         Ok(())
     }
@@ -863,6 +881,8 @@ impl Store {
             "SELECT f.name, COALESCE(f.role,''),
                     (SELECT COUNT(*) FROM threads t WHERE t.account_id=f.account_id AND t.folder=f.name AND t.unread=1 AND t.deleted=0),
                     (SELECT COUNT(*) FROM threads t WHERE t.account_id=f.account_id AND t.folder=f.name AND t.deleted=0)
+,
+                    COALESCE(f.special_use, 0)
              FROM folders f WHERE f.account_id=?1
              ORDER BY (f.role IS NULL OR f.role=''), f.name",
         ) {
@@ -876,6 +896,7 @@ impl Store {
                 role: if role.is_empty() { None } else { Some(role) },
                 unread: r.get::<_, i64>(2)? as u32,
                 total: r.get::<_, i64>(3)? as u32,
+                special_use: r.get::<_, i64>(4).unwrap_or(0) != 0,
             })
         })
         .map(|it| it.filter_map(Result::ok).collect())
@@ -975,8 +996,65 @@ impl Store {
             .map(|it| it.filter_map(Result::ok).collect::<Vec<_>>())
             .unwrap_or_default();
 
-        // hydrate messages per thread
-        rows.into_iter().map(|mut t| { t.messages = self.messages_for(&conn, &t.id); t }).collect()
+        // One query for every message's METADATA — no body_html. The list view
+        // needs from/when/attachments; it was loading 100+ MB of HTML (2,000+
+        // per-thread queries) on every refresh. Bodies load per conversation via
+        // `thread()` when it is opened.
+        let mut by_thread: std::collections::HashMap<String, Vec<Message>> = std::collections::HashMap::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT m.thread_id, m.id, m.from_name, m.from_addr, m.to_json, m.ts, m.attachments, m.meta
+             FROM messages m JOIN threads t ON t.id = m.thread_id
+             WHERE t.deleted=0 ORDER BY m.created_at, m.ts",
+        ) {
+            let mapped = stmt.query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, Message {
+                    id: r.get(1)?,
+                    from: Party { name: r.get(2)?, address: r.get(3)? },
+                    to: unjson_parties(r.get::<_, String>(4).unwrap_or_default()),
+                    when: r.get(5)?,
+                    body_html: String::new(),
+                    attachments: serde_json::from_str(&r.get::<_, String>(6).unwrap_or_else(|_| "[]".into())).unwrap_or_default(),
+                    meta: r.get::<_, Option<String>>(7).ok().flatten().and_then(|s| serde_json::from_str(&s).ok()),
+                }))
+            });
+            if let Ok(it) = mapped {
+                for (tid, m) in it.flatten() {
+                    by_thread.entry(tid).or_default().push(m);
+                }
+            }
+        }
+        rows.into_iter().map(|mut t| { t.messages = by_thread.remove(&t.id).unwrap_or_default(); t }).collect()
+    }
+
+    /// One conversation WITH full message bodies — used when it is opened.
+    pub fn thread(&self, id: &str) -> Option<Thread> {
+        let conn = self.conn.lock().unwrap();
+        let mut t = conn
+            .query_row(
+                "SELECT id, account_id, subject, preview, participants, last_time, unread, labels, views, ai_summary, ai_draft, folder
+                 FROM threads WHERE id=?1 AND deleted=0",
+                [id],
+                |r| {
+                    Ok(Thread {
+                        id: r.get(0)?,
+                        account_id: r.get(1)?,
+                        subject: r.get(2)?,
+                        preview: r.get(3)?,
+                        participants: unjson(r.get::<_, String>(4).unwrap_or_default()),
+                        last_time: r.get(5)?,
+                        unread: r.get::<_, i64>(6)? != 0,
+                        labels: unjson(r.get::<_, String>(7).unwrap_or_default()),
+                        view: unjson(r.get::<_, String>(8).unwrap_or_default()),
+                        ai_summary: r.get(9)?,
+                        ai_draft: r.get(10)?,
+                        folder: r.get::<_, String>(11).unwrap_or_else(|_| "INBOX".into()),
+                        messages: Vec::new(),
+                    })
+                },
+            )
+            .ok()?;
+        t.messages = self.messages_for(&conn, &t.id);
+        Some(t)
     }
 
     fn messages_for(&self, conn: &Connection, thread_id: &str) -> Vec<Message> {
@@ -1171,8 +1249,8 @@ impl Store {
             + 1;
         if attempts >= max_attempts {
             tx.execute(
-                "INSERT OR REPLACE INTO dead_letter (id, account_id, recipient, subject, body, attachments, error, attempts, failed_at)
-                 SELECT id, account_id, recipient, subject, body, attachments, ?2, ?3, ?4 FROM outbox WHERE id=?1",
+                "INSERT OR REPLACE INTO dead_letter (id, account_id, recipient, cc, bcc, subject, body, attachments, error, attempts, failed_at)
+                 SELECT id, account_id, recipient, cc, bcc, subject, body, attachments, ?2, ?3, ?4 FROM outbox WHERE id=?1",
                 params![id, error, attempts, now],
             )?;
             tx.execute("DELETE FROM outbox WHERE id=?1", params![id])?;
@@ -1194,7 +1272,7 @@ impl Store {
     pub fn dead_letters(&self) -> Vec<OutboxItem> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = match conn.prepare(
-            "SELECT id, account_id, NULL as thread_id, recipient, subject, body, attachments, failed_at, 'dead' as status
+            "SELECT id, account_id, NULL as thread_id, recipient, subject, body, attachments, failed_at, 'dead' as status, cc, bcc, error
              FROM dead_letter ORDER BY failed_at DESC",
         ) {
             Ok(s) => s,
@@ -1203,6 +1281,29 @@ impl Store {
         stmt.query_map([], row_to_outbox)
             .map(|it| it.filter_map(Result::ok).collect())
             .unwrap_or_default()
+    }
+
+    /// Put a dead-lettered send back into the outbox (the user fixed the cause,
+    /// e.g. a bad address). Keeps the full recipient set.
+    pub fn requeue_dead_letter(&self, id: &str) -> rusqlite::Result<bool> {
+        let mut guard = self.conn.lock().unwrap();
+        let conn: &mut Connection = &mut *guard;
+        let tx = conn.transaction()?;
+        let now = chrono::Utc::now().timestamp();
+        let n = tx.execute(
+            "INSERT OR REPLACE INTO outbox (id, account_id, thread_id, recipient, cc, bcc, subject, body, attachments, scheduled_ts, status, attempts)
+             SELECT id, account_id, NULL, recipient, cc, bcc, subject, body, attachments, ?2, 'queued', 0 FROM dead_letter WHERE id=?1",
+            params![id, now],
+        )?;
+        tx.execute("DELETE FROM dead_letter WHERE id=?1", [id])?;
+        tx.commit()?;
+        Ok(n > 0)
+    }
+
+    /// Drop a dead-lettered send for good.
+    pub fn discard_dead_letter(&self, id: &str) -> rusqlite::Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        Ok(conn.execute("DELETE FROM dead_letter WHERE id=?1", [id])? > 0)
     }
 
     // ---- embeddings (semantic search) ----
@@ -1243,16 +1344,17 @@ impl Store {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO imap_accounts
-                (account_id, email, display_name, imap_host, imap_port, imap_security, imap_username, smtp_host, smtp_port, smtp_security, smtp_username)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+                (account_id, email, display_name, imap_host, imap_port, imap_security, imap_username, smtp_host, smtp_port, smtp_security, smtp_username, sent_folder)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
              ON CONFLICT(account_id) DO UPDATE SET
                 email=excluded.email, display_name=excluded.display_name,
                 imap_host=excluded.imap_host, imap_port=excluded.imap_port, imap_security=excluded.imap_security, imap_username=excluded.imap_username,
-                smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port, smtp_security=excluded.smtp_security, smtp_username=excluded.smtp_username",
+                smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port, smtp_security=excluded.smtp_security, smtp_username=excluded.smtp_username, sent_folder=excluded.sent_folder",
             params![
                 a.account_id, a.email, a.display_name,
                 a.imap_host, a.imap_port as i64, a.imap_security.as_str(), a.imap_username,
                 a.smtp_host, a.smtp_port as i64, a.smtp_security.as_str(), a.smtp_username,
+                a.sent_folder,
             ],
         )?;
         conn.execute(
@@ -1285,16 +1387,17 @@ impl Store {
         )?;
         tx.execute(
             "INSERT INTO imap_accounts
-                (account_id, email, display_name, imap_host, imap_port, imap_security, imap_username, smtp_host, smtp_port, smtp_security, smtp_username)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+                (account_id, email, display_name, imap_host, imap_port, imap_security, imap_username, smtp_host, smtp_port, smtp_security, smtp_username, sent_folder)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
              ON CONFLICT(account_id) DO UPDATE SET
                 email=excluded.email, display_name=excluded.display_name,
                 imap_host=excluded.imap_host, imap_port=excluded.imap_port, imap_security=excluded.imap_security, imap_username=excluded.imap_username,
-                smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port, smtp_security=excluded.smtp_security, smtp_username=excluded.smtp_username",
+                smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port, smtp_security=excluded.smtp_security, smtp_username=excluded.smtp_username, sent_folder=excluded.sent_folder",
             params![
                 a.account_id, a.email, a.display_name,
                 a.imap_host, a.imap_port as i64, a.imap_security.as_str(), a.imap_username,
                 a.smtp_host, a.smtp_port as i64, a.smtp_security.as_str(), a.smtp_username,
+                a.sent_folder,
             ],
         )?;
         for (kind, encrypted) in encrypted_secrets {
@@ -1323,7 +1426,7 @@ impl Store {
                     COALESCE(
                         (SELECT value FROM settings WHERE key = 'imap_same_credentials:' || imap_accounts.account_id),
                         CASE WHEN imap_username = smtp_username THEN 'true' ELSE 'false' END
-                    )
+                    ), sent_folder
              FROM imap_accounts WHERE account_id=?1",
             [account_id],
             |r| {
@@ -1340,6 +1443,7 @@ impl Store {
                     smtp_security: Security::parse(&r.get::<_, String>(9)?),
                     smtp_username: r.get(10)?,
                     same_credentials: r.get::<_, String>(11)? == "true",
+                    sent_folder: r.get(12)?,
                 })
             },
         )
@@ -1861,6 +1965,25 @@ fn migrate_v15_calendar_notifications(tx: &rusqlite::Transaction) -> rusqlite::R
     Ok(())
 }
 
+/// v16 — Sent-folder correctness + visible send failures:
+///  • imap_accounts.sent_folder — optional per-account override for where sent
+///    copies are APPENDed (servers with two sent-like folders, odd names).
+///  • folders.special_use — 1 when the role came from the server's RFC 6154
+///    SPECIAL-USE attribute (authoritative) instead of a name guess.
+///  • dead_letter.cc/bcc — keep the full recipient set so a failed send can be
+///    retried intact.
+fn migrate_v16_sent_folder_special_use(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    for sql in [
+        "ALTER TABLE imap_accounts ADD COLUMN sent_folder TEXT",
+        "ALTER TABLE folders ADD COLUMN special_use INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE dead_letter ADD COLUMN cc TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE dead_letter ADD COLUMN bcc TEXT NOT NULL DEFAULT ''",
+    ] {
+        tx.execute(sql, [])?;
+    }
+    Ok(())
+}
+
 /// Extract attachments embedded inline in HTML as `data:<mime>;base64,…` URIs
 /// (e.g. an iOS photo or a scanned document the sender pasted into the body).
 /// Returns `(filename, mime, decoded-bytes)` for each sizeable image/binary blob.
@@ -2041,6 +2164,7 @@ fn row_to_outbox(r: &rusqlite::Row) -> rusqlite::Result<OutboxItem> {
         // cc/bcc are appended columns; SELECTs that omit them (e.g. dead_letters) default to empty.
         cc: r.get(9).unwrap_or_default(),
         bcc: r.get(10).unwrap_or_default(),
+        error: r.get(11).ok(),
     })
 }
 
@@ -2111,27 +2235,18 @@ mod tests {
     };
 
     fn schema_13_database() -> PathBuf {
+        database_at_schema(13)
+    }
+
+    /// A DB file migrated only up to `upto`, as an older install would have it.
+    fn database_at_schema(upto: i64) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
             "bharga-calendar-migration-{}-{}.db",
             std::process::id(),
             rand::random::<u64>()
         ));
         let mut conn = Connection::open(&path).unwrap();
-        let steps: &[(i64, fn(&rusqlite::Transaction) -> rusqlite::Result<()>)] = &[
-            (1, migrate_v1_baseline),
-            (2, migrate_v2_integrity),
-            (3, migrate_v3_user_state),
-            (4, migrate_v4_message_meta),
-            (5, migrate_v5_secrets),
-            (6, migrate_v6_thread_folder),
-            (7, migrate_v7_settings),
-            (8, migrate_v8_reset_cache),
-            (9, migrate_v9_outbox_cc_bcc),
-            (10, migrate_v10_rebuild_previews),
-            (11, migrate_v11_thread_flags),
-            (12, migrate_v12_backfill_inline_attachments),
-            (13, migrate_v13_rededup_inline_attachments),
-        ];
+        let steps = MIGRATIONS.iter().filter(|(version, _)| *version <= upto);
         for (version, step) in steps {
             let tx = conn.transaction().unwrap();
             step(&tx).unwrap();
@@ -2152,7 +2267,7 @@ mod tests {
         let path = schema_13_database();
         let store = Store::open(path.clone()).unwrap();
 
-        assert_eq!(store.schema_version().unwrap(), 15);
+        assert_eq!(store.schema_version().unwrap(), 16);
         assert!(store.table_exists("calendar_events").unwrap());
         assert_eq!(
             store
@@ -2163,7 +2278,7 @@ mod tests {
         );
 
         let file_name = path.file_name().unwrap().to_string_lossy();
-        let prefix = format!("{file_name}.schema-13-to-15-");
+        let prefix = format!("{file_name}.schema-13-to-16-");
         let backups = std::fs::read_dir(path.parent().unwrap())
             .unwrap()
             .filter_map(Result::ok)
@@ -2247,6 +2362,7 @@ mod tests {
             reminders: Vec::new(),
         };
         let outbox = OutboxItem {
+        error: None,
             id: "calendar-reply-1".into(),
             account_id: "account-1".into(),
             thread_id: Some("thread-1".into()),
@@ -2465,6 +2581,7 @@ mod tests {
     fn imap_account_roundtrip() {
         let s = Store::in_memory().unwrap();
         let acct = ImapAccount {
+        sent_folder: None,
             account_id: "imap1".into(), email: "me@host.de".into(), display_name: "Me".into(),
             imap_host: "imap.host.de".into(), imap_port: 993, imap_security: Security::Ssl, imap_username: "me@host.de".into(),
             smtp_host: "smtp.host.de".into(), smtp_port: 587, smtp_security: Security::Starttls, smtp_username: "me@host.de".into(), same_credentials: false,
@@ -2481,6 +2598,7 @@ mod tests {
     fn imap_account_and_prepared_secrets_commit_together() {
         let s = Store::in_memory().unwrap();
         let acct = ImapAccount {
+        sent_folder: None,
             account_id: "imap:me@host.de".into(), email: "me@host.de".into(), display_name: "Me".into(),
             imap_host: "imap.host.de".into(), imap_port: 993, imap_security: Security::Ssl, imap_username: "me@host.de".into(),
             smtp_host: "smtp.host.de".into(), smtp_port: 587, smtp_security: Security::Starttls, smtp_username: "me@host.de".into(), same_credentials: true,
@@ -2521,6 +2639,7 @@ mod tests {
         s.migrate().unwrap(); // drops the stale table and recreates the new shape
         // A fresh account now saves and reads back with the new columns.
         let acct = ImapAccount {
+        sent_folder: None,
             account_id: "new".into(), email: "n@x.de".into(), display_name: "New".into(),
             imap_host: "imap.x.de".into(), imap_port: 993, imap_security: Security::Ssl, imap_username: "n@x.de".into(),
             smtp_host: "smtp.x.de".into(), smtp_port: 465, smtp_security: Security::Ssl, smtp_username: "n@x.de".into(), same_credentials: true,
@@ -2539,6 +2658,58 @@ mod tests {
                 to: vec![], when: date.into(), body_html: format!("<p>{body}</p>"), attachments: vec![], meta: None,
             }],
         }
+    }
+
+    #[test]
+    fn migration_versions_are_strictly_increasing() {
+        // A duplicated version is silently skipped by `migrate` (it only runs
+        // steps above user_version), which once dropped the calendar tables.
+        for pair in MIGRATIONS.windows(2) {
+            assert!(pair[0].0 < pair[1].0, "migration {} is not above {}", pair[1].0, pair[0].0);
+        }
+        assert_eq!(SCHEMA_VERSION, MIGRATIONS.last().unwrap().0);
+    }
+
+    #[test]
+    fn upgrade_from_previous_schema_takes_a_backup() {
+        let previous = SCHEMA_VERSION - 1;
+        let path = database_at_schema(previous);
+        let store = Store::open(path.clone()).unwrap();
+        assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
+
+        let file_name = path.file_name().unwrap().to_string_lossy();
+        let prefix = format!("{file_name}.schema-{previous}-to-{SCHEMA_VERSION}-");
+        let backups = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(&prefix))
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1, "every upgrade must leave a verified backup");
+
+        drop(store);
+        std::fs::remove_file(&path).unwrap();
+        for backup in backups {
+            std::fs::remove_file(path.parent().unwrap().join(backup)).unwrap();
+        }
+    }
+
+    #[test]
+    fn thread_list_omits_bodies_and_thread_loads_them() {
+        let s = Store::in_memory().unwrap();
+        s.upsert_account("a1", "x@y.z", "gmail", "X").unwrap();
+        s.upsert_thread(&thread_with("t1", "Fri, 29 May 2026 10:00:00 +0000", "big body")).unwrap();
+
+        let listed = s.threads();
+        assert_eq!(listed.len(), 1);
+        let message = &listed[0].messages[0];
+        assert_eq!(message.id, "m-t1");
+        assert_eq!(message.from.address, "a@b.c");
+        assert!(message.body_html.is_empty(), "list must not ship message bodies");
+
+        let full = s.thread("t1").expect("thread exists");
+        assert_eq!(full.messages[0].body_html, "<p>big body</p>");
+        assert!(s.thread("missing").is_none());
     }
 
     #[test]
@@ -2611,6 +2782,7 @@ mod tests {
     fn outbox_retries_then_dead_letters() {
         let s = Store::in_memory().unwrap();
         let item = OutboxItem {
+        error: None,
             id: "o1".into(), account_id: "a1".into(), thread_id: None,
             to: "x@y.z".into(), cc: String::new(), bcc: String::new(),
             subject: "hi".into(), body: "b".into(),

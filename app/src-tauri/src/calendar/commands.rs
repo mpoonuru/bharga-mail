@@ -667,6 +667,7 @@ pub fn respond_to_invitation(
         _ => unreachable!(),
     };
     let outbox = OutboxItem {
+        error: None,
         id: format!("calendar-reply:{}", Uuid::new_v4()),
         account_id: input.account_id,
         thread_id: input.thread_id,

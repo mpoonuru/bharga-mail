@@ -297,6 +297,33 @@ export function Stream() {
   const visibleThreadKey = visibleThreadIds.join("\u0001");
   const selectedCount = selectedThreadIds.size;
 
+  // Select every visible conversation (⌘A / "Select all" button).
+  const selectAllVisible = () => {
+    setSelectedThreadIds(new Set(visibleThreadIds));
+    selectionAnchorId.current = visibleThreadIds[0] ?? null;
+  };
+  // ⌘A / Ctrl+A selects rows (not page text) unless the user is typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "a") return;
+      const el = e.target as HTMLElement | null;
+      if (el && (["INPUT", "TEXTAREA"].includes(el.tagName) || el.isContentEditable)) return;
+      if (visibleThreadIds.length === 0) return;
+      e.preventDefault();
+      selectAllVisible();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleThreadKey]);
+  // Drag-select (Gmail/Outlook style): press a row checkbox, sweep across rows.
+  const dragSelecting = useRef(false);
+  useEffect(() => {
+    const end = () => { dragSelecting.current = false; document.body.classList.remove("drag-selecting"); };
+    window.addEventListener("mouseup", end);
+    return () => window.removeEventListener("mouseup", end);
+  }, []);
+
   // Live sync and filtering can remove rows while a selection is active. Keep the
   // selection constrained to what the person can still see and act on.
   useEffect(() => {
@@ -444,6 +471,9 @@ export function Stream() {
               <button type="button" onClick={() => archiveSelected()} disabled={bulkBusy} title="Archive selected">
                 <Icon name="archive" size={14} /> <span>Archive</span>
               </button>
+              <button type="button" onClick={selectAllVisible} disabled={bulkBusy || selectedCount === visibleThreadIds.length} title="Select all (⌘A)">
+                <span>Select all ({visibleThreadIds.length})</span>
+              </button>
               <button type="button" className="selection-clear" onClick={clearThreadSelection} disabled={bulkBusy} title="Clear selection" aria-label="Clear selection">
                 <Icon name="close" size={14} />
               </button>
@@ -514,6 +544,8 @@ export function Stream() {
                   active={selectedThreadId === r.t.id}
                   checked={selectedThreadIds.has(r.t.id)}
                   onSelect={(event) => toggleThreadSelection(r.t.id, event)}
+                  onSelectStart={() => { dragSelecting.current = true; document.body.classList.add("drag-selecting"); }}
+                  onSelectSweep={() => { if (dragSelecting.current) setSelectedThreadIds((cur) => (cur.has(r.t.id) ? cur : new Set(cur).add(r.t.id))); }}
                   onOpen={(event) => activateThread(r.t.id, () => selectThread(r.t.id, r.m.id), event)}
                   onArchive={() => archiveThread(r.t.id)}
                   onSnooze={() => snoozeThread(r.t.id)}
@@ -645,7 +677,7 @@ export function Stream() {
 }
 
 function MailRow({
-  t, msg, active, checked, onSelect, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, coarsePointer,
+  t, msg, active, checked, onSelect, onSelectStart, onSelectSweep, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, coarsePointer,
   convo, count, expanded, onToggleExpand,
 }: {
   t: Thread;
@@ -653,6 +685,8 @@ function MailRow({
   active: boolean;
   checked: boolean;
   onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  onSelectStart?: () => void;
+  onSelectSweep?: () => void;
   onOpen: (event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => void;
   onArchive: () => void;
   onSnooze: () => void;
@@ -688,7 +722,7 @@ function MailRow({
   // re-derived from HTML the moment it smells like leaked Outlook <style>.
   const rowPreview = previewText(t, m, !!convo);
   return (
-    <div className="mail-wrap">
+    <div className="mail-wrap" onMouseEnter={onSelectSweep}>
       {/* swipe-action background — only rendered while actually dragging */}
       {dragging && (
         <div className="swipe-bg">
@@ -716,6 +750,7 @@ function MailRow({
           aria-label={`${checked ? "Deselect" : "Select"} ${t.subject}`}
           aria-pressed={checked}
           onClick={onSelect}
+          onMouseDown={(e) => { if (e.button === 0) onSelectStart?.(); }}
         >
           {checked && <span aria-hidden>✓</span>}
         </button>

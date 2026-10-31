@@ -322,10 +322,14 @@
   .mail { @apply flex items-center gap-2 rounded-xl border border-transparent; padding: var(--row-pad); transition: background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), color var(--motion-standard) var(--ease); background: transparent; }
   .mail:hover { background: var(--hover-surface); }
   .mail.multi-sel { border-color: color-mix(in oklch, var(--accent) 45%, var(--border)); background: var(--accent-soft); }
-  .mail-select { @apply relative shrink-0 inline-flex items-center justify-center border-none bg-transparent p-0 text-[12px] font-bold text-white opacity-0; width: var(--control-sm); height: var(--control-sm); transition: opacity var(--motion-instant) var(--ease); }
+  .mail-select { @apply relative shrink-0 inline-flex items-center justify-center border-none bg-transparent p-0 text-[12px] font-bold text-white opacity-40; width: var(--control-sm); height: var(--control-sm); transition: opacity var(--motion-instant) var(--ease); }
   .mail-select::before { content: ""; @apply absolute h-5 w-5 rounded-full border border-border-2 bg-bg-2; transition: background-color var(--motion-instant) var(--ease), border-color var(--motion-instant) var(--ease); }
   .mail-select > span { @apply relative z-[1]; }
   .mail:hover .mail-select, .mail-select:focus-visible, .mail.multi-sel .mail-select { @apply opacity-100; }
+  /* Selection affordance stays discoverable: the empty circle is always faintly
+     visible, brightens on hover/focus, and is solid once selected. */
+  body.drag-selecting { user-select: none; }
+  body.drag-selecting .mail-select { @apply opacity-100; }
   .mail.multi-sel .mail-select::before { border-color: var(--accent-action); background: var(--accent-action); }
   .mail-open { @apply flex min-w-0 flex-1 items-start gap-3 border-none bg-transparent p-0 text-left text-text; font: inherit; }
   .mail:has(.mail-open:focus-visible), .convo-kid:focus-visible {
@@ -1063,3 +1067,10 @@
   .diagnostics-summary > div:nth-child(3) { border-bottom: 0; padding-left: 0; }
   .diagnostics-summary > div:nth-child(4) { border-bottom: 0; }
 }
+
+/* Send-failure banner: stacked above the auto-update banner, text wraps instead
+   of clipping. */
+.send-failures { bottom: 72px; max-width: 560px; align-items: flex-start; }
+.send-failures-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.send-failure { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.send-failure > span { min-width: 0; overflow-wrap: anywhere; }

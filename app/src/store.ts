@@ -32,6 +32,15 @@ interface AppState {
   selectedThreadId: string | null;
   selectedMessageId: string | null;
   setView: (v: View) => void;
+  /** Load full message bodies for one conversation (the list is metadata-only). */
+  hydrateThread: (id: string) => Promise<void>;
+  /** Permanently failed sends + per-account send warnings, shown in a banner. */
+  deadLetters: Awaited<ReturnType<typeof api.listDeadLetters>>;
+  sendWarnings: Record<string, string>;
+  loadDeadLetters: () => Promise<void>;
+  retryDeadLetter: (id: string) => Promise<void>;
+  discardDeadLetter: (id: string) => Promise<void>;
+  dismissSendWarning: (accountId: string) => Promise<void>;
   selectThread: (id: string, messageId?: string) => void;
 
   // chrome state
@@ -259,8 +268,39 @@ export const useApp = create<AppState>((set, get) => ({
   // the Stage keeps showing the previously-opened email (it resolves the thread
   // from the GLOBAL thread list, which still contains the old folder's mail).
   setView: (v) => set({ view: v, selectedFolder: null, selectedThreadId: null, selectedMessageId: null, composeOpen: false, drawerOpen: false, mobileStage: false }),
+  hydrateThread: async (id) => {
+    const current = get().threads.find((t) => t.id === id);
+    if (!current || current.messages.some((m) => m.bodyHtml)) return; // already has bodies
+    const full = await api.getThread(id);
+    if (!full) return;
+    set({ threads: get().threads.map((t) => (t.id === id ? { ...full, unread: t.unread } : t)) });
+  },
+  deadLetters: [],
+  sendWarnings: {},
+  loadDeadLetters: async () => {
+    const [deadLetters, settings] = await Promise.all([api.listDeadLetters(), api.getSettings()]);
+    const sendWarnings: Record<string, string> = {};
+    for (const [k, v] of Object.entries(settings)) {
+      if (k.startsWith("send_warning:") && v) sendWarnings[k.slice("send_warning:".length)] = v;
+    }
+    set({ deadLetters, sendWarnings });
+  },
+  retryDeadLetter: async (id) => {
+    await api.retryDeadLetter(id);
+    await get().loadDeadLetters();
+    await api.flushOutbox().catch(() => 0);
+  },
+  discardDeadLetter: async (id) => {
+    await api.discardDeadLetter(id);
+    await get().loadDeadLetters();
+  },
+  dismissSendWarning: async (accountId) => {
+    await api.setSetting(`send_warning:${accountId}`, "").catch(() => {});
+    set({ sendWarnings: Object.fromEntries(Object.entries(get().sendWarnings).filter(([k]) => k !== accountId)) });
+  },
   selectThread: (id, messageId) => {
     set({ selectedThreadId: id, selectedMessageId: messageId ?? null, mobileStage: true });
+    void get().hydrateThread(id);
     // Opening a conversation marks it read — locally now, and \Seen on the server
     // (best-effort). Only fire when it was actually unread.
     const t = get().threads.find((x) => x.id === id);
@@ -310,10 +350,10 @@ export const useApp = create<AppState>((set, get) => ({
     });
   },
   aiReplyFor: null,
-  requestAiReply: (id) => set({ aiReplyFor: id, selectedThreadId: id, mobileStage: true }),
+  requestAiReply: (id) => { set({ aiReplyFor: id, selectedThreadId: id, mobileStage: true }); void get().hydrateThread(id); },
   clearAiReply: () => set({ aiReplyFor: null }),
   composeIntent: null,
-  requestCompose: (id, mode) => set({ composeIntent: { id, mode }, selectedThreadId: id, mobileStage: true }),
+  requestCompose: (id, mode) => { set({ composeIntent: { id, mode }, selectedThreadId: id, mobileStage: true }); void get().hydrateThread(id); },
   clearComposeIntent: () => set({ composeIntent: null }),
   setDrawer: (drawerOpen) => set({ drawerOpen }),
   backToStream: () => set({ mobileStage: false, composeOpen: false }),
@@ -367,6 +407,7 @@ export const useApp = create<AppState>((set, get) => ({
         set({ threads, accounts });
         const acct = get().selectedAccountId;
         if (acct) void get().loadFolders(acct);
+        void get().loadDeadLetters();
         // Auto-organize newly-arrived mail (summarize + triage). Incremental and
         // a no-op without a model, so it's cheap when nothing's new.
         if (get().autoOrganize) void get().triageInbox();

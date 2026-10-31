@@ -65,6 +65,7 @@ export function App() {
     applyFont(useApp.getState().font);
     applyLocale(useApp.getState().locale);
     void load();
+    void useApp.getState().loadDeadLetters();
     // Subscribe to background live-sync (auto-refresh inbox + notify on new mail).
     void useApp.getState().startLiveSync();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,6 +112,7 @@ export function App() {
       <ModelPicker />
       <AccountConnectorDialog />
       <UndoToast />
+      <SendFailures />
       {updateVer && (
         <div className="update-banner" role="status">
           <Icon name="cloud" size={15} weight="duotone" />
@@ -299,4 +301,34 @@ function ThemeButton() {
 function CommandButton() {
   const setCmd = useApp((s) => s.setCmd);
   return <button className="iconbtn" title="Command (⌘K)" onClick={() => setCmd(true)}><Icon name="command" size={14} /></button>;
+}
+
+/** Permanently failed sends ("Not sent") and "sent, but the copy to Sent failed"
+ *  warnings. These were logged and forgotten before; now the user sees them and
+ *  can retry, discard or dismiss. */
+function SendFailures() {
+  const { deadLetters, sendWarnings, retryDeadLetter, discardDeadLetter, dismissSendWarning, accounts } = useApp();
+  const warnings = Object.entries(sendWarnings);
+  if (deadLetters.length === 0 && warnings.length === 0) return null;
+  const label = (accountId: string) => accounts.find((a) => a.id === accountId)?.email ?? accountId;
+  return (
+    <div className="update-banner send-failures" role="alert">
+      <Icon name="shieldWarning" size={15} weight="duotone" />
+      <div className="send-failures-body">
+        {deadLetters.map((d) => (
+          <div className="send-failure" key={d.id}>
+            <span><b>Not sent</b> to {d.to}{d.subject ? ` — “${d.subject}”` : ""}{d.error ? ` (${d.error})` : ""}</span>
+            <button className="update-btn" onClick={() => void retryDeadLetter(d.id)}>Retry</button>
+            <button className="update-x" title="Discard" onClick={() => void discardDeadLetter(d.id)}><Icon name="close" size={13} /></button>
+          </div>
+        ))}
+        {warnings.map(([accountId, msg]) => (
+          <div className="send-failure" key={accountId}>
+            <span>{label(accountId)}: {msg}</span>
+            <button className="update-x" title="Dismiss" onClick={() => void dismissSendWarning(accountId)}><Icon name="close" size={13} /></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }

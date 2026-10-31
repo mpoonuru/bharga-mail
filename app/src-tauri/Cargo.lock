@@ -340,6 +340,7 @@ dependencies = [
  "html2text",
  "icalendar",
  "imap",
+ "imap-proto",
  "keyring",
  "lettre",
  "log",

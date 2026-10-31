@@ -35,6 +35,18 @@ pub async fn run(app: AppHandle, store: Arc<Store>) {
         for acct in store.accounts() {
             // `insert` returns true the first time we see this IMAP account.
             if acct.id.starts_with("imap:") && idling.insert(acct.id.clone()) {
+                // Refresh the folder list once per account so the server's SPECIAL-USE
+                // flags (\\Sent etc.) are known before the first send — no manual
+                // "Refresh folders" needed.
+                {
+                    let s = store.clone();
+                    let id = acct.id.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = crate::sync::imap::list_folders_async(s, id.clone()).await {
+                            log::warn!("startup folder list for {id}: {e}");
+                        }
+                    });
+                }
                 let a = app.clone();
                 let s = store.clone();
                 let id = acct.id.clone();

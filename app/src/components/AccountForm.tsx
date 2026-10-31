@@ -1,8 +1,8 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { api } from "@/lib/bridge";
 import { useApp } from "@/store";
 import { Checkbox } from "@/components/ui/Checkbox";
-import { Select } from "@/components/ui/Select";
+import { Select, type SelectOption } from "@/components/ui/Select";
 import { Icon } from "@/components/icons";
 
 type Sec = "ssl" | "starttls" | "none";
@@ -25,6 +25,7 @@ interface AccountFormProps {
     email: string; displayName: string;
     imapHost: string; imapPort: number; imapSecurity: Sec; imapUsername: string;
     smtpHost: string; smtpPort: number; smtpSecurity: Sec; smtpUsername: string;
+    sentFolder: string;
     sameCredentials: boolean;
   }>;
   editing?: boolean;
@@ -47,6 +48,7 @@ export function AccountForm({ accountId, onClose, onStatus, initial, editing = f
     smtpPort: initial?.smtpPort ?? 465,
     smtpSecurity: (initial?.smtpSecurity ?? "ssl") as Sec,
     smtpUsername: initial?.smtpUsername ?? "",
+    sentFolder: initial?.sentFolder ?? "",
     smtpPassword: "",
   });
   const initialUsesSeparateSmtp = initial?.sameCredentials === false;
@@ -77,6 +79,15 @@ export function AccountForm({ accountId, onClose, onStatus, initial, editing = f
     && !!f.smtpHost.trim()
     && !!f.imapPassword
     && (sameCreds || (!!f.smtpUsername.trim() && !!f.smtpPassword));
+  // Existing accounts can pick which folder receives sent copies. Servers often
+  // expose two sent-like folders; the server-flagged one (\\Sent) is marked.
+  const [folderOpts, setFolderOpts] = useState<SelectOption[]>([]);
+  useEffect(() => {
+    if (!editing || !accountId) return;
+    void api.folders(accountId).then((fs) =>
+      setFolderOpts(fs.map((fo) => ({ value: fo.name, label: fo.specialUse && fo.role === "sent" ? `${fo.name} (server Sent)` : fo.name }))),
+    );
+  }, [editing, accountId]);
   const payload = () => ({
     accountId: editing ? accountId : undefined,
     email: f.email,
@@ -90,6 +101,7 @@ export function AccountForm({ accountId, onClose, onStatus, initial, editing = f
     smtpPort: f.smtpPort,
     smtpSecurity: f.smtpSecurity,
     sameCredentials: sameCreds,
+    sentFolder: f.sentFolder || undefined,
     smtpUsername: sameCreds ? undefined : f.smtpUsername || undefined,
     smtpPassword: sameCreds ? undefined : f.smtpPassword || undefined,
   });
@@ -173,6 +185,11 @@ export function AccountForm({ accountId, onClose, onStatus, initial, editing = f
           {!sameCreds && (
             <div className="af-grid">
               <Field label="SMTP username" htmlFor={fieldId("smtp-username")}><input id={fieldId("smtp-username")} aria-label="SMTP username" className="af-input" autoComplete="username" value={f.smtpUsername} onChange={(e) => set({ smtpUsername: e.target.value })} /></Field>
+              {editing && folderOpts.length > 0 && (
+                <Field label="Sent folder (where sent copies are saved)" htmlFor={fieldId("sent-folder")} full>
+                  <Select value={f.sentFolder} onChange={(v) => set({ sentFolder: v })} options={[{ value: "", label: "Automatic (server \\Sent flag)" }, ...folderOpts]} />
+                </Field>
+              )}
               <Field label={canPreserveSmtpPassword ? "SMTP password (leave blank to keep saved password)" : "SMTP password"} htmlFor={fieldId("smtp-password")}><input id={fieldId("smtp-password")} aria-label="SMTP password" className="af-input" type="password" autoComplete="current-password" value={f.smtpPassword} onChange={(e) => set({ smtpPassword: e.target.value })} /></Field>
             </div>
           )}

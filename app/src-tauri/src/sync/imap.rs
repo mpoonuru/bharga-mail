@@ -230,18 +230,40 @@ pub fn list_folders(store: &Store, account_id: &str) -> Result<Vec<String>, Sync
     let mut out = Vec::new();
     for nm in names.iter() {
         let name = nm.name().to_string();
-        let role = folder_role(&name);
-        let _ = store.upsert_folder(account_id, &name, role.as_deref());
+        // A \\Noselect mailbox is a pure hierarchy node (e.g. "INBOX" on some
+        // servers, or a namespace prefix): it can never hold mail, so never
+        // treat it as Sent/Drafts/… or offer it as an APPEND target.
+        let noselect = nm.attributes().iter().any(|a| matches!(a, imap_proto::NameAttribute::NoSelect));
+        // Prefer what the SERVER says (RFC 6154 SPECIAL-USE \\Sent etc.); only
+        // guess from the name when the server sent no attribute.
+        let from_server = if noselect { None } else { special_use_role(nm.attributes()) };
+        let role = from_server.clone().or_else(|| folder_role(&name));
+        let _ = store.upsert_folder(account_id, &name, role.as_deref(), from_server.is_some());
         out.push(name);
     }
     let _ = session.logout();
     // Always make sure INBOX exists in the list.
     if !out.iter().any(|n| n.eq_ignore_ascii_case("INBOX")) {
-        let _ = store.upsert_folder(account_id, "INBOX", Some("inbox"));
+        let _ = store.upsert_folder(account_id, "INBOX", Some("inbox"), false);
         out.insert(0, "INBOX".into());
     }
     log::info!("imap: {} folders for {}", out.len(), acct.email);
     Ok(out)
+}
+
+/// Map the server-declared RFC 6154 SPECIAL-USE attribute to our role. This is
+/// authoritative and language-independent — Dovecot, Gmail, Exchange, iCloud
+/// all flag their real Sent folder with `\\Sent`, whatever it is called.
+fn special_use_role(attrs: &[imap_proto::NameAttribute<'_>]) -> Option<String> {
+    use imap_proto::NameAttribute as A;
+    attrs.iter().find_map(|a| match a {
+        A::Sent => Some("sent"),
+        A::Drafts => Some("drafts"),
+        A::Trash => Some("trash"),
+        A::Junk => Some("junk"),
+        A::Archive | A::All => Some("archive"),
+        _ => None,
+    }).map(str::to_string)
 }
 
 /// Infer a folder's special-use role from its name (covers the common
@@ -252,16 +274,20 @@ fn folder_role(name: &str) -> Option<String> {
     if leaf == "inbox" {
         return Some("inbox".into());
     }
-    if leaf.contains("sent") {
+    // Name fallback (only when the server sent no SPECIAL-USE attribute). Covers
+    // the localisations European providers actually use: DE gesendet(e)
+    // (Elemente|Objekte), FR envoy(é|e)s, IT (posta )inviata, ES enviados,
+    // NL verzonden, PT enviados — not just English "sent".
+    if leaf.contains("sent") || leaf.contains("gesendet") || leaf.contains("envoy") || leaf.contains("inviat") || leaf.contains("enviad") || leaf.contains("verzonden") {
         return Some("sent".into());
     }
-    if leaf.contains("draft") {
+    if leaf.contains("draft") || leaf.contains("entw") || leaf.contains("brouillon") || leaf.contains("bozz") || leaf.contains("borrador") || leaf.contains("concept") {
         return Some("drafts".into());
     }
-    if leaf.contains("trash") || leaf.contains("deleted") {
+    if leaf.contains("trash") || leaf.contains("deleted") || leaf.contains("papierkorb") || leaf.contains("gelöscht") || leaf.contains("corbeille") || leaf.contains("cestino") || leaf.contains("papelera") || leaf.contains("prullenbak") {
         return Some("trash".into());
     }
-    if leaf.contains("junk") || leaf.contains("spam") {
+    if leaf.contains("junk") || leaf.contains("spam") || leaf.contains("unerwünscht") || leaf.contains("indésirable") || leaf.contains("indesiderat") {
         return Some("junk".into());
     }
     if leaf.contains("archive") {
@@ -310,11 +336,11 @@ pub fn manage_folder(store: &Store, account_id: &str, action: FolderAction) -> R
     // Mirror the change in the local store so the sidebar updates immediately.
     match action {
         FolderAction::Create(name) => {
-            let _ = store.upsert_folder(account_id, &name, folder_role(&name).as_deref());
+            let _ = store.upsert_folder(account_id, &name, folder_role(&name).as_deref(), false);
         }
         FolderAction::Rename(from, to) => {
             store.rename_folder_local(account_id, &from, &to);
-            let _ = store.upsert_folder(account_id, &to, folder_role(&to).as_deref());
+            let _ = store.upsert_folder(account_id, &to, folder_role(&to).as_deref(), false);
         }
         FolderAction::Delete(name) => store.delete_folder_local(account_id, &name),
     }
@@ -570,7 +596,7 @@ pub async fn fetch_folder_async(store: std::sync::Arc<Store>, account_id: String
 
 /// Parse a raw RFC822 message into a store Thread (one message per thread,
 /// keyed by Message-ID). Pure + unit-tested.
-fn parse_rfc822(account_id: &str, raw: &[u8], unread: bool, group: bool, folder: &str) -> Result<Thread, SyncError> {
+pub(crate) fn parse_rfc822(account_id: &str, raw: &[u8], unread: bool, group: bool, folder: &str) -> Result<Thread, SyncError> {
     let mail = mailparse::parse_mail(raw)
         .map_err(|error| SyncError::Transient(format!("invalid RFC822 message: {error}")))?;
     let h = |name: &str| mail.headers.get_first_value(name);

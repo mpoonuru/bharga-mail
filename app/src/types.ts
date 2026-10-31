@@ -58,6 +58,8 @@ export interface MailConnectionError {
 }
 
 export interface FolderInfo {
+  /** True when the role came from the server's RFC 6154 SPECIAL-USE flag (authoritative). */
+  specialUse?: boolean;
   name: string;
   role?: string; // inbox|sent|drafts|trash|junk|archive
   unread: number;
@@ -94,6 +96,18 @@ export interface Message {
 }
 
 export type Label = "urgent" | "ai-draft" | "meeting" | "receipt" | "newsletter";
+
+/** A send that failed permanently and was dead-lettered. */
+export interface DeadLetter {
+  id: string;
+  accountId: string;
+  to: string;
+  cc?: string;
+  bcc?: string;
+  subject: string;
+  error?: string;
+  failedAt?: number;
+}
 
 export interface Thread {
   id: string;
