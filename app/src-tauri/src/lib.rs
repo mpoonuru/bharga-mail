@@ -545,6 +545,12 @@ fn mail_command_error(error: sync::SyncError) -> MailCommandError {
             retryable: true,
             account_id: Some(account_id),
         },
+        sync::SyncError::Permanent(_) => MailCommandError {
+            code: "invalid_message",
+            message: "The message could not be sent — check the recipient addresses.",
+            retryable: false,
+            account_id: None,
+        },
         sync::SyncError::ProviderUnavailable | sync::SyncError::Transient(_) => {
             MailCommandError {
                 code: "provider_unavailable",
@@ -1579,6 +1585,9 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
+                // html5ever logs a WARN for every foster-parented table node in
+                // real-world email HTML — hundreds per sync — burying real warnings.
+                .level_for("html5ever", log::LevelFilter::Error)
                 .targets([
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {

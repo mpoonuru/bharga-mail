@@ -48,17 +48,30 @@ pub fn send(account: &ImapAccount, to: &str, cc: &str, bcc: &str, subject: &str,
 /// Build the exact message shared by SMTP delivery and the IMAP Sent copy.
 fn build_message(from: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[Attachment]) -> Result<Message, SyncError> {
     let mut builder = Message::builder()
-        .from(from.parse().map_err(|_| SyncError::Transient("bad from address".into()))?)
-        .to(to.parse().map_err(|_| SyncError::Transient("bad to address".into()))?)
+        .from(from.parse().map_err(|_| SyncError::Permanent("bad from address".into()))?)
         .subject(subject)
         // lettre adds Date automatically, but Message-ID must be requested.
         .message_id(None);
+    // `To` is a comma-separated list ("a@x, Name <b@y>") exactly like Cc/Bcc.
+    // It used to be parsed as ONE mailbox, which silently lost every email
+    // addressed to two or more people.
+    let to_list: lettre::message::Mailboxes = to
+        .parse()
+        .map_err(|_| SyncError::Permanent(format!("bad to address: {to}")))?;
+    let mut any_to = false;
+    for mb in to_list.into_iter() {
+        builder = builder.to(mb);
+        any_to = true;
+    }
+    if !any_to {
+        return Err(SyncError::Permanent("no recipient".into()));
+    }
     // Cc/Bcc may each be a comma-separated list; add every valid mailbox.
     for addr in cc.split(',').map(str::trim).filter(|a| !a.is_empty()) {
-        builder = builder.cc(addr.parse().map_err(|_| SyncError::Transient(format!("bad cc address: {addr}")))?);
+        builder = builder.cc(addr.parse().map_err(|_| SyncError::Permanent(format!("bad cc address: {addr}")))?);
     }
     for addr in bcc.split(',').map(str::trim).filter(|a| !a.is_empty()) {
-        builder = builder.bcc(addr.parse().map_err(|_| SyncError::Transient(format!("bad bcc address: {addr}")))?);
+        builder = builder.bcc(addr.parse().map_err(|_| SyncError::Permanent(format!("bad bcc address: {addr}")))?);
     }
 
     if attachments.is_empty() {
@@ -240,6 +253,25 @@ mod tests {
         assert_eq!(parsed.subparts[0].get_body().unwrap().trim_end(), HTML);
         assert_eq!(parsed.subparts[1].get_body_raw().unwrap(), [0, 1, 2, 128, 255]);
         assert_eq!(parsed.subparts[1].get_content_disposition().params.get("filename").map(String::as_str), Some("report.bin"));
+    }
+
+    #[test]
+    fn to_accepts_a_comma_separated_recipient_list() {
+        // Regression: real emails were dead-lettered with "bad to address" because a
+        // multi-recipient To was parsed as a single mailbox.
+        let msg = build_message("me@example.de", "a@example.de, Name <b@example.org>", "", "", "s", "<p>hi</p>", &[])
+            .expect("two recipients must build");
+        let to = header(&msg, "To").expect("To header");
+        assert!(to.contains("a@example.de"), "To was: {to}");
+        assert!(to.contains("b@example.org"), "To was: {to}");
+    }
+
+    #[test]
+    fn malformed_to_is_a_permanent_error() {
+        let err = build_message("me@example.de", "not an address", "", "", "s", "<p>hi</p>", &[])
+            .err()
+            .expect("malformed To must fail");
+        assert!(err.is_permanent(), "got {err}");
     }
 
     #[test]

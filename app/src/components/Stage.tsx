@@ -589,7 +589,7 @@ export function Stage() {
             <div className={`msg${i > 0 ? " reply" : ""}`} key={m.id} style={i > 0 ? { marginLeft: Math.min(i, 5) * 30 } : undefined}>
               {i > 0 && <span className="reply-arrow" title="Earlier message"><Icon name="reply" size={13} weight="duotone" /></span>}
               {(() => { const c = avatarColor(m.from.address || m.from.name); return (
-              <div className="avatar" style={{ background: c.bg, color: c.fg, boxShadow: `0 0 0 1.5px ${c.ring}` }}>{initials(m.from.name || m.from.address)}</div>
+              <div className="avatar" style={{ background: c.bg, color: c.fg, boxShadow: `inset 0 0 0 1.5px ${c.ring}` }}>{initials(m.from.name || m.from.address)}</div>
               ); })()}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="meta">

@@ -530,7 +530,7 @@ export function Stream() {
                         t={r.t}
                         m={cm}
                         selected={selectedMessageId === cm.id}
-                        onOpen={() => selectThread(r.t.id, cm.id)}
+                        onOpen={(event) => activateThread(r.t.id, () => selectThread(r.t.id, cm.id), event)}
                         onContext={openThreadContext(r.t)}
                       />
                     ))}
@@ -791,7 +791,7 @@ function MailRow({
 // A compact child row inside an expanded conversation accordion: one message,
 // indented under its conversation header, newest→oldest.
 function ChildRow({ t, m, selected, onOpen, onContext }: {
-  t: Thread; m: Message; selected: boolean; onOpen: () => void; onContext: (x: number, y: number, opener: HTMLElement) => void;
+  t: Thread; m: Message; selected: boolean; onOpen: (event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => void; onContext: (x: number, y: number, opener: HTMLElement) => void;
 }) {
   const sender = senderLabel(m.from.name, m.from.address);
   const av = avatarColor(m.from.address || sender);

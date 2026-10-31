@@ -44,6 +44,16 @@ pub enum SyncError {
     InitialSyncFailed { account_id: String },
     #[error("transient: {0}")]
     Transient(String),
+    /// Will never succeed on retry (malformed address, rejected message). The
+    /// outbox dead-letters these immediately instead of retrying 5 times.
+    #[error("permanent: {0}")]
+    Permanent(String),
+}
+
+impl SyncError {
+    pub fn is_permanent(&self) -> bool {
+        matches!(self, Self::Permanent(_))
+    }
 }
 
 impl From<oauth::OAuthError> for SyncError {

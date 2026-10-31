@@ -31,8 +31,10 @@ pub async fn flush(store: &Store) -> usize {
                 sent += 1;
             }
             Err(e) => {
-                // Up to 5 attempts with exponential backoff; then dead-lettered.
-                match store.mark_outbox_failure(&item.id, &e.to_string(), 5) {
+                // Transient errors retry up to 5 times; permanent ones (bad address)
+                // dead-letter at once — retrying can never fix them.
+                let max_attempts = if e.is_permanent() { 1 } else { 5 };
+                match store.mark_outbox_failure(&item.id, &e.to_string(), max_attempts) {
                     Ok(true) => log::error!("outbox: {} dead-lettered: {e}", item.id),
                     Ok(false) => log::warn!("outbox: {} send failed, will retry: {e}", item.id),
                     Err(db) => log::error!("outbox: failed to record failure for {}: {db}", item.id),
