@@ -12,7 +12,7 @@ use imap::types::Flag;
 use imap::{ClientBuilder, ConnectionMode, TlsKind};
 
 use super::{tokens, SyncError};
-use crate::store::{Attachment, ImapAccount, Security, Store};
+use crate::store::{Attachment, FolderInfo, ImapAccount, Security, Store};
 
 /// Send one message through the account's SMTP relay, honoring its security mode.
 /// When `sent_folder` is set, a copy of the sent message is saved to that IMAP
@@ -169,27 +169,50 @@ pub async fn send_async(account: ImapAccount, to: String, cc: String, bcc: Strin
         .map_err(|e| SyncError::Transient(e.to_string()))?
 }
 
+/// Where the sent copy goes, most authoritative first:
+///  1. the user's explicit override (Settings → account → Sent folder),
+///  2. the folder the server flagged \Sent (RFC 6154 SPECIAL-USE),
+///  3. a folder whose "sent" role was inferred from its name. Servers without
+///     SPECIAL-USE often expose two ("INBOX.Sent" and "INBOX.Sent Messages",
+///     the latter created by Apple Mail); the one holding the newest message is
+///     where the user's other clients file sent mail, so it wins,
+///  4. any folder whose name contains "sent".
+/// None means the folders are not listed yet: the copy is skipped and the UI warns.
+pub(crate) fn pick_sent_folder(
+    override_folder: Option<&str>,
+    folders: &[FolderInfo],
+    latest_ts: impl Fn(&str) -> i64,
+) -> Option<String> {
+    if let Some(name) = override_folder.map(str::trim).filter(|f| !f.is_empty()) {
+        return Some(name.to_string());
+    }
+    let sent = |f: &&FolderInfo| f.role.as_deref() == Some("sent");
+    if let Some(flagged) = folders.iter().filter(sent).find(|f| f.special_use) {
+        return Some(flagged.name.clone());
+    }
+    let inferred = folders
+        .iter()
+        .filter(sent)
+        .map(|f| (latest_ts(&f.name), f))
+        // max_by_key keeps the last maximum; reverse so ties keep list order.
+        .rev()
+        .max_by_key(|(ts, _)| *ts)
+        .map(|(_, f)| f.name.clone());
+    inferred.or_else(|| {
+        folders
+            .iter()
+            .find(|f| f.name.to_ascii_lowercase().contains("sent"))
+            .map(|f| f.name.clone())
+    })
+}
+
 /// Resolve the account config from the store and send.
 pub async fn send_for(store: &Store, account_id: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[Attachment]) -> Result<(), SyncError> {
     let account = store.imap_account(account_id).ok_or(SyncError::AuthRequired)?;
-    // Resolve the server's Sent folder for the sent copy: prefer the special-use
-    // role, else any folder whose name looks like "Sent". None → skip the copy
-    // (e.g. folders not listed yet); the send itself still succeeds.
     let folders = store.folders(account_id);
-    // Where the sent copy goes, most authoritative first:
-    //  1. the user's explicit override (Settings → account → Sent folder),
-    //  2. the folder the SERVER flagged \\Sent (RFC 6154 SPECIAL-USE),
-    //  3. a folder whose "sent" role we inferred from its name,
-    //  4. any folder whose name contains "sent".
-    // Servers commonly expose two sent-like folders (e.g. "INBOX.Sent" and
-    // "INBOX.Sent Messages"); only (1)/(2) reliably pick the one the user uses.
-    let sent_folder = account
-        .sent_folder
-        .clone()
-        .filter(|f| !f.trim().is_empty())
-        .or_else(|| folders.iter().find(|f| f.special_use && f.role.as_deref() == Some("sent")).map(|f| f.name.clone()))
-        .or_else(|| folders.iter().find(|f| f.role.as_deref() == Some("sent")).map(|f| f.name.clone()))
-        .or_else(|| folders.iter().find(|f| f.name.to_ascii_lowercase().contains("sent")).map(|f| f.name.clone()));
+    let sent_folder = pick_sent_folder(account.sent_folder.as_deref(), &folders, |name| {
+        store.folder_latest_ts(account_id, name)
+    });
     let group = store.setting("group").ok().flatten().map(|v| v != "0").unwrap_or(true);
     let outcome = send_async(account, to.to_string(), cc.to_string(), bcc.to_string(), subject.to_string(), body_html.to_string(), attachments.to_vec(), sent_folder.clone()).await?;
     // Per-account send warning the UI shows (cleared on a clean send).
@@ -223,6 +246,30 @@ mod tests {
     use mailparse::MailHeaderMap;
 
     const HTML: &str = "<p>Grüße — message body</p>";
+
+    fn folder(name: &str, role: Option<&str>, special_use: bool) -> FolderInfo {
+        FolderInfo { name: name.into(), role: role.map(Into::into), special_use, unread: 0, total: 0 }
+    }
+
+    #[test]
+    fn sent_folder_override_and_server_flag_win() {
+        let folders = vec![folder("INBOX.Sent", Some("sent"), false), folder("INBOX.Gesendet", Some("sent"), true)];
+        assert_eq!(pick_sent_folder(Some(" Custom "), &folders, |_| 0).as_deref(), Some("Custom"));
+        assert_eq!(pick_sent_folder(Some("  "), &folders, |_| 0).as_deref(), Some("INBOX.Gesendet"));
+    }
+
+    #[test]
+    fn unflagged_sent_folders_pick_the_one_in_use() {
+        // The real pjtelesoft layout: no SPECIAL-USE, two sent folders, history
+        // in "Sent Messages". Alphabetical order used to pick "INBOX.Sent".
+        let folders = vec![folder("INBOX.Sent", Some("sent"), false), folder("INBOX.Sent Messages", Some("sent"), false)];
+        let latest = |name: &str| if name == "INBOX.Sent Messages" { 1_751_520_480 } else { 1_702_296_218 };
+        assert_eq!(pick_sent_folder(None, &folders, latest).as_deref(), Some("INBOX.Sent Messages"));
+        // Ties (both empty) keep list order.
+        assert_eq!(pick_sent_folder(None, &folders, |_| 0).as_deref(), Some("INBOX.Sent"));
+        // No folders listed yet: no target, the send still goes out.
+        assert_eq!(pick_sent_folder(None, &[], |_| 0), None);
+    }
 
     fn attachment() -> Attachment {
         Attachment {

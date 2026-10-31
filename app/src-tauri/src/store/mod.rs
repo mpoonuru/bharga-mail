@@ -875,6 +875,17 @@ impl Store {
 
     /// Folders for an account with per-folder unread/total counts. Special-use
     /// roles sort first (Inbox, Sent, …), then the rest alphabetically.
+    /// Newest message time (epoch seconds) stored for a folder, 0 when empty.
+    pub fn folder_latest_ts(&self, account_id: &str, folder: &str) -> i64 {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT COALESCE(MAX(sort_ts), 0) FROM threads WHERE account_id=?1 AND folder=?2 AND deleted=0",
+            params![account_id, folder],
+            |r| r.get(0),
+        )
+        .unwrap_or(0)
+    }
+
     pub fn folders(&self, account_id: &str) -> Vec<FolderInfo> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = match conn.prepare(
