@@ -19,9 +19,9 @@ import type {
   CalendarSlot,
   CalendarView,
 } from "@/calendar/types";
-import type { CalendarConflict, ConflictResolution } from "@/types";
 import { api } from "@/lib/bridge";
 import { useViewport } from "@/lib/useViewport";
+import type { CalendarConflict, ConflictResolution } from "@/types";
 
 import "@/calendar/calendar.css";
 
@@ -78,11 +78,13 @@ export function CalendarWorkspace({
       if (savedVisible) {
         try {
           const ids = new Set(JSON.parse(savedVisible) as string[]);
-          await Promise.all(Object.values(store.getState().calendars).map((calendar) => (
-            calendar.visible === ids.has(calendar.id)
-              ? Promise.resolve()
-              : store.getState().setCalendarVisibility(calendar.id, ids.has(calendar.id))
-          )));
+          await Promise.all(
+            Object.values(store.getState().calendars).map((calendar) =>
+              calendar.visible === ids.has(calendar.id)
+                ? Promise.resolve()
+                : store.getState().setCalendarVisibility(calendar.id, ids.has(calendar.id)),
+            ),
+          );
         } catch {
           // Ignore a stale preference; the authoritative calendar flags remain intact.
         }
@@ -90,12 +92,17 @@ export function CalendarWorkspace({
     })().catch(() => {
       // The store exposes the structured error and retry action in the workspace.
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [settingsApi, store]);
 
   useEffect(() => {
     if (viewport === "narrow" && (snapshot.view === "month" || snapshot.view === "week")) {
-      void store.getState().setView("agenda").catch(() => {});
+      void store
+        .getState()
+        .setView("agenda")
+        .catch(() => {});
     }
   }, [snapshot.view, store, viewport]);
 
@@ -103,29 +110,49 @@ export function CalendarWorkspace({
     const visible = new Set(snapshot.visibleCalendarIds);
     return Object.values(snapshot.events).filter((event) => visible.has(event.calendarId));
   }, [snapshot.events, snapshot.visibleCalendarIds]);
-  const calendars = Object.values(snapshot.calendars)
-    .sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id));
-  const sources = Object.values(snapshot.sources).sort((left, right) => left.label.localeCompare(right.label));
+  const calendars = Object.values(snapshot.calendars).sort(
+    (left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id),
+  );
+  const sources = Object.values(snapshot.sources).sort((left, right) =>
+    left.label.localeCompare(right.label),
+  );
   const health = Object.values(snapshot.syncHealth);
   const pendingCount = health.reduce((total, item) => total + item.pendingCount, 0);
-  const conflictCount = Math.max(conflicts.length, health.reduce((total, item) => total + item.conflictCount, 0));
+  const conflictCount = Math.max(
+    conflicts.length,
+    health.reduce((total, item) => total + item.conflictCount, 0),
+  );
 
   const chooseView = (view: CalendarView) => {
     void settingsApi.setSetting("calendar.view", view);
-    void store.getState().setView(view).catch(() => {});
+    void store
+      .getState()
+      .setView(view)
+      .catch(() => {});
   };
   const changeVisibility = (calendarId: string, visible: boolean) => {
-    void store.getState().setCalendarVisibility(calendarId, visible).then(() => (
-      settingsApi.setSetting("calendar.visible", JSON.stringify(store.getState().visibleCalendarIds))
-    )).catch(() => {});
+    void store
+      .getState()
+      .setCalendarVisibility(calendarId, visible)
+      .then(() =>
+        settingsApi.setSetting(
+          "calendar.visible",
+          JSON.stringify(store.getState().visibleCalendarIds),
+        ),
+      )
+      .catch(() => {});
   };
   const changeAnchor = (anchor: string) => {
-    void store.getState().setAnchor(anchor).catch(() => {});
+    void store
+      .getState()
+      .setAnchor(anchor)
+      .catch(() => {});
   };
   const openCreate = (slot: CalendarSlot) => {
     onCreate?.(slot);
-    const calendar = calendars.find((candidate) => candidate.writable && candidate.visible)
-      ?? calendars.find((candidate) => candidate.writable);
+    const calendar =
+      calendars.find((candidate) => candidate.writable && candidate.visible) ??
+      calendars.find((candidate) => candidate.writable);
     if (!calendar) return;
     const startLocal = dayjs.tz(`${slot.date}T${slot.time ?? "09:00"}`, snapshot.timezone);
     setEditing({
@@ -155,7 +182,11 @@ export function CalendarWorkspace({
   const openOccurrence = (occurrence: CalendarOccurrenceIntent) => {
     onOpen?.(occurrence);
     const event = snapshot.events[occurrence.eventId];
-    if (event) setEditing({ ...event, recurrenceId: event.recurrenceId ?? (event.recurrence ? occurrence.occurrenceStart : null) });
+    if (event)
+      setEditing({
+        ...event,
+        recurrenceId: event.recurrenceId ?? (event.recurrence ? occurrence.occurrenceStart : null),
+      });
   };
 
   return (
@@ -169,17 +200,28 @@ export function CalendarWorkspace({
         onNext={() => changeAnchor(shiftAnchor(snapshot.anchor, snapshot.view, 1))}
         onView={chooseView}
         onCreate={() => openCreate({ date: snapshot.anchor, allDay: false })}
-        onImport={calendarApi.importIcs ? () => {
-          const target = calendars.find((calendar) => calendar.writable && calendar.isDefault)
-            ?? calendars.find((calendar) => calendar.writable);
-          if (!target) return;
-          void calendarApi.importIcs!(target.id).then((events) => {
-            if (events.length > 0) void store.getState().loadRange();
-          }).catch(() => {});
-        } : undefined}
-        onExport={calendarApi.exportIcs && visibleEvents.length > 0 ? () => {
-          void calendarApi.exportIcs!(visibleEvents.map((event) => event.id)).catch(() => {});
-        } : undefined}
+        onImport={
+          calendarApi.importIcs
+            ? () => {
+                const target =
+                  calendars.find((calendar) => calendar.writable && calendar.isDefault) ??
+                  calendars.find((calendar) => calendar.writable);
+                if (!target) return;
+                void calendarApi.importIcs!(target.id)
+                  .then((events) => {
+                    if (events.length > 0) void store.getState().loadRange();
+                  })
+                  .catch(() => {});
+              }
+            : undefined
+        }
+        onExport={
+          calendarApi.exportIcs && visibleEvents.length > 0
+            ? () => {
+                void calendarApi.exportIcs!(visibleEvents.map((event) => event.id)).catch(() => {});
+              }
+            : undefined
+        }
         pendingCount={pendingCount}
         conflictCount={conflictCount}
         hasSyncError={sources.some((source) => !!source.syncError || source.authState !== "ready")}
@@ -193,26 +235,67 @@ export function CalendarWorkspace({
           loading={snapshot.loading}
           onVisibility={changeVisibility}
           onSync={(sourceId) => {
-            void store.getState().syncSource(sourceId).then(async () => {
-              if (calendarApi.listConflicts) setConflicts(await calendarApi.listConflicts());
-            }).catch(() => {});
+            void store
+              .getState()
+              .syncSource(sourceId)
+              .then(async () => {
+                if (calendarApi.listConflicts) setConflicts(await calendarApi.listConflicts());
+              })
+              .catch(() => {});
           }}
-          onSourceAdded={() => { void store.getState().initialize().catch(() => {}); }}
+          onSourceAdded={() => {
+            void store
+              .getState()
+              .initialize()
+              .catch(() => {});
+          }}
           health={snapshot.syncHealth}
-          onOrder={calendarApi.setCalendarOrder ? (calendarIds) => { void store.getState().setCalendarOrder(calendarIds).catch(() => {}); } : undefined}
-          onRenameSource={calendarApi.updateSourceLabel ? (sourceId, label) => store.getState().updateSourceLabel(sourceId, label) : undefined}
-          onRemoveSource={calendarApi.removeSource ? (sourceId, keepLocalCopy) => store.getState().removeSource(sourceId, keepLocalCopy ? "keepLocalCopy" : "deleteLocalData") : undefined}
+          onOrder={
+            calendarApi.setCalendarOrder
+              ? (calendarIds) => {
+                  void store
+                    .getState()
+                    .setCalendarOrder(calendarIds)
+                    .catch(() => {});
+                }
+              : undefined
+          }
+          onRenameSource={
+            calendarApi.updateSourceLabel
+              ? (sourceId, label) => store.getState().updateSourceLabel(sourceId, label)
+              : undefined
+          }
+          onRemoveSource={
+            calendarApi.removeSource
+              ? (sourceId, keepLocalCopy) =>
+                  store
+                    .getState()
+                    .removeSource(sourceId, keepLocalCopy ? "keepLocalCopy" : "deleteLocalData")
+              : undefined
+          }
         />
         <main className="calendar-canvas" aria-busy={snapshot.loading}>
           {snapshot.error && (
             <div className="calendar-error" role="alert">
               <span>{snapshot.error.message}</span>
-              <button type="button" onClick={() => { void store.getState().loadRange().catch(() => {}); }}>Try again</button>
+              <button
+                type="button"
+                onClick={() => {
+                  void store
+                    .getState()
+                    .loadRange()
+                    .catch(() => {});
+                }}
+              >
+                Try again
+              </button>
             </div>
           )}
           {snapshot.loading && Object.keys(snapshot.events).length === 0 ? (
             <div className="calendar-loading" aria-label="Loading calendar">
-              <span /><span /><span />
+              <span />
+              <span />
+              <span />
             </div>
           ) : snapshot.view === "month" ? (
             <MonthView
@@ -250,13 +333,27 @@ export function CalendarWorkspace({
           initial={editing}
           calendars={calendars}
           onClose={() => setEditing(null)}
-          onDelete={editing.id ? async () => {
-            await store.getState().deleteEvent(editing.id!);
-          } : undefined}
-          onCheckAvailability={calendarApi.getAvailability ? async (range, attendees) => {
-            const calendar = calendars.find((candidate) => candidate.id === editing.calendarId);
-            return calendarApi.getAvailability!([calendar?.sourceId].filter((value): value is string => !!value), range, attendees);
-          } : undefined}
+          onDelete={
+            editing.id
+              ? async () => {
+                  await store.getState().deleteEvent(editing.id!);
+                }
+              : undefined
+          }
+          onCheckAvailability={
+            calendarApi.getAvailability
+              ? async (range, attendees) => {
+                  const calendar = calendars.find(
+                    (candidate) => candidate.id === editing.calendarId,
+                  );
+                  return calendarApi.getAvailability!(
+                    [calendar?.sourceId].filter((value): value is string => !!value),
+                    range,
+                    attendees,
+                  );
+                }
+              : undefined
+          }
           notificationPolicy={(() => {
             const calendar = calendars.find((candidate) => candidate.id === editing.calendarId);
             const provider = calendar ? snapshot.sources[calendar.sourceId]?.provider : undefined;
@@ -270,7 +367,13 @@ export function CalendarWorkspace({
               return;
             }
             if (editing.recurrenceId && options.scope && calendarApi.updateRecurringEvent) {
-              await calendarApi.updateRecurringEvent(editing.id, editing.recurrenceId, options.scope, input, options);
+              await calendarApi.updateRecurringEvent(
+                editing.id,
+                editing.recurrenceId,
+                options.scope,
+                input,
+                options,
+              );
               await store.getState().loadRange();
               return;
             }
@@ -279,13 +382,13 @@ export function CalendarWorkspace({
         />
       )}
       <ConflictDialog
-        conflict={conflictIndex === null ? null : conflicts[conflictIndex] ?? null}
+        conflict={conflictIndex === null ? null : (conflicts[conflictIndex] ?? null)}
         onClose={() => setConflictIndex(null)}
         onResolve={async (resolution: ConflictResolution) => {
           const conflict = conflictIndex === null ? undefined : conflicts[conflictIndex];
           if (!conflict || !calendarApi.resolveConflict) return;
           await calendarApi.resolveConflict(conflict.eventId, resolution);
-          const next = await calendarApi.listConflicts?.() ?? [];
+          const next = (await calendarApi.listConflicts?.()) ?? [];
           setConflicts(next);
           setConflictIndex(next.length > 0 ? Math.min(conflictIndex ?? 0, next.length - 1) : null);
           await store.getState().loadRange();

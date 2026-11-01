@@ -1,6 +1,7 @@
 // Behavioral coverage for account status, parallel actions, and destructive-dialog safety.
-import { act } from "react";
+
 import type { ReactNode } from "react";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AccountRemovalDialog } from "@/components/settings/AccountRemovalDialog";
@@ -37,14 +38,16 @@ afterEach(async () => {
 describe("AccountSettings", () => {
   it("shows account health and opens the application-level account connector", () => {
     useApp.setState({
-      accounts: [{
-        id: "imap:work@example.test",
-        email: "work@example.test",
-        provider: "imap",
-        displayName: "Work",
-        unread: 4,
-        lastSyncAt: 1_700_000_000,
-      }],
+      accounts: [
+        {
+          id: "imap:work@example.test",
+          email: "work@example.test",
+          provider: "imap",
+          displayName: "Work",
+          unread: 4,
+          lastSyncAt: 1_700_000_000,
+        },
+      ],
     });
     const { host } = renderSubject(<AccountSettings />);
 
@@ -70,15 +73,17 @@ describe("AccountSettings", () => {
 
   it("shows persisted authentication failures instead of a healthy state", () => {
     useApp.setState({
-      accounts: [{
-        id: "imap:work@example.test",
-        email: "work@example.test",
-        provider: "imap",
-        displayName: "Work",
-        unread: 0,
-        lastSyncAt: 1_700_000_000,
-        syncError: "Authentication required",
-      }],
+      accounts: [
+        {
+          id: "imap:work@example.test",
+          email: "work@example.test",
+          provider: "imap",
+          displayName: "Work",
+          unread: 0,
+          lastSyncAt: 1_700_000_000,
+          syncError: "Authentication required",
+        },
+      ],
     });
     const { host } = renderSubject(<AccountSettings />);
     expect(host.textContent).toContain("Authentication required");
@@ -87,19 +92,35 @@ describe("AccountSettings", () => {
 
   it("lets different accounts sync concurrently without unlocking either early", async () => {
     const resolvers = new Map<string, () => void>();
-    vi.spyOn(api, "syncNow").mockImplementation((id) => new Promise<number>((resolve) => {
-      resolvers.set(id, () => resolve(0));
-    }));
+    vi.spyOn(api, "syncNow").mockImplementation(
+      (id) =>
+        new Promise<number>((resolve) => {
+          resolvers.set(id, () => resolve(0));
+        }),
+    );
     useApp.setState({
       accounts: [
-        { id: "imap:a@example.test", email: "a@example.test", provider: "imap", displayName: "", unread: 0 },
-        { id: "imap:b@example.test", email: "b@example.test", provider: "imap", displayName: "", unread: 0 },
+        {
+          id: "imap:a@example.test",
+          email: "a@example.test",
+          provider: "imap",
+          displayName: "",
+          unread: 0,
+        },
+        {
+          id: "imap:b@example.test",
+          email: "b@example.test",
+          provider: "imap",
+          displayName: "",
+          unread: 0,
+        },
       ],
       load: vi.fn().mockResolvedValue(undefined),
     });
     const { host } = renderSubject(<AccountSettings />);
-    const syncButtons = [...host.querySelectorAll<HTMLButtonElement>(".account-card .af-btn")]
-      .filter((button) => button.textContent?.includes("Sync"));
+    const syncButtons = [
+      ...host.querySelectorAll<HTMLButtonElement>(".account-card .af-btn"),
+    ].filter((button) => button.textContent?.includes("Sync"));
 
     act(() => {
       syncButtons[0]?.click();
@@ -124,12 +145,15 @@ describe("AccountSettings", () => {
     vi.spyOn(api, "syncNow").mockResolvedValue(0);
     useApp.setState({ accounts: [account], load: vi.fn().mockResolvedValue(undefined) });
     const { host } = renderSubject(<AccountSettings />);
-    const sync = [...host.querySelectorAll<HTMLButtonElement>(".account-card .af-btn")]
-      .find((button) => button.textContent?.includes("Sync"));
+    const sync = [...host.querySelectorAll<HTMLButtonElement>(".account-card .af-btn")].find(
+      (button) => button.textContent?.includes("Sync"),
+    );
     await act(async () => sync?.click());
     expect(host.textContent).toContain("Up to date");
 
-    act(() => useApp.setState({ accounts: [{ ...account, syncError: "Authentication required" }] }));
+    act(() =>
+      useApp.setState({ accounts: [{ ...account, syncError: "Authentication required" }] }),
+    );
     expect(host.textContent).toContain("Authentication required");
     expect(host.textContent).not.toContain("Up to date");
   });
@@ -146,14 +170,19 @@ describe("AccountSettings", () => {
     vi.spyOn(api, "syncNow").mockRejectedValue(new Error("Network unavailable"));
     useApp.setState({ accounts: [account], load: vi.fn().mockResolvedValue(undefined) });
     const { host } = renderSubject(<AccountSettings />);
-    const sync = [...host.querySelectorAll<HTMLButtonElement>(".account-card .af-btn")]
-      .find((button) => button.textContent?.includes("Sync"));
+    const sync = [...host.querySelectorAll<HTMLButtonElement>(".account-card .af-btn")].find(
+      (button) => button.textContent?.includes("Sync"),
+    );
     await act(async () => sync?.click());
-    expect(host.querySelector(".account-operation.error")?.textContent).toContain("Network unavailable");
+    expect(host.querySelector(".account-operation.error")?.textContent).toContain(
+      "Network unavailable",
+    );
 
-    act(() => useApp.setState({
-      accounts: [{ ...account, lastSyncAt: 1_700_000_100, syncError: undefined }],
-    }));
+    act(() =>
+      useApp.setState({
+        accounts: [{ ...account, lastSyncAt: 1_700_000_100, syncError: undefined }],
+      }),
+    );
     expect(host.textContent).toContain("Last synced");
     expect(host.querySelector(".account-operation.error")).toBeNull();
     expect(host.querySelector(".account-health-dot.error")).toBeNull();
@@ -161,13 +190,15 @@ describe("AccountSettings", () => {
 
   it("supports keyboard navigation and focus restoration in account menus", async () => {
     useApp.setState({
-      accounts: [{
-        id: "imap:work@example.test",
-        email: "work@example.test",
-        provider: "imap",
-        displayName: "Work",
-        unread: 0,
-      }],
+      accounts: [
+        {
+          id: "imap:work@example.test",
+          email: "work@example.test",
+          provider: "imap",
+          displayName: "Work",
+          unread: 0,
+        },
+      ],
     });
     const { host } = renderSubject(<AccountSettings />);
     const more = host.querySelector<HTMLButtonElement>('[aria-label="More actions for Work"]');
@@ -177,9 +208,13 @@ describe("AccountSettings", () => {
     const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
     expect(document.activeElement).toBe(items[0]);
 
-    act(() => items[0]?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    act(() =>
+      items[0]?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })),
+    );
     expect(document.activeElement).toBe(items[1]);
-    act(() => items[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    act(() =>
+      items[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+    );
     expect(document.activeElement).toBe(more);
     expect(document.querySelector('[role="menu"]')).toBeNull();
   });
@@ -192,23 +227,29 @@ describe("AccountSettings", () => {
       sameCredentials: true,
     });
     useApp.setState({
-      accounts: [{
-        id: "imap:work@example.test",
-        email: "work@example.test",
-        provider: "imap",
-        displayName: "Work",
-        unread: 0,
-      }],
+      accounts: [
+        {
+          id: "imap:work@example.test",
+          email: "work@example.test",
+          provider: "imap",
+          displayName: "Work",
+          unread: 0,
+        },
+      ],
     });
     const { host } = renderSubject(<AccountSettings />);
     const more = host.querySelector<HTMLButtonElement>('[aria-label="More actions for Work"]');
     if (!more) throw new Error("Account action button not found");
     act(() => more.click());
     await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
-      .find((button) => button.textContent?.includes("Edit server settings"))?.click());
-    const cancel = [...document.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent?.trim() === "Cancel");
+    await act(async () =>
+      [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+        .find((button) => button.textContent?.includes("Edit server settings"))
+        ?.click(),
+    );
+    const cancel = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent?.trim() === "Cancel",
+    );
     act(() => cancel?.click());
     await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
     expect(document.activeElement).toBe(more);
@@ -227,11 +268,13 @@ describe("AccountSettings", () => {
     const more = host.querySelector<HTMLButtonElement>('[aria-label="More actions for Work"]');
     if (!more) throw new Error("Account action button not found");
     act(() => more.click());
-    const removeMenuItem = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
-      .find((button) => button.textContent?.includes("Remove account"));
+    const removeMenuItem = [
+      ...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
+    ].find((button) => button.textContent?.includes("Remove account"));
     act(() => removeMenuItem?.click());
-    const cancel = [...document.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent?.trim() === "Cancel");
+    const cancel = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent?.trim() === "Cancel",
+    );
     act(() => cancel?.click());
     await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
     expect(document.activeElement).toBe(more);
@@ -250,16 +293,23 @@ describe("AccountSettings", () => {
     });
     useApp.setState({ accounts: [account], removeAccount });
     const { host } = renderSubject(<AccountSettings />);
-    act(() => host.querySelector<HTMLButtonElement>('[aria-label="More actions for Work"]')?.click());
-    act(() => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
-      .find((button) => button.textContent?.includes("Remove account"))?.click());
-    const confirm = [...document.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent?.includes("Remove account"));
+    act(() =>
+      host.querySelector<HTMLButtonElement>('[aria-label="More actions for Work"]')?.click(),
+    );
+    act(() =>
+      [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+        .find((button) => button.textContent?.includes("Remove account"))
+        ?.click(),
+    );
+    const confirm = [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
+      button.textContent?.includes("Remove account"),
+    );
     await act(async () => confirm?.click());
     await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
-    const add = [...host.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent?.trim() === "Add account");
+    const add = [...host.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent?.trim() === "Add account",
+    );
     expect(document.activeElement).toBe(add);
   });
 });
@@ -280,12 +330,15 @@ describe("AccountRemovalDialog", () => {
       <AccountRemovalDialog account={account} onClose={vi.fn()} onRemoved={onRemoved} />,
     );
 
-    const remove = [...document.querySelectorAll("button")]
-      .find((button) => button.textContent?.includes("Remove account"));
+    const remove = [...document.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("Remove account"),
+    );
     if (!remove) throw new Error("Remove account button not found");
     await act(async () => remove.click());
 
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain("Credential cleanup failed");
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+      "Credential cleanup failed",
+    );
     expect(document.querySelector('[role="dialog"]')).not.toBeNull();
     expect(onRemoved).not.toHaveBeenCalled();
   });

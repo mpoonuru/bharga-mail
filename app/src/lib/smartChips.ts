@@ -16,9 +16,9 @@
 // seed the heavier on-device taxonomy (embeddings clustering + local triage)
 // plugs into later — same SmartChip shape, smarter membership.
 
-import type { Thread } from "@/types";
 import type { IconName } from "@/components/icons";
 import { threadThreat } from "@/lib/threat";
+import type { Thread } from "@/types";
 
 export interface SmartChip {
   /** stable id within a render (e.g. "urgent", "org:Stripe") */
@@ -43,12 +43,34 @@ const CLUSTER_MIN = 2;
 // Nice-cased names for common senders; everything else is title-cased from its
 // second-level domain.
 const WELL_KNOWN: Record<string, string> = {
-  github: "GitHub", gitlab: "GitLab", openai: "OpenAI", chatgpt: "ChatGPT", anthropic: "Anthropic",
-  google: "Google", gmail: "Google", youtube: "YouTube", linkedin: "LinkedIn", twitter: "X",
-  amazon: "Amazon", apple: "Apple", icloud: "Apple", microsoft: "Microsoft", outlook: "Microsoft",
-  stripe: "Stripe", paypal: "PayPal", slack: "Slack", notion: "Notion", figma: "Figma",
-  vercel: "Vercel", netflix: "Netflix", spotify: "Spotify", uber: "Uber", airbnb: "Airbnb",
-  booking: "Booking", lufthansa: "Lufthansa", dhl: "DHL",
+  github: "GitHub",
+  gitlab: "GitLab",
+  openai: "OpenAI",
+  chatgpt: "ChatGPT",
+  anthropic: "Anthropic",
+  google: "Google",
+  gmail: "Google",
+  youtube: "YouTube",
+  linkedin: "LinkedIn",
+  twitter: "X",
+  amazon: "Amazon",
+  apple: "Apple",
+  icloud: "Apple",
+  microsoft: "Microsoft",
+  outlook: "Microsoft",
+  stripe: "Stripe",
+  paypal: "PayPal",
+  slack: "Slack",
+  notion: "Notion",
+  figma: "Figma",
+  vercel: "Vercel",
+  netflix: "Netflix",
+  spotify: "Spotify",
+  uber: "Uber",
+  airbnb: "Airbnb",
+  booking: "Booking",
+  lufthansa: "Lufthansa",
+  dhl: "DHL",
 };
 
 function senderAddr(t: Thread): string {
@@ -60,7 +82,11 @@ function senderAddr(t: Thread): string {
 export function orgFromAddress(addr: string): string | null {
   const at = addr.indexOf("@");
   if (at < 0) return null;
-  const parts = addr.slice(at + 1).toLowerCase().split(".").filter(Boolean);
+  const parts = addr
+    .slice(at + 1)
+    .toLowerCase()
+    .split(".")
+    .filter(Boolean);
   if (parts.length < 2) return null;
   const sld = parts[parts.length - 2]; // second-level domain (mail.github.com -> github)
   if (!sld) return null;
@@ -81,22 +107,70 @@ export function deriveChips(threads: Thread[], selfDomain?: string): SmartChip[]
   const chips: SmartChip[] = [];
 
   const add = (
-    id: string, label: string, icon: IconName, kind: SmartChip["kind"],
-    why: string, test: (t: Thread) => boolean,
+    id: string,
+    label: string,
+    icon: IconName,
+    kind: SmartChip["kind"],
+    why: string,
+    test: (t: Thread) => boolean,
   ) => {
-    let count = 0, unread = 0;
-    for (const t of threads) if (test(t)) { count++; if (t.unread) unread++; }
+    let count = 0,
+      unread = 0;
+    for (const t of threads)
+      if (test(t)) {
+        count++;
+        if (t.unread) unread++;
+      }
     if (count > 0) chips.push({ id, label, icon, kind, count, unread, why, test });
   };
 
   // --- signal chips (structural + existing AI labels) ---
-  add("suspicious", "Suspicious", "shieldWarning", "signal", "Possible phishing — failed auth or deceptive links", (t) => threadThreat(t).level !== "none");
-  add("urgent", "Urgent", "priority", "signal", "Flagged urgent by AI triage", (t) => t.labels.includes("urgent"));
-  add("meetings", "Meetings", "calendar", "signal", "Scheduling / meeting requests", (t) => t.labels.includes("meeting") || t.view.includes("calendar"));
-  add("receipts", "Receipts", "receipts", "signal", "Payments, invoices & receipts", (t) => t.labels.includes("receipt") || t.view.includes("receipts"));
-  add("newsletters", "Newsletters", "newsletters", "signal", "Digests & subscriptions", (t) => t.labels.includes("newsletter") || t.view.includes("newsletters"));
-  add("awaiting", "Awaiting reply", "awaiting", "signal", "You're expected to respond", (t) => t.view.includes("awaiting"));
-  add("ai-drafted", "AI drafted", "ai", "signal", "Has a ready AI-written reply", (t) => !!t.aiDraft);
+  add(
+    "suspicious",
+    "Suspicious",
+    "shieldWarning",
+    "signal",
+    "Possible phishing — failed auth or deceptive links",
+    (t) => threadThreat(t).level !== "none",
+  );
+  add("urgent", "Urgent", "priority", "signal", "Flagged urgent by AI triage", (t) =>
+    t.labels.includes("urgent"),
+  );
+  add(
+    "meetings",
+    "Meetings",
+    "calendar",
+    "signal",
+    "Scheduling / meeting requests",
+    (t) => t.labels.includes("meeting") || t.view.includes("calendar"),
+  );
+  add(
+    "receipts",
+    "Receipts",
+    "receipts",
+    "signal",
+    "Payments, invoices & receipts",
+    (t) => t.labels.includes("receipt") || t.view.includes("receipts"),
+  );
+  add(
+    "newsletters",
+    "Newsletters",
+    "newsletters",
+    "signal",
+    "Digests & subscriptions",
+    (t) => t.labels.includes("newsletter") || t.view.includes("newsletters"),
+  );
+  add("awaiting", "Awaiting reply", "awaiting", "signal", "You're expected to respond", (t) =>
+    t.view.includes("awaiting"),
+  );
+  add(
+    "ai-drafted",
+    "AI drafted",
+    "ai",
+    "signal",
+    "Has a ready AI-written reply",
+    (t) => !!t.aiDraft,
+  );
   add("attachments", "Attachments", "attach", "signal", "Includes files", hasAttachment);
 
   // --- emergent org clusters (the inbox-specific, AI-first part) ---
@@ -109,14 +183,25 @@ export function deriveChips(threads: Thread[], selfDomain?: string): SmartChip[]
   }
   for (const [org, n] of byOrg) {
     if (n < CLUSTER_MIN) continue;
-    add(`org:${org}`, org, "folder", "org", `${n} threads from ${org}`, (t) => orgFromAddress(senderAddr(t)) === org);
+    add(
+      `org:${org}`,
+      org,
+      "folder",
+      "org",
+      `${n} threads from ${org}`,
+      (t) => orgFromAddress(senderAddr(t)) === org,
+    );
   }
 
   // The security chip always leads; then by volume, then unread; signals before orgs.
   chips.sort((a, b) => {
     if (a.id === "suspicious") return -1;
     if (b.id === "suspicious") return 1;
-    return b.count - a.count || b.unread - a.unread || (a.kind === b.kind ? 0 : a.kind === "signal" ? -1 : 1);
+    return (
+      b.count - a.count ||
+      b.unread - a.unread ||
+      (a.kind === b.kind ? 0 : a.kind === "signal" ? -1 : 1)
+    );
   });
   return chips;
 }

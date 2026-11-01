@@ -3,8 +3,8 @@
 //! `messages.send`.
 
 use base64::{
-    engine::general_purpose::{STANDARD, URL_SAFE},
     Engine,
+    engine::general_purpose::{STANDARD, URL_SAFE},
 };
 
 use crate::store::Attachment;
@@ -36,16 +36,8 @@ pub fn build_raw(
     body_html: &str,
     attachments: &[Attachment],
 ) -> String {
-    let cc_hdr = if cc.trim().is_empty() {
-        String::new()
-    } else {
-        format!("Cc: {cc}\r\n")
-    };
-    let bcc_hdr = if bcc.trim().is_empty() {
-        String::new()
-    } else {
-        format!("Bcc: {bcc}\r\n")
-    };
+    let cc_hdr = if cc.trim().is_empty() { String::new() } else { format!("Cc: {cc}\r\n") };
+    let bcc_hdr = if bcc.trim().is_empty() { String::new() } else { format!("Bcc: {bcc}\r\n") };
     let raw = if attachments.is_empty() {
         format!(
             "From: {from}\r\nTo: {to}\r\n{cc_hdr}{bcc_hdr}Subject: {subject}\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n{body_html}"
@@ -89,7 +81,7 @@ fn wrap76(b64: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base64::{engine::general_purpose::URL_SAFE, Engine};
+    use base64::{Engine, engine::general_purpose::URL_SAFE};
 
     #[test]
     fn plain_body_round_trips() {
@@ -105,15 +97,7 @@ mod tests {
 
     #[test]
     fn cc_and_bcc_headers_present_when_set() {
-        let raw = build_raw(
-            "me@x.co",
-            "you@y.io",
-            "cc@y.io",
-            "bcc@y.io",
-            "Hi",
-            "<p>hi</p>",
-            &[],
-        );
+        let raw = build_raw("me@x.co", "you@y.io", "cc@y.io", "bcc@y.io", "Hi", "<p>hi</p>", &[]);
         let decoded = String::from_utf8(URL_SAFE.decode(raw).unwrap()).unwrap();
         assert!(decoded.contains("Cc: cc@y.io"));
         assert!(decoded.contains("Bcc: bcc@y.io"));
@@ -121,11 +105,8 @@ mod tests {
 
     #[test]
     fn with_attachment_is_multipart() {
-        let att = Attachment {
-            name: "a.txt".into(),
-            mime: "text/plain".into(),
-            data_b64: "aGk=".into(),
-        };
+        let att =
+            Attachment { name: "a.txt".into(), mime: "text/plain".into(), data_b64: "aGk=".into() };
         let raw = build_raw("me@x.co", "you@y.io", "", "", "Hi", "<p>hi</p>", &[att]);
         let decoded = String::from_utf8(URL_SAFE.decode(raw).unwrap()).unwrap();
         assert!(decoded.contains("multipart/mixed"));

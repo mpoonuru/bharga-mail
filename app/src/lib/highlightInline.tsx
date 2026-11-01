@@ -7,7 +7,8 @@ import type { ReactNode } from "react";
 
 const MONEY = /[$€£]\s?\d[\d.,]*/;
 const PERCENT = /\d+(?:\.\d+)?\s?%/;
-const DATE = /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s?\d{1,2}(?:,?\s?\d{4})?\b/;
+const DATE =
+  /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s?\d{1,2}(?:,?\s?\d{4})?\b/;
 const COMBINED = new RegExp(`(${MONEY.source}|${PERCENT.source}|${DATE.source})`, "gi");
 
 function kindOf(match: string): "money" | "percent" | "date" {

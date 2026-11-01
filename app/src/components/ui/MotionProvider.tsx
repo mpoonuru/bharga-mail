@@ -1,6 +1,7 @@
 // Applies the user's operating-system motion preference to Motion for React.
-import type { PropsWithChildren } from "react";
+
 import { MotionConfig } from "motion/react";
+import type { PropsWithChildren } from "react";
 
 export const REDUCED_MOTION_POLICY = "user" as const;
 

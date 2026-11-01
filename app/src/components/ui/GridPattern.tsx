@@ -16,7 +16,14 @@ export function GridPattern({ width, height, x, y, squares, ...props }: GridPatt
   return (
     <svg aria-hidden="true" {...props}>
       <defs>
-        <pattern id={patternId} width={width} height={height} patternUnits="userSpaceOnUse" x={x} y={y}>
+        <pattern
+          id={patternId}
+          width={width}
+          height={height}
+          patternUnits="userSpaceOnUse"
+          x={x}
+          y={y}
+        >
           <path d={`M.5 ${height}V.5H${width}`} fill="none" />
         </pattern>
       </defs>
@@ -24,7 +31,14 @@ export function GridPattern({ width, height, x, y, squares, ...props }: GridPatt
       {squares && (
         <svg x={x} y={y} className="overflow-visible">
           {squares.map(([sqX, sqY]) => (
-            <rect strokeWidth="0" key={`${sqX}-${sqY}`} width={width + 1} height={height + 1} x={sqX * width} y={sqY * height} />
+            <rect
+              strokeWidth="0"
+              key={`${sqX}-${sqY}`}
+              width={width + 1}
+              height={height + 1}
+              x={sqX * width}
+              y={sqY * height}
+            />
           ))}
         </svg>
       )}

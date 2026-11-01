@@ -12,5 +12,5 @@ createRoot(document.getElementById("root")!).render(
     <MotionProvider>
       <App />
     </MotionProvider>
-  </StrictMode>
+  </StrictMode>,
 );

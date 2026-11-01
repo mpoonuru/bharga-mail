@@ -18,11 +18,11 @@ use super::domain::{
     EventMutation, EventRange, EventStatus, ParticipationStatus, RecurrenceEditScope, SeriesSplit,
 };
 use super::ical::{
-    build_itip, parse_calendar, write_calendar, ExportOptions, ItipActor, ItipMethod, Limits,
-    ParsedEvent, MAX_ICS_BYTES,
+    ExportOptions, ItipActor, ItipMethod, Limits, MAX_ICS_BYTES, ParsedEvent, build_itip,
+    parse_calendar, write_calendar,
 };
-use crate::store::OutboxItem;
 use crate::AppState;
+use crate::store::OutboxItem;
 
 const MAX_RANGE_DAYS: i64 = 400;
 
@@ -36,11 +36,7 @@ pub struct CalendarCommandError {
 
 impl CalendarCommandError {
     fn new(code: impl Into<String>, message: impl Into<String>, retryable: bool) -> Self {
-        Self {
-            code: code.into(),
-            message: message.into(),
-            retryable,
-        }
+        Self { code: code.into(), message: message.into(), retryable }
     }
 }
 
@@ -178,15 +174,13 @@ fn parse_range_value(
     value: &str,
     boundary: &'static str,
 ) -> Result<DateTime<Utc>, CalendarCommandError> {
-    DateTime::parse_from_rfc3339(value)
-        .map(|parsed| parsed.with_timezone(&Utc))
-        .map_err(|_| {
-            CalendarCommandError::new(
-                "invalid-range",
-                format!("Calendar range {boundary} must be an RFC3339 timestamp"),
-                false,
-            )
-        })
+    DateTime::parse_from_rfc3339(value).map(|parsed| parsed.with_timezone(&Utc)).map_err(|_| {
+        CalendarCommandError::new(
+            "invalid-range",
+            format!("Calendar range {boundary} must be an RFC3339 timestamp"),
+            false,
+        )
+    })
 }
 
 fn validate_range(input: &EventRangeInput) -> Result<EventRange, CalendarCommandError> {
@@ -275,15 +269,9 @@ fn connector_error(error: ConnectorError) -> CalendarCommandError {
 }
 
 fn io_error(error: std::io::Error) -> CalendarCommandError {
-    let retryable = matches!(
-        error.kind(),
-        std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock
-    );
-    CalendarCommandError::new(
-        "file-error",
-        "Calendar file could not be read or written",
-        retryable,
-    )
+    let retryable =
+        matches!(error.kind(), std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock);
+    CalendarCommandError::new("file-error", "Calendar file could not be read or written", retryable)
 }
 
 fn read_bounded_calendar_file(path: &str) -> Result<Vec<u8>, CalendarCommandError> {
@@ -297,9 +285,7 @@ fn read_bounded_calendar_file(path: &str) -> Result<Vec<u8>, CalendarCommandErro
         ));
     }
     let mut bytes = Vec::new();
-    file.take((MAX_ICS_BYTES + 1) as u64)
-        .read_to_end(&mut bytes)
-        .map_err(io_error)?;
+    file.take((MAX_ICS_BYTES + 1) as u64).read_to_end(&mut bytes).map_err(io_error)?;
     if bytes.len() > MAX_ICS_BYTES {
         return Err(CalendarCommandError::new(
             "ics-too-large",
@@ -405,10 +391,7 @@ pub fn delete_calendar_event(
     event_id: String,
     state: State<'_, AppState>,
 ) -> Result<CalendarEvent, CalendarCommandError> {
-    state
-        .store
-        .delete_calendar_event(&event_id)
-        .map_err(store_error)
+    state.store.delete_calendar_event(&event_id).map_err(store_error)
 }
 
 #[tauri::command]
@@ -428,10 +411,7 @@ pub fn set_calendar_visibility(
     visible: bool,
     state: State<'_, AppState>,
 ) -> Result<(), CalendarCommandError> {
-    state
-        .store
-        .set_calendar_visibility(&calendar_id, visible)
-        .map_err(store_error)
+    state.store.set_calendar_visibility(&calendar_id, visible).map_err(store_error)
 }
 
 #[tauri::command]
@@ -471,10 +451,7 @@ pub fn import_ics(
             event
         })
         .collect();
-    state
-        .store
-        .import_calendar_events(inputs)
-        .map_err(store_error)
+    state.store.import_calendar_events(inputs).map_err(store_error)
 }
 
 #[tauri::command]
@@ -500,10 +477,7 @@ pub fn export_ics(
             .ok_or_else(|| {
                 CalendarCommandError::new("not-found", "Calendar event was not found", false)
             })?;
-        events.push(ParsedEvent {
-            event,
-            preserved_properties: Vec::new(),
-        });
+        events.push(ParsedEvent { event, preserved_properties: Vec::new() });
     }
     let bytes = write_calendar(&events, ExportOptions::default()).map_err(calendar_error)?;
     std::fs::write(path, &bytes).map_err(io_error)?;
@@ -539,22 +513,13 @@ pub async fn inspect_calendar_attachment(
         .map_err(store_error)?
         .into_iter()
         .find(|calendar| calendar.writable && calendar.is_default)
-        .or_else(|| {
-            state
-                .store
-                .calendars()
-                .ok()?
-                .into_iter()
-                .find(|calendar| calendar.writable)
-        });
+        .or_else(|| state.store.calendars().ok()?.into_iter().find(|calendar| calendar.writable));
     parsed
         .events
         .into_iter()
         .map(|parsed_event| {
-            let existing = state
-                .store
-                .calendar_event_by_uid(&parsed_event.event.uid)
-                .map_err(store_error)?;
+            let existing =
+                state.store.calendar_event_by_uid(&parsed_event.event.uid).map_err(store_error)?;
             let mut incoming = parsed_event.event;
             if let Some(existing) = &existing {
                 incoming.calendar_id = existing.calendar_id.clone();
@@ -615,22 +580,17 @@ pub fn respond_to_invitation(
         .ok_or_else(|| {
             CalendarCommandError::new("account-not-found", "Mail account was not found", false)
         })?;
-    let organizer_email = input
-        .event
-        .organizer
-        .as_ref()
-        .map(|organizer| organizer.email.clone())
-        .ok_or_else(|| {
-            CalendarCommandError::new(
-                "invalid-organizer-or-attendee",
-                "Invitation does not identify an organizer",
-                false,
-            )
-        })?;
-    let existing = state
-        .store
-        .calendar_event_by_uid(&input.event.uid)
-        .map_err(store_error)?;
+    let organizer_email =
+        input.event.organizer.as_ref().map(|organizer| organizer.email.clone()).ok_or_else(
+            || {
+                CalendarCommandError::new(
+                    "invalid-organizer-or-attendee",
+                    "Invitation does not identify an organizer",
+                    false,
+                )
+            },
+        )?;
+    let existing = state.store.calendar_event_by_uid(&input.event.uid).map_err(store_error)?;
     let inspection =
         inspect_invitation(existing.as_ref(), &input.event, Some(ItipMethod::Request))?;
     if inspection.state == InvitationState::Stale {
@@ -702,28 +662,17 @@ pub fn schedule_from_thread(
     thread_id: String,
     state: State<'_, AppState>,
 ) -> Result<EventMutation, CalendarCommandError> {
-    let thread = state
-        .store
-        .threads()
-        .into_iter()
-        .find(|thread| thread.id == thread_id)
-        .ok_or_else(|| {
-            CalendarCommandError::new("not-found", "Mail thread was not found", false)
-        })?;
+    let thread =
+        state.store.threads().into_iter().find(|thread| thread.id == thread_id).ok_or_else(
+            || CalendarCommandError::new("not-found", "Mail thread was not found", false),
+        )?;
     let calendar = state
         .store
         .calendars()
         .map_err(store_error)?
         .into_iter()
         .find(|calendar| calendar.writable && calendar.is_default)
-        .or_else(|| {
-            state
-                .store
-                .calendars()
-                .ok()?
-                .into_iter()
-                .find(|calendar| calendar.writable)
-        })
+        .or_else(|| state.store.calendars().ok()?.into_iter().find(|calendar| calendar.writable))
         .ok_or_else(|| {
             CalendarCommandError::new(
                 "calendar-not-found",
@@ -744,9 +693,7 @@ pub fn schedule_from_thread(
         location: String::new(),
         conference_url: None,
         source_thread_id: Some(thread.id),
-        start: EventMoment::Timed {
-            utc: start.to_rfc3339_opts(SecondsFormat::Secs, true),
-        },
+        start: EventMoment::Timed { utc: start.to_rfc3339_opts(SecondsFormat::Secs, true) },
         end: EventMoment::Timed {
             utc: (start + Duration::hours(1)).to_rfc3339_opts(SecondsFormat::Secs, true),
         },
@@ -780,10 +727,7 @@ pub struct SaveCalDavSourceInput {
 }
 
 fn caldav_credentials(input: &CalDavDiscoveryInput) -> Credentials {
-    Credentials::Basic {
-        username: input.username.clone(),
-        password: input.password.clone(),
-    }
+    Credentials::Basic { username: input.username.clone(), password: input.password.clone() }
 }
 
 #[tauri::command]
@@ -880,9 +824,7 @@ pub async fn save_caldav_source(
 pub async fn connect_google_calendar(
     state: State<'_, AppState>,
 ) -> Result<CalendarSource, CalendarCommandError> {
-    let tokens = super::connectors::google::authorize()
-        .await
-        .map_err(connector_error)?;
+    let tokens = super::connectors::google::authorize().await.map_err(connector_error)?;
     let email = super::connectors::google::account_email(&tokens.access_token)
         .await
         .map_err(connector_error)?;
@@ -940,9 +882,7 @@ pub async fn connect_google_calendar(
 pub async fn connect_microsoft_calendar(
     state: State<'_, AppState>,
 ) -> Result<CalendarSource, CalendarCommandError> {
-    let tokens = super::connectors::microsoft::authorize()
-        .await
-        .map_err(connector_error)?;
+    let tokens = super::connectors::microsoft::authorize().await.map_err(connector_error)?;
     let email = super::connectors::microsoft::account_email(&tokens.access_token)
         .await
         .map_err(connector_error)?;
@@ -1009,10 +949,7 @@ pub async fn sync_calendar_source(
     }
     match outcome {
         Ok(result) => {
-            let _ = app.emit(
-                "calendar:changed",
-                serde_json::json!({ "sourceId": source_id }),
-            );
+            let _ = app.emit("calendar:changed", serde_json::json!({ "sourceId": source_id }));
             Ok(result)
         }
         Err(failure) => Err(connector_error(failure)),
@@ -1035,12 +972,7 @@ pub fn list_calendar_sync_health(
         .calendar_sources()
         .map_err(store_error)?
         .into_iter()
-        .map(|source| {
-            state
-                .store
-                .calendar_sync_health(&source.id)
-                .map_err(store_error)
-        })
+        .map(|source| state.store.calendar_sync_health(&source.id).map_err(store_error))
         .collect()
 }
 
@@ -1051,14 +983,9 @@ pub fn resolve_calendar_conflict(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<CalendarEvent>, CalendarCommandError> {
-    let events = state
-        .store
-        .resolve_calendar_conflict(&event_id, resolution)
-        .map_err(store_error)?;
-    let _ = app.emit(
-        "calendar:changed",
-        serde_json::json!({ "eventId": event_id }),
-    );
+    let events =
+        state.store.resolve_calendar_conflict(&event_id, resolution).map_err(store_error)?;
+    let _ = app.emit("calendar:changed", serde_json::json!({ "eventId": event_id }));
     Ok(events)
 }
 
@@ -1075,11 +1002,7 @@ pub async fn calendar_availability(
             false,
         ));
     }
-    state
-        .calendar_sync
-        .availability(&source_ids, &request)
-        .await
-        .map_err(connector_error)
+    state.calendar_sync.availability(&source_ids, &request).await.map_err(connector_error)
 }
 
 #[tauri::command]
@@ -1088,10 +1011,7 @@ pub fn update_calendar_source_label(
     label: String,
     state: State<'_, AppState>,
 ) -> Result<(), CalendarCommandError> {
-    state
-        .store
-        .update_calendar_source_label(&source_id, &label)
-        .map_err(store_error)
+    state.store.update_calendar_source_label(&source_id, &label).map_err(store_error)
 }
 
 #[tauri::command]
@@ -1099,10 +1019,7 @@ pub fn set_calendar_order(
     calendar_ids: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<(), CalendarCommandError> {
-    state
-        .store
-        .set_calendar_order(&calendar_ids)
-        .map_err(store_error)
+    state.store.set_calendar_order(&calendar_ids).map_err(store_error)
 }
 
 fn remove_calendar_source_with<F>(
@@ -1131,9 +1048,7 @@ where
             )
         })?;
     }
-    store
-        .remove_calendar_source(source_id, policy)
-        .map_err(store_error)
+    store.remove_calendar_source(source_id, policy).map_err(store_error)
 }
 
 #[tauri::command]
@@ -1146,10 +1061,7 @@ pub fn remove_calendar_source(
     remove_calendar_source_with(&state.store, &source_id, policy, || {
         crate::sync::tokens::clear_calendar_credentials(&source_id)
     })?;
-    let _ = app.emit(
-        "calendar:changed",
-        serde_json::json!({ "sourceId": source_id }),
-    );
+    let _ = app.emit("calendar:changed", serde_json::json!({ "sourceId": source_id }));
     Ok(())
 }
 
@@ -1173,12 +1085,8 @@ mod tests {
             location: String::new(),
             conference_url: None,
             source_thread_id: None,
-            start: EventMoment::Timed {
-                utc: "2026-09-25T10:00:00Z".into(),
-            },
-            end: EventMoment::Timed {
-                utc: "2026-09-25T11:00:00Z".into(),
-            },
+            start: EventMoment::Timed { utc: "2026-09-25T10:00:00Z".into() },
+            end: EventMoment::Timed { utc: "2026-09-25T11:00:00Z".into() },
             timezone: "UTC".into(),
             recurrence: None,
             recurrence_id: None,
@@ -1226,12 +1134,8 @@ mod tests {
             location: String::new(),
             conference_url: None,
             source_thread_id: None,
-            start: EventMoment::AllDay {
-                date: "2026-09-25".into(),
-            },
-            end: EventMoment::Timed {
-                utc: "2026-09-26T00:00:00Z".into(),
-            },
+            start: EventMoment::AllDay { date: "2026-09-25".into() },
+            end: EventMoment::Timed { utc: "2026-09-26T00:00:00Z".into() },
             timezone: "Europe/Berlin".into(),
             recurrence: None,
             status: EventStatus::Confirmed,
@@ -1242,10 +1146,7 @@ mod tests {
             reminders: Vec::new(),
         };
 
-        assert_eq!(
-            validate_event(input).unwrap_err().code,
-            "invalid-time-shape"
-        );
+        assert_eq!(validate_event(input).unwrap_err().code, "invalid-time-shape");
     }
 
     #[test]
@@ -1304,10 +1205,6 @@ mod tests {
             || Err("keychain denied".into()),
         );
         assert_eq!(result.unwrap_err().code, "credential-cleanup-failed");
-        assert!(store
-            .calendar_sources()
-            .unwrap()
-            .iter()
-            .any(|source| source.id == "source-1"));
+        assert!(store.calendar_sources().unwrap().iter().any(|source| source.id == "source-1"));
     }
 }

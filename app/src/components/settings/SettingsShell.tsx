@@ -1,5 +1,5 @@
 // Stable settings information architecture and keyboard-complete destination navigation.
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { type KeyboardEvent, type ReactNode, useRef } from "react";
 
 import { Icon, type IconName } from "@/components/icons";
 
@@ -56,7 +56,9 @@ export function SettingsShell({ active, onChange, children }: SettingsShellProps
           {SETTINGS_SECTIONS.map(([id, label, icon], index) => (
             <button
               key={id}
-              ref={(element) => { tabRefs.current[index] = element; }}
+              ref={(element) => {
+                tabRefs.current[index] = element;
+              }}
               id={`settings-tab-${id}`}
               type="button"
               role="tab"

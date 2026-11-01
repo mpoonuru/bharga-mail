@@ -9,7 +9,9 @@ export function UndoToast() {
     <div className="toast">
       <span className="toast-spinner" />
       <span>{undo.label}</span>
-      <button className="toast-undo" onClick={cancelUndo}>Undo</button>
+      <button className="toast-undo" onClick={cancelUndo}>
+        Undo
+      </button>
     </div>
   );
 }

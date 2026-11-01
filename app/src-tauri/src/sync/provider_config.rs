@@ -71,17 +71,14 @@ pub fn mail_provider_capabilities() -> Vec<MailProviderCapability> {
 
 #[cfg(test)]
 mod tests {
-    use super::{capabilities_from, MailProviderCapabilityReason};
+    use super::{MailProviderCapabilityReason, capabilities_from};
 
     #[test]
     fn missing_or_blank_client_ids_fail_closed() {
         let capabilities = capabilities_from(None, Some("   "));
         assert!(!capabilities[0].available);
         assert!(!capabilities[0].configured);
-        assert_eq!(
-            capabilities[0].reason,
-            MailProviderCapabilityReason::BuildNotConfigured
-        );
+        assert_eq!(capabilities[0].reason, MailProviderCapabilityReason::BuildNotConfigured);
         assert!(!capabilities[1].available);
     }
 

@@ -22,10 +22,7 @@ pub struct CalendarError {
 
 impl CalendarError {
     pub(crate) fn new(code: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            code,
-            message: message.into(),
-        }
+        Self { code, message: message.into() }
     }
 
     pub fn code(&self) -> &'static str {
@@ -169,11 +166,7 @@ fn recurrence_context(
             if end <= start {
                 return Err(invalid("event end must be after start"));
             }
-            (
-                start.with_timezone(&Tz::from(timezone)),
-                Some(end.signed_duration_since(start)),
-                None,
-            )
+            (start.with_timezone(&Tz::from(timezone)), Some(end.signed_duration_since(start)), None)
         }
         (EventMoment::AllDay { date: start }, EventMoment::AllDay { date: end }) => {
             let start = NaiveDate::parse_from_str(start, "%Y-%m-%d")
@@ -195,10 +188,7 @@ fn recurrence_context(
 
     let mut set = RRuleSet::new(dt_start);
     for raw_rule in &recurrence.rules {
-        let raw_rule = raw_rule
-            .trim()
-            .strip_prefix("RRULE:")
-            .unwrap_or(raw_rule.trim());
+        let raw_rule = raw_rule.trim().strip_prefix("RRULE:").unwrap_or(raw_rule.trim());
         let rule = raw_rule
             .parse::<RRule<Unvalidated>>()
             .map_err(|error| invalid(format!("invalid RRULE: {error}")))?
@@ -213,12 +203,7 @@ fn recurrence_context(
         set = set.exdate(recurrence_datetime(value, timezone, all_day)?);
     }
 
-    Ok(RecurrenceContext {
-        set,
-        timezone,
-        timed_duration,
-        all_day_duration,
-    })
+    Ok(RecurrenceContext { set, timezone, timed_duration, all_day_duration })
 }
 
 pub fn expand_event(
@@ -248,11 +233,7 @@ pub fn expand_event(
     let overlap = timed_duration.unwrap_or_else(|| Duration::days(all_day_duration.unwrap_or(1)));
     let after = (range_start - overlap - Duration::seconds(1)).with_timezone(&Tz::from(timezone));
     let before = range_end.with_timezone(&Tz::from(timezone));
-    let result = context
-        .set
-        .after(after)
-        .before(before)
-        .all(u16::try_from(limit + 1).unwrap());
+    let result = context.set.after(after).before(before).all(u16::try_from(limit + 1).unwrap());
     if result.limited || result.dates.len() > limit {
         return Err(CalendarError::new(
             "recurrence-limit",
@@ -356,11 +337,7 @@ fn rule_count(rule: &str) -> Result<Option<u32>, CalendarError> {
     rule_parts(rule)
         .into_iter()
         .find_map(|part| part.strip_prefix("COUNT="))
-        .map(|value| {
-            value
-                .parse::<u32>()
-                .map_err(|_| invalid("RRULE COUNT is invalid"))
-        })
+        .map(|value| value.parse::<u32>().map_err(|_| invalid("RRULE COUNT is invalid")))
         .transpose()
 }
 
@@ -419,21 +396,15 @@ fn shift_unchanged_patch_to_target(
     }
     if let Some(duration) = context.timed_duration {
         let start = target.with_timezone(&Utc);
-        patch.start = EventMoment::Timed {
-            utc: start.to_rfc3339_opts(SecondsFormat::Secs, true),
-        };
+        patch.start = EventMoment::Timed { utc: start.to_rfc3339_opts(SecondsFormat::Secs, true) };
         patch.end = EventMoment::Timed {
             utc: (start + duration).to_rfc3339_opts(SecondsFormat::Secs, true),
         };
     } else {
         let start = target.date_naive();
         let end = start + Duration::days(context.all_day_duration.unwrap_or(1));
-        patch.start = EventMoment::AllDay {
-            date: start.format("%Y-%m-%d").to_string(),
-        };
-        patch.end = EventMoment::AllDay {
-            date: end.format("%Y-%m-%d").to_string(),
-        };
+        patch.start = EventMoment::AllDay { date: start.format("%Y-%m-%d").to_string() };
+        patch.end = EventMoment::AllDay { date: end.format("%Y-%m-%d").to_string() };
     }
     Ok(())
 }
@@ -449,36 +420,24 @@ pub fn split_series(
         .calendar_event(event_id)
         .map_err(store_error)?
         .ok_or_else(|| invalid("recurring series does not exist"))?;
-    let recurrence = master
-        .recurrence
-        .as_ref()
-        .ok_or_else(|| invalid("event is not a recurring series"))?;
+    let recurrence =
+        master.recurrence.as_ref().ok_or_else(|| invalid("event is not a recurring series"))?;
     if recurrence.rules.len() != 1 {
-        return Err(invalid(
-            "this-and-following edits require exactly one RRULE",
-        ));
+        return Err(invalid("this-and-following edits require exactly one RRULE"));
     }
     let (context, target, occurrences_before) = recurrence_target(&master, recurrence_id)?;
     if occurrences_before == 0 {
         let updated = store
             .update_calendar_event_with_notifications(event_id, patch, notify_attendees)
             .map_err(store_error)?;
-        return Ok(SeriesSplit {
-            original: updated,
-            following: None,
-            exception: None,
-        });
+        return Ok(SeriesSplit { original: updated, following: None, exception: None });
     }
 
     let all_day = context.all_day_duration.is_some();
     let (before_dates, following_dates) =
         partition_recurrence_values(&recurrence.dates, context.timezone, all_day, target)?;
-    let (before_exdates, following_exdates) = partition_recurrence_values(
-        &recurrence.excluded_dates,
-        context.timezone,
-        all_day,
-        target,
-    )?;
+    let (before_exdates, following_exdates) =
+        partition_recurrence_values(&recurrence.excluded_dates, context.timezone, all_day, target)?;
     let until = target.with_timezone(&Utc) - Duration::seconds(1);
     let mut original_patch = EventMutation::from(&master);
     original_patch.recurrence = Some(RecurrenceSet {
@@ -511,22 +470,14 @@ pub fn edit_recurring_event(
             let original = store
                 .update_calendar_event_with_notifications(event_id, patch, notify_attendees)
                 .map_err(store_error)?;
-            Ok(SeriesSplit {
-                original,
-                following: None,
-                exception: None,
-            })
+            Ok(SeriesSplit { original, following: None, exception: None })
         }
         RecurrenceEditScope::ThisOccurrence => {
             let master = store
                 .calendar_event(event_id)
                 .map_err(store_error)?
                 .ok_or_else(|| invalid("recurring series does not exist"))?;
-            if store
-                .calendar_exception(event_id, recurrence_id)
-                .map_err(store_error)?
-                .is_none()
-            {
+            if store.calendar_exception(event_id, recurrence_id).map_err(store_error)?.is_none() {
                 recurrence_target(&master, recurrence_id)?;
             }
             store
@@ -588,19 +539,13 @@ mod tests {
     #[test]
     fn weekly_berlin_event_keeps_nine_am_across_dst() {
         let recurring = event(
-            EventMoment::Timed {
-                utc: "2026-03-22T08:00:00Z".into(),
-            },
-            EventMoment::Timed {
-                utc: "2026-03-22T09:00:00Z".into(),
-            },
+            EventMoment::Timed { utc: "2026-03-22T08:00:00Z".into() },
+            EventMoment::Timed { utc: "2026-03-22T09:00:00Z".into() },
             "Europe/Berlin",
             "FREQ=WEEKLY;COUNT=3",
         );
-        let range = EventRange {
-            start: "2026-03-20T00:00:00Z".into(),
-            end: "2026-04-10T00:00:00Z".into(),
-        };
+        let range =
+            EventRange { start: "2026-03-20T00:00:00Z".into(), end: "2026-04-10T00:00:00Z".into() };
 
         let occurrences = expand_event(&recurring, &range, 128).unwrap();
         let zone: chrono_tz::Tz = "Europe/Berlin".parse().unwrap();
@@ -619,19 +564,13 @@ mod tests {
     #[test]
     fn all_day_dates_do_not_shift_in_los_angeles() {
         let recurring = event(
-            EventMoment::AllDay {
-                date: "2026-10-25".into(),
-            },
-            EventMoment::AllDay {
-                date: "2026-10-26".into(),
-            },
+            EventMoment::AllDay { date: "2026-10-25".into() },
+            EventMoment::AllDay { date: "2026-10-26".into() },
             "Europe/Berlin",
             "FREQ=DAILY;COUNT=1",
         );
-        let range = EventRange {
-            start: "2026-10-24T00:00:00Z".into(),
-            end: "2026-10-27T00:00:00Z".into(),
-        };
+        let range =
+            EventRange { start: "2026-10-24T00:00:00Z".into(), end: "2026-10-27T00:00:00Z".into() };
 
         let occurrence = expand_event(&recurring, &range, 8).unwrap().remove(0);
 
@@ -642,32 +581,21 @@ mod tests {
     #[test]
     fn expansion_rejects_pathological_rule_before_limit() {
         let recurring = event(
-            EventMoment::Timed {
-                utc: "2026-01-01T08:00:00Z".into(),
-            },
-            EventMoment::Timed {
-                utc: "2026-01-01T09:00:00Z".into(),
-            },
+            EventMoment::Timed { utc: "2026-01-01T08:00:00Z".into() },
+            EventMoment::Timed { utc: "2026-01-01T09:00:00Z".into() },
             "Europe/Berlin",
             "FREQ=MINUTELY",
         );
-        let range = EventRange {
-            start: "2026-01-01T00:00:00Z".into(),
-            end: "2026-12-31T23:59:59Z".into(),
-        };
+        let range =
+            EventRange { start: "2026-01-01T00:00:00Z".into(), end: "2026-12-31T23:59:59Z".into() };
 
-        assert_eq!(
-            expand_event(&recurring, &range, 512).unwrap_err().code(),
-            "recurrence-limit"
-        );
+        assert_eq!(expand_event(&recurring, &range, 512).unwrap_err().code(), "recurrence-limit");
     }
 
     #[test]
     fn this_occurrence_edit_persists_an_exception() {
         let store = Store::in_memory().unwrap();
-        let calendar = store
-            .create_local_calendar("Personal", "#6f8df6", "Europe/Berlin")
-            .unwrap();
+        let calendar = store.create_local_calendar("Personal", "#6f8df6", "Europe/Berlin").unwrap();
         let master = store
             .create_calendar_event(EventMutation {
                 calendar_id: calendar.id,
@@ -676,12 +604,8 @@ mod tests {
                 location: String::new(),
                 conference_url: None,
                 source_thread_id: None,
-                start: EventMoment::Timed {
-                    utc: "2026-03-22T08:00:00Z".into(),
-                },
-                end: EventMoment::Timed {
-                    utc: "2026-03-22T09:00:00Z".into(),
-                },
+                start: EventMoment::Timed { utc: "2026-03-22T08:00:00Z".into() },
+                end: EventMoment::Timed { utc: "2026-03-22T09:00:00Z".into() },
                 timezone: "Europe/Berlin".into(),
                 recurrence: Some(RecurrenceSet {
                     rules: vec!["FREQ=WEEKLY;COUNT=3".into()],
@@ -698,12 +622,8 @@ mod tests {
             .unwrap();
         let mut patch = EventMutation::from(&master);
         patch.title = "Moved review".into();
-        patch.start = EventMoment::Timed {
-            utc: "2026-03-29T09:00:00Z".into(),
-        };
-        patch.end = EventMoment::Timed {
-            utc: "2026-03-29T10:00:00Z".into(),
-        };
+        patch.start = EventMoment::Timed { utc: "2026-03-29T09:00:00Z".into() };
+        patch.end = EventMoment::Timed { utc: "2026-03-29T10:00:00Z".into() };
 
         let result = edit_recurring_event(
             &store,
@@ -717,14 +637,8 @@ mod tests {
         let exception = result.exception.unwrap();
 
         assert_eq!(exception.uid, master.uid);
-        assert_eq!(
-            exception.parent_event_id.as_deref(),
-            Some(master.id.as_str())
-        );
-        assert_eq!(
-            exception.recurrence_id.as_deref(),
-            Some("2026-03-29T07:00:00Z")
-        );
+        assert_eq!(exception.parent_event_id.as_deref(), Some(master.id.as_str()));
+        assert_eq!(exception.recurrence_id.as_deref(), Some("2026-03-29T07:00:00Z"));
         let refreshed_master = store.calendar_event(&master.id).unwrap().unwrap();
         let expanded = expand_event(
             &refreshed_master,
@@ -736,9 +650,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(expanded.len(), 2);
-        assert!(expanded
-            .iter()
-            .all(|occurrence| occurrence.recurrence_id != "2026-03-29T07:00:00Z"));
+        assert!(
+            expanded.iter().all(|occurrence| occurrence.recurrence_id != "2026-03-29T07:00:00Z")
+        );
 
         let mut second_patch = EventMutation::from(&exception);
         second_patch.title = "Moved review again".into();
@@ -760,9 +674,7 @@ mod tests {
     #[test]
     fn this_and_following_truncates_master_and_starts_a_new_series() {
         let store = Store::in_memory().unwrap();
-        let calendar = store
-            .create_local_calendar("Personal", "#6f8df6", "Europe/Berlin")
-            .unwrap();
+        let calendar = store.create_local_calendar("Personal", "#6f8df6", "Europe/Berlin").unwrap();
         let master = store
             .create_calendar_event(EventMutation {
                 calendar_id: calendar.id,
@@ -771,12 +683,8 @@ mod tests {
                 location: String::new(),
                 conference_url: None,
                 source_thread_id: None,
-                start: EventMoment::Timed {
-                    utc: "2026-03-22T08:00:00Z".into(),
-                },
-                end: EventMoment::Timed {
-                    utc: "2026-03-22T09:00:00Z".into(),
-                },
+                start: EventMoment::Timed { utc: "2026-03-22T08:00:00Z".into() },
+                end: EventMoment::Timed { utc: "2026-03-22T09:00:00Z".into() },
                 timezone: "Europe/Berlin".into(),
                 recurrence: Some(RecurrenceSet {
                     rules: vec!["FREQ=WEEKLY;COUNT=5".into()],
@@ -807,9 +715,7 @@ mod tests {
         assert!(result.original.recurrence.unwrap().rules[0].contains("UNTIL="));
         assert_eq!(
             result.following.as_ref().unwrap().start,
-            EventMoment::Timed {
-                utc: "2026-04-05T07:00:00Z".into()
-            }
+            EventMoment::Timed { utc: "2026-04-05T07:00:00Z".into() }
         );
         assert_eq!(result.following.unwrap().title, "New weekly review");
     }

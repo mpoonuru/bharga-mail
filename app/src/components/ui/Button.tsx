@@ -13,12 +13,12 @@ interface Props {
 /** Primary/ghost action button with icon and a processing spinner state. */
 export function Button({ children, onClick, icon, loading, disabled, variant = "primary" }: Props) {
   return (
-    <button
-      className={`af-btn ${variant}`}
-      onClick={onClick}
-      disabled={disabled || loading}
-    >
-      {loading ? <span className="btn-spinner" /> : icon ? <Icon name={icon} size={14} weight="fill" /> : null}
+    <button className={`af-btn ${variant}`} onClick={onClick} disabled={disabled || loading}>
+      {loading ? (
+        <span className="btn-spinner" />
+      ) : icon ? (
+        <Icon name={icon} size={14} weight="fill" />
+      ) : null}
       {children}
     </button>
   );

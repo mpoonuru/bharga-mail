@@ -47,34 +47,38 @@ function baseApi(overrides: Partial<CalendarApi> = {}): CalendarApi {
   const existing = event("e1");
   return {
     async listSources() {
-      return [{
-        id: "source-1",
-        linkedAccountId: null,
-        provider: "calDav",
-        label: "Work",
-        address: "calendar.example.test",
-        authState: "ready",
-        capabilities: ["events"],
-        lastSyncAt: null,
-        syncError: null,
-        disabled: false,
-      }];
+      return [
+        {
+          id: "source-1",
+          linkedAccountId: null,
+          provider: "calDav",
+          label: "Work",
+          address: "calendar.example.test",
+          authState: "ready",
+          capabilities: ["events"],
+          lastSyncAt: null,
+          syncError: null,
+          disabled: false,
+        },
+      ];
     },
     async listCalendars() {
-      return [{
-        id: "calendar-1",
-        sourceId: "source-1",
-        providerId: "remote-calendar-1",
-        name: "Work",
-        description: "",
-        color: "#6f8df6",
-        timezone: "Europe/Berlin",
-        accessRole: "owner",
-        writable: true,
-        visible: true,
-        isDefault: true,
-        sortOrder: 0,
-      }];
+      return [
+        {
+          id: "calendar-1",
+          sourceId: "source-1",
+          providerId: "remote-calendar-1",
+          name: "Work",
+          description: "",
+          color: "#6f8df6",
+          timezone: "Europe/Berlin",
+          accessRole: "owner",
+          writable: true,
+          visible: true,
+          isDefault: true,
+          sortOrder: 0,
+        },
+      ];
     },
     async listEvents() {
       return [existing];
@@ -108,7 +112,9 @@ function baseApi(overrides: Partial<CalendarApi> = {}): CalendarApi {
       };
     },
     async setVisibility() {},
-    async syncSource() {},
+    async syncSource() {
+      return undefined;
+    },
     ...overrides,
   };
 }
@@ -124,15 +130,19 @@ function deferred<T>() {
 describe("calendar store", () => {
   it("keeps an offline edit visible when provider refresh fails", async () => {
     const offline = { code: "offline", message: "Provider is offline", retryable: true };
-    const store = createCalendarStore(baseApi({
-      async syncSource() {
-        throw offline;
-      },
-    }));
+    const store = createCalendarStore(
+      baseApi({
+        async syncSource() {
+          throw offline;
+        },
+      }),
+    );
     await store.getState().initialize();
 
     await store.getState().updateEvent("e1", { title: "Local title" });
-    await expect(store.getState().syncSource("source-1")).rejects.toMatchObject({ code: "offline" });
+    await expect(store.getState().syncSource("source-1")).rejects.toMatchObject({
+      code: "offline",
+    });
 
     expect(store.getState().events.e1).toMatchObject({
       title: "Local title",
@@ -145,12 +155,14 @@ describe("calendar store", () => {
     const first = deferred<CalendarEvent[]>();
     const second = deferred<CalendarEvent[]>();
     const requested: EventRange[] = [];
-    const store = createCalendarStore(baseApi({
-      listEvents(range) {
-        requested.push(range);
-        return requested.length === 1 ? first.promise : second.promise;
-      },
-    }));
+    const store = createCalendarStore(
+      baseApi({
+        listEvents(range) {
+          requested.push(range);
+          return requested.length === 1 ? first.promise : second.promise;
+        },
+      }),
+    );
 
     const firstLoad = store.getState().loadRange();
     const secondLoad = store.getState().setAnchor("2026-04-15");

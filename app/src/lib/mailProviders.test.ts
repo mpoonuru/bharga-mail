@@ -5,11 +5,13 @@ import { toMailConnectionError } from "@/lib/mailProviders";
 
 describe("mail provider errors", () => {
   it("preserves recognized structured native failures", () => {
-    expect(toMailConnectionError({
-      code: "tenant_restricted",
-      message: "Your organization blocked this sign-in.",
-      retryable: false,
-    })).toEqual({
+    expect(
+      toMailConnectionError({
+        code: "tenant_restricted",
+        message: "Your organization blocked this sign-in.",
+        retryable: false,
+      }),
+    ).toEqual({
       code: "tenant_restricted",
       message: "Your organization blocked this sign-in.",
       retryable: false,
@@ -17,12 +19,14 @@ describe("mail provider errors", () => {
   });
 
   it("preserves a validated account identity for partial connection success", () => {
-    expect(toMailConnectionError({
-      code: "initial_sync_failed",
-      message: "The account was connected, but its first sync did not finish.",
-      retryable: true,
-      accountId: "gmail:person@example.test",
-    })).toMatchObject({
+    expect(
+      toMailConnectionError({
+        code: "initial_sync_failed",
+        message: "The account was connected, but its first sync did not finish.",
+        retryable: true,
+        accountId: "gmail:person@example.test",
+      }),
+    ).toMatchObject({
       code: "initial_sync_failed",
       accountId: "gmail:person@example.test",
     });

@@ -23,6 +23,6 @@ export function useViewport(): Layout {
   return useSyncExternalStore(
     subscribe,
     () => layoutFor(window.innerWidth),
-    () => "wide" as Layout
+    () => "wide" as Layout,
   );
 }

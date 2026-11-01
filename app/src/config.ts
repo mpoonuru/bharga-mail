@@ -21,9 +21,10 @@ export const AI_DEFAULTS = {
   ollamaEndpoint: "http://localhost:11434",
   openAiEndpoint: "https://api.openai.com/v1",
   models: {
-    anthropic: "claude-sonnet-4-6",
-    "openai-compatible": "gpt-4o",
-    google: "gemini-1.5-pro",
-    local: "llama3",
+    // Current-generation defaults (each is overridable per-provider in Settings).
+    anthropic: "claude-sonnet-5-5",
+    "openai-compatible": "gpt-5.1",
+    google: "gemini-3-pro-preview",
+    local: "llama3.2",
   },
 } as const;

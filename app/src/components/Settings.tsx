@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { api, runtimeMode } from "@/lib/bridge";
 import { AboutSettings } from "@/components/settings/AboutSettings";
 import { AccountSettings } from "@/components/settings/AccountSettings";
 import { AiPrivacySettings } from "@/components/settings/AiPrivacySettings";
 import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
 import { DiagnosticsSettings } from "@/components/settings/DiagnosticsSettings";
 import { SecurityDataSettings } from "@/components/settings/SecurityDataSettings";
+import { type SettingsSection, SettingsShell } from "@/components/settings/SettingsShell";
 import { SignatureSettings } from "@/components/settings/SignatureSettings";
-import { SettingsShell, type SettingsSection } from "@/components/settings/SettingsShell";
+import { api, runtimeMode } from "@/lib/bridge";
 
 export function Settings() {
   const [appVersion, setAppVersion] = useState(__APP_VERSION__);
@@ -15,8 +15,12 @@ export function Settings() {
 
   useEffect(() => {
     let active = true;
-    void api.getAppVersion().then((version) => { if (active) setAppVersion(version); });
-    return () => { active = false; };
+    void api.getAppVersion().then((version) => {
+      if (active) setAppVersion(version);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (
@@ -30,8 +34,12 @@ export function Settings() {
         {activeSection === "ai-privacy" && <AiPrivacySettings />}
         {activeSection === "signatures" && <SignatureSettings />}
         {activeSection === "security-data" && <SecurityDataSettings />}
-        {activeSection === "diagnostics" && <DiagnosticsSettings version={appVersion} runtime={runtimeMode()} />}
-        {activeSection === "about" && <AboutSettings version={appVersion} runtime={runtimeMode()} />}
+        {activeSection === "diagnostics" && (
+          <DiagnosticsSettings version={appVersion} runtime={runtimeMode()} />
+        )}
+        {activeSection === "about" && (
+          <AboutSettings version={appVersion} runtime={runtimeMode()} />
+        )}
       </SettingsShell>
     </>
   );

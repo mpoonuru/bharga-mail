@@ -1,6 +1,7 @@
 // Accessible listbox-style select shared by account, compose, and preference flows.
-import { useId, useRef, useState } from "react";
+
 import { CaretUpDownIcon, CheckIcon } from "@phosphor-icons/react";
+import { useId, useRef, useState } from "react";
 
 export interface SelectOption {
   value: string;
@@ -40,7 +41,10 @@ export function Select({
   const [activeIndex, setActiveIndex] = useState(0);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((option) => option.value === value),
+  );
   const selected = options.find((option) => option.value === value);
 
   function focusOption(index: number) {
@@ -66,7 +70,10 @@ export function Select({
   }
 
   return (
-    <div className={`ta-select${fullWidth ? " w-full" : ""} ${className || ""}`} style={{ position: "relative" }}>
+    <div
+      className={`ta-select${fullWidth ? " w-full" : ""} ${className || ""}`}
+      style={{ position: "relative" }}
+    >
       <button
         ref={buttonRef}
         id={buttonId}
@@ -78,7 +85,7 @@ export function Select({
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         data-select-open={open ? "true" : undefined}
-        onClick={() => open ? close(false) : openAt(selectedIndex)}
+        onClick={() => (open ? close(false) : openAt(selectedIndex))}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
@@ -98,18 +105,26 @@ export function Select({
       </button>
       {open && (
         <>
-          <button type="button" className="ta-select-backdrop" tabIndex={-1} aria-hidden="true" onClick={() => close()} />
+          <button
+            type="button"
+            className="ta-select-backdrop"
+            tabIndex={-1}
+            aria-hidden="true"
+            onClick={() => close()}
+          />
           <div
             id={menuId}
             className="ta-select-menu"
             role="listbox"
             aria-label={ariaLabel}
-            aria-labelledby={ariaLabel ? undefined : ariaLabelledBy ?? buttonId}
+            aria-labelledby={ariaLabel ? undefined : (ariaLabelledBy ?? buttonId)}
             data-select-owner={buttonId}
           >
             {options.map((option, index) => (
               <button
-                ref={(node) => { optionRefs.current[index] = node; }}
+                ref={(node) => {
+                  optionRefs.current[index] = node;
+                }}
                 key={option.value}
                 type="button"
                 role="option"
@@ -136,7 +151,9 @@ export function Select({
                   }
                 }}
               >
-                {option.value === value && <CheckIcon size={13} weight="bold" className="ta-check" />}
+                {option.value === value && (
+                  <CheckIcon size={13} weight="bold" className="ta-check" />
+                )}
                 <span>{option.label}</span>
               </button>
             ))}

@@ -8,12 +8,12 @@
 use std::sync::{Arc, OnceLock};
 
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Key, Nonce,
+    aead::{Aead, KeyInit},
 };
-use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use keyring::Entry;
-use rand::RngCore;
+use rand::RngExt;
 
 use crate::store::Store;
 
@@ -56,9 +56,8 @@ where
     FWrite: FnOnce(&str) -> Result<(), String>,
 {
     if let Some(b64) = read()? {
-        let bytes = B64
-            .decode(b64)
-            .map_err(|_| "Stored credential key is malformed".to_string())?;
+        let bytes =
+            B64.decode(b64).map_err(|_| "Stored credential key is malformed".to_string())?;
         if bytes.len() != 32 {
             return Err("Stored credential key has an invalid length".into());
         }
@@ -68,12 +67,10 @@ where
     }
 
     if !can_create()? {
-        return Err(
-            "Credential recovery is required before a new master key can be created".into(),
-        );
+        return Err("Credential recovery is required before a new master key can be created".into());
     }
     let mut k = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut k);
+    rand::rng().fill(&mut k);
     write(&B64.encode(k))?; // don't encrypt-and-orphan if we can't persist the key
     Ok(k)
 }
@@ -87,17 +84,12 @@ fn load_or_create_master_key() -> Option<[u8; 32]> {
             Err(_) => Err("Credential key access is unavailable".into()),
         },
         || {
-            let db = DB
-                .get()
-                .ok_or_else(|| "Credential database is unavailable".to_string())?;
+            let db = DB.get().ok_or_else(|| "Credential database is unavailable".to_string())?;
             db.has_encrypted_secrets()
                 .map(|has_encrypted| !has_encrypted)
                 .map_err(|_| "Credential recovery state could not be checked".into())
         },
-        |value| {
-            e.set_password(value)
-                .map_err(|_| "Credential key could not be stored".into())
-        },
+        |value| e.set_password(value).map_err(|_| "Credential key could not be stored".into()),
     )
     .ok()
 }
@@ -119,7 +111,7 @@ fn encrypt_secret(plain: &str) -> Result<String, String> {
     let key = master_key().ok_or_else(|| "Secure credential storage is unavailable".to_string())?;
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
     let mut nonce = [0u8; 12];
-    rand::rngs::OsRng.fill_bytes(&mut nonce);
+    rand::rng().fill(&mut nonce);
     let ct = cipher
         .encrypt(Nonce::from_slice(&nonce), plain.as_bytes())
         .map_err(|_| "Credential encryption failed".to_string())?;
@@ -146,10 +138,7 @@ fn persist_encrypted(account_id: &str, kind: &str, value: &str) -> bool {
     let Ok(encrypted) = encrypt_secret(value) else {
         return false;
     };
-    if db
-        .set_secret(&db_key(account_id, kind), &encrypted)
-        .is_err()
-    {
+    if db.set_secret(&db_key(account_id, kind), &encrypted).is_err() {
         return false;
     }
     db.get_secret(&db_key(account_id, kind))
@@ -297,11 +286,7 @@ pub fn clear(account_id: &str) -> Result<(), String> {
                 None => Ok(()),
             },
             || delete_legacy(account_id, kind),
-            || {
-                Ok(DB
-                    .get()
-                    .is_some_and(|db| db.get_secret(&encrypted_key).is_some()))
-            },
+            || Ok(DB.get().is_some_and(|db| db.get_secret(&encrypted_key).is_some())),
             || legacy_exists(account_id, kind),
         )?;
     }
@@ -356,11 +341,7 @@ pub fn clear_calendar_credentials(source_id: &str) -> Result<(), String> {
                 None => Ok(()),
             },
             || delete_legacy(&credential_id, kind),
-            || {
-                Ok(DB
-                    .get()
-                    .is_some_and(|db| db.get_secret(&encrypted_key).is_some()))
-            },
+            || Ok(DB.get().is_some_and(|db| db.get_secret(&encrypted_key).is_some())),
             || legacy_exists(&credential_id, kind),
         )?;
     }
@@ -387,11 +368,7 @@ pub fn delete_ai_key(provider_id: &str) -> Result<(), String> {
             None => Ok(()),
         },
         || delete_legacy(provider_id, "ai-api-key"),
-        || {
-            Ok(DB
-                .get()
-                .is_some_and(|db| db.get_secret(&encrypted_key).is_some()))
-        },
+        || Ok(DB.get().is_some_and(|db| db.get_secret(&encrypted_key).is_some())),
         || legacy_exists(provider_id, "ai-api-key"),
     )
 }

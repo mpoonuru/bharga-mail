@@ -13,8 +13,16 @@ const PRIVACY_OPTIONS: ReadonlyArray<{
   description: string;
 }> = [
   { id: "cloud", label: "Cloud", description: "Use configured cloud providers for AI features." },
-  { id: "hybrid", label: "Hybrid", description: "Prefer role assignments across local and cloud providers." },
-  { id: "local", label: "Local", description: "Keep AI processing on explicitly configured local endpoints." },
+  {
+    id: "hybrid",
+    label: "Hybrid",
+    description: "Prefer role assignments across local and cloud providers.",
+  },
+  {
+    id: "local",
+    label: "Local",
+    description: "Keep AI processing on explicitly configured local endpoints.",
+  },
 ];
 
 export function AiPrivacySettings() {
@@ -46,7 +54,11 @@ export function AiPrivacySettings() {
     setIndexStatus("Embedding mail on this device…");
     try {
       const count = await api.reindex();
-      setIndexStatus(count > 0 ? `Indexed ${count} thread${count === 1 ? "" : "s"}.` : "Assign an embeddings model before building the index.");
+      setIndexStatus(
+        count > 0
+          ? `Indexed ${count} thread${count === 1 ? "" : "s"}.`
+          : "Assign an embeddings model before building the index.",
+      );
     } catch (cause) {
       setIndexStatus(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -65,7 +77,11 @@ export function AiPrivacySettings() {
             <h3 id="privacy-mode-title">Privacy mode</h3>
             <p>Changes save immediately. A mode never invents or redirects provider endpoints.</p>
           </div>
-          {savingPrivacy && <span className="settings-saving" role="status">Saving…</span>}
+          {savingPrivacy && (
+            <span className="settings-saving" role="status">
+              Saving…
+            </span>
+          )}
         </div>
         <div className="privacy-options" role="radiogroup" aria-label="Privacy mode">
           {PRIVACY_OPTIONS.map((option) => (
@@ -79,11 +95,18 @@ export function AiPrivacySettings() {
               onClick={() => void choosePrivacy(option.id)}
             >
               <span className="privacy-radio" aria-hidden="true" />
-              <span><b>{option.label}</b><small>{option.description}</small></span>
+              <span>
+                <b>{option.label}</b>
+                <small>{option.description}</small>
+              </span>
             </button>
           ))}
         </div>
-        {privacyError && <div className="settings-alert error" role="alert">{privacyError}</div>}
+        {privacyError && (
+          <div className="settings-alert error" role="alert">
+            {privacyError}
+          </div>
+        )}
       </section>
 
       <section className="settings-block" aria-label="AI providers">
@@ -96,8 +119,24 @@ export function AiPrivacySettings() {
           <p>Summarize and prioritize arriving mail when an assigned model is available.</p>
         </div>
         <div className="seg" role="radiogroup" aria-label="Auto-organize new mail">
-          <button type="button" role="radio" aria-checked={autoOrganize} className={autoOrganize ? "on" : ""} onClick={() => setAutoOrganize(true)}>On</button>
-          <button type="button" role="radio" aria-checked={!autoOrganize} className={!autoOrganize ? "on" : ""} onClick={() => setAutoOrganize(false)}>Off</button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={autoOrganize}
+            className={autoOrganize ? "on" : ""}
+            onClick={() => setAutoOrganize(true)}
+          >
+            On
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!autoOrganize}
+            className={!autoOrganize ? "on" : ""}
+            onClick={() => setAutoOrganize(false)}
+          >
+            Off
+          </button>
         </div>
       </section>
 
@@ -105,9 +144,18 @@ export function AiPrivacySettings() {
         <div>
           <h3>Semantic search index</h3>
           <p>Embeds mail locally so inbox search can retrieve by meaning, not only keywords.</p>
-          {indexStatus && <div className="index-status" role="status">{indexStatus}</div>}
+          {indexStatus && (
+            <div className="index-status" role="status">
+              {indexStatus}
+            </div>
+          )}
         </div>
-        <button type="button" className="af-btn ghost" onClick={() => void buildIndex()} disabled={indexing}>
+        <button
+          type="button"
+          className="af-btn ghost"
+          onClick={() => void buildIndex()}
+          disabled={indexing}
+        >
           <Icon name="ai" size={14} /> {indexing ? "Indexing…" : "Build index"}
         </button>
       </section>

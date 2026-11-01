@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, SecondsFormat, Utc};
-use reqwest::{header, Client, Method, StatusCode, Url};
-use serde_json::{json, Value};
+use reqwest::{Client, Method, StatusCode, Url, header};
+use serde_json::{Value, json};
 
 use super::{
     BusyInterval, CalendarConnector, ConnectorError, ConnectorErrorKind, FreeBusyRequest,
@@ -205,10 +205,7 @@ impl GoogleConnector {
         body: Option<&Value>,
         etag: Option<&str>,
     ) -> Result<(StatusCode, Value, header::HeaderMap), ConnectorError> {
-        let mut request = self
-            .client
-            .request(method, url)
-            .bearer_auth(&self.access_token);
+        let mut request = self.client.request(method, url).bearer_auth(&self.access_token);
         if let Some(body) = body {
             request = request.json(body);
         }
@@ -265,11 +262,7 @@ fn participation(value: &str) -> ParticipationStatus {
 
 fn google_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, ConnectorError> {
     let id = value["id"].as_str().ok_or_else(|| {
-        connector_error(
-            ConnectorErrorKind::Permanent,
-            "invalid-event",
-            "Google event has no id",
-        )
+        connector_error(ConnectorErrorKind::Permanent, "invalid-event", "Google event has no id")
     })?;
     let start = if let Some(date) = value["start"]["date"].as_str() {
         EventMoment::AllDay { date: date.into() }
@@ -318,10 +311,7 @@ fn google_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Conne
     let recurrence_rules = value["recurrence"]
         .as_array()
         .map(|rules| {
-            rules
-                .iter()
-                .filter_map(|rule| rule.as_str().map(str::to_string))
-                .collect::<Vec<_>>()
+            rules.iter().filter_map(|rule| rule.as_str().map(str::to_string)).collect::<Vec<_>>()
         })
         .unwrap_or_default();
     let recurrence = (!recurrence_rules.is_empty()).then_some(RecurrenceSet {
@@ -395,14 +385,8 @@ fn google_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Conne
         recurrence_id: value["originalStartTime"]["dateTime"]
             .as_str()
             .map(str::to_string)
-            .or_else(|| {
-                value["originalStartTime"]["date"]
-                    .as_str()
-                    .map(str::to_string)
-            }),
-        parent_event_id: value["recurringEventId"]
-            .as_str()
-            .map(|id| format!("google:{id}")),
+            .or_else(|| value["originalStartTime"]["date"].as_str().map(str::to_string)),
+        parent_event_id: value["recurringEventId"].as_str().map(|id| format!("google:{id}")),
         status: match value["status"].as_str() {
             Some("cancelled") => EventStatus::Cancelled,
             Some("tentative") => EventStatus::Tentative,
@@ -419,14 +403,10 @@ fn google_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Conne
             Some("confidential") => EventVisibility::Confidential,
             _ => EventVisibility::Default,
         },
-        organizer: value["organizer"]["email"]
-            .as_str()
-            .map(|email| EventPerson {
-                name: value["organizer"]["displayName"]
-                    .as_str()
-                    .map(str::to_string),
-                email: email.into(),
-            }),
+        organizer: value["organizer"]["email"].as_str().map(|email| EventPerson {
+            name: value["organizer"]["displayName"].as_str().map(str::to_string),
+            email: email.into(),
+        }),
         attendees,
         reminders,
         sequence: value["sequence"].as_i64().unwrap_or(0),
@@ -442,11 +422,7 @@ fn event_json(event: &CalendarEvent, client_id: Option<&str>) -> Value {
         EventMoment::Timed { utc } => json!({ "dateTime": utc, "timeZone": timezone }),
         EventMoment::AllDay { date } => json!({ "date": date }),
     };
-    let recurrence = event
-        .recurrence
-        .as_ref()
-        .map(|set| set.rules.clone())
-        .unwrap_or_default();
+    let recurrence = event.recurrence.as_ref().map(|set| set.rules.clone()).unwrap_or_default();
     json!({
         "id": client_id,
         "iCalUID": event.uid,
@@ -470,9 +446,7 @@ impl CalendarConnector for GoogleConnector {
         let mut url = self.endpoint("users/me/calendarList?maxResults=250")?;
         let mut calendars = Vec::new();
         for _ in 0..MAX_PAGES {
-            let (_, value, _) = self
-                .request_json(Method::GET, url.clone(), None, None)
-                .await?;
+            let (_, value, _) = self.request_json(Method::GET, url.clone(), None, None).await?;
             if let Some(items) = value["items"].as_array() {
                 calendars.extend(items.iter().filter_map(|item| {
                     let id = item["id"].as_str()?;
@@ -519,10 +493,8 @@ impl CalendarConnector for GoogleConnector {
         let mut active_cursor = cursor.map(str::to_string);
         let mut restarted = false;
         loop {
-            let mut url = self.endpoint(&format!(
-                "calendars/{}/events",
-                urlencoding::encode(calendar_id)
-            ))?;
+            let mut url =
+                self.endpoint(&format!("calendars/{}/events", urlencoding::encode(calendar_id)))?;
             {
                 let mut query = url.query_pairs_mut();
                 query
@@ -535,9 +507,8 @@ impl CalendarConnector for GoogleConnector {
             }
             let mut changes = Vec::new();
             for _ in 0..MAX_PAGES {
-                let (status, value, _) = self
-                    .request_json(Method::GET, url.clone(), None, None)
-                    .await?;
+                let (status, value, _) =
+                    self.request_json(Method::GET, url.clone(), None, None).await?;
                 if status == StatusCode::GONE && active_cursor.is_some() && !restarted {
                     active_cursor = None;
                     restarted = true;
@@ -627,11 +598,7 @@ impl CalendarConnector for GoogleConnector {
                     .filter(|character| character.is_ascii_hexdigit())
                     .collect::<String>()
                     .to_ascii_lowercase();
-                (
-                    Method::POST,
-                    base,
-                    Some(event_json(&event, Some(&stable_id))),
-                )
+                (Method::POST, base, Some(event_json(&event, Some(&stable_id))))
             }
             OperationKind::Update => (
                 Method::PUT,
@@ -654,17 +621,13 @@ impl CalendarConnector for GoogleConnector {
                     ConnectorErrorKind::Permanent,
                     "unsupported-operation",
                     "Invitation delivery uses explicit event writes",
-                ))
+                ));
             }
         };
         let mut url = self.endpoint(&path)?;
-        let notification_mode = if operation.notify_attendees {
-            NotificationMode::All
-        } else {
-            self.notification_mode
-        };
-        url.query_pairs_mut()
-            .append_pair("sendUpdates", notification_mode.as_str());
+        let notification_mode =
+            if operation.notify_attendees { NotificationMode::All } else { self.notification_mode };
+        url.query_pairs_mut().append_pair("sendUpdates", notification_mode.as_str());
         let (_, value, headers) = self
             .request_json(
                 method,
@@ -674,32 +637,22 @@ impl CalendarConnector for GoogleConnector {
             )
             .await?;
         Ok(PushOutcome {
-            href: value["id"]
-                .as_str()
-                .map(str::to_string)
-                .or_else(|| event.provider_id.clone()),
+            href: value["id"].as_str().map(str::to_string).or_else(|| event.provider_id.clone()),
             provider_version: value["etag"].as_str().map(str::to_string).or_else(|| {
-                headers
-                    .get(header::ETAG)
-                    .and_then(|value| value.to_str().ok())
-                    .map(str::to_string)
+                headers.get(header::ETAG).and_then(|value| value.to_str().ok()).map(str::to_string)
             }),
         })
     }
 
     async fn free_busy(&self, request: &FreeBusyRequest) -> Result<FreeBusyResult, ConnectorError> {
         let body = json!({ "timeMin": request.range.start, "timeMax": request.range.end, "items": request.attendees.iter().map(|id| json!({ "id": id })).collect::<Vec<_>>() });
-        let (_, value, _) = self
-            .request_json(Method::POST, self.endpoint("freeBusy")?, Some(&body), None)
-            .await?;
+        let (_, value, _) =
+            self.request_json(Method::POST, self.endpoint("freeBusy")?, Some(&body), None).await?;
         let mut intervals = Vec::new();
         let mut complete = true;
         if let Some(calendars) = value["calendars"].as_object() {
             for calendar in calendars.values() {
-                if calendar["errors"]
-                    .as_array()
-                    .is_some_and(|errors| !errors.is_empty())
-                {
+                if calendar["errors"].as_array().is_some_and(|errors| !errors.is_empty()) {
                     complete = false;
                 }
                 if let Some(busy) = calendar["busy"].as_array() {
@@ -712,10 +665,7 @@ impl CalendarConnector for GoogleConnector {
                 }
             }
         }
-        Ok(FreeBusyResult {
-            intervals,
-            complete,
-        })
+        Ok(FreeBusyResult { intervals, complete })
     }
 }
 
@@ -779,9 +729,6 @@ mod tests {
         let config = oauth_config();
         assert_eq!(config.purpose, OAuthPurpose::Calendar);
         assert!(config.scopes.iter().all(|scope| !scope.contains("gmail.")));
-        assert!(config
-            .scopes
-            .iter()
-            .any(|scope| scope.contains("calendar.events")));
+        assert!(config.scopes.iter().any(|scope| scope.contains("calendar.events")));
     }
 }

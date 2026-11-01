@@ -5,11 +5,11 @@
 //! Set your OAuth client id via the `BHARGA_GMAIL_CLIENT_ID` env var (desktop
 //! "installed app" client — no secret needed with PKCE).
 
-use base64::{engine::general_purpose::URL_SAFE, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE};
 use serde_json::Value;
 
 use super::oauth::{self, OAuthConfig, OAuthPurpose, TokenSet};
-use super::{provider_config, tokens, SyncError};
+use super::{SyncError, provider_config, tokens};
 use crate::store::{Message, Party, Store, Thread};
 
 const GMAIL_API: &str = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -18,9 +18,7 @@ fn config() -> OAuthConfig {
     OAuthConfig {
         auth_url: "https://accounts.google.com/o/oauth2/v2/auth".into(),
         token_url: "https://oauth2.googleapis.com/token".into(),
-        client_id: provider_config::gmail_client_id()
-            .unwrap_or_default()
-            .to_owned(),
+        client_id: provider_config::gmail_client_id().unwrap_or_default().to_owned(),
         scopes: vec![
             "https://www.googleapis.com/auth/gmail.readonly".into(),
             "https://www.googleapis.com/auth/gmail.send".into(),
@@ -37,9 +35,7 @@ fn config() -> OAuthConfig {
 pub async fn connect(store: &Store) -> Result<String, SyncError> {
     let cfg = config();
     if cfg.client_id.is_empty() {
-        return Err(SyncError::NotConfigured(
-            "Google sign-in is not configured in this build",
-        ));
+        return Err(SyncError::NotConfigured("Google sign-in is not configured in this build"));
     }
     let tokens_set = oauth::run_pkce_flow(&cfg).await.map_err(SyncError::from)?;
     let email = fetch_email(&tokens_set.access_token).await.unwrap_or_else(|| "me".into());
@@ -53,9 +49,7 @@ pub async fn connect(store: &Store) -> Result<String, SyncError> {
 
     initial_sync(store, &account_id)
         .await
-        .map_err(|_| SyncError::InitialSyncFailed {
-            account_id: account_id.clone(),
-        })?;
+        .map_err(|_| SyncError::InitialSyncFailed { account_id: account_id.clone() })?;
     Ok(account_id)
 }
 
@@ -70,9 +64,7 @@ async fn valid_token(account_id: &str) -> Result<String, SyncError> {
 }
 
 async fn refresh_access(account_id: &str, refresh: &str) -> Result<String, SyncError> {
-    let new: TokenSet = oauth::refresh(&config(), refresh)
-        .await
-        .map_err(super::refresh_error)?;
+    let new: TokenSet = oauth::refresh(&config(), refresh).await.map_err(super::refresh_error)?;
     tokens::save(account_id, &new.access_token, new.refresh_token.as_deref())
         .map_err(SyncError::Transient)?;
     Ok(new.access_token)
@@ -97,7 +89,11 @@ async fn authenticated_get(account_id: &str, url: String) -> Result<reqwest::Res
     Err(SyncError::AuthRequired)
 }
 
-async fn authenticated_json(account_id: &str, url: String, operation: &str) -> Result<Value, SyncError> {
+async fn authenticated_json(
+    account_id: &str,
+    url: String,
+    operation: &str,
+) -> Result<Value, SyncError> {
     let response = authenticated_get(account_id, url).await?;
     if !response.status().is_success() {
         return Err(super::http_status_error(response.status(), operation));
@@ -111,7 +107,8 @@ pub async fn initial_sync(store: &Store, account_id: &str) -> Result<(), SyncErr
         account_id,
         format!("{GMAIL_API}/messages?maxResults=50"),
         "Gmail initial sync",
-    ).await?;
+    )
+    .await?;
 
     let ids: Vec<String> = list["messages"]
         .as_array()
@@ -132,7 +129,15 @@ pub async fn initial_sync(store: &Store, account_id: &str) -> Result<(), SyncErr
 }
 
 /// Send a message via the Gmail API (`messages.send` with a base64url raw MIME).
-pub async fn send(account_id: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[crate::store::Attachment]) -> Result<(), SyncError> {
+pub async fn send(
+    account_id: &str,
+    to: &str,
+    cc: &str,
+    bcc: &str,
+    subject: &str,
+    body_html: &str,
+    attachments: &[crate::store::Attachment],
+) -> Result<(), SyncError> {
     let access = valid_token(account_id).await?;
     let from = account_id.strip_prefix("gmail:").unwrap_or("me");
     let raw = super::mime::build_raw(from, to, cc, bcc, subject, body_html, attachments);
@@ -170,7 +175,12 @@ pub async fn archive(account_id: &str, thread_id: &str) -> Result<(), SyncError>
 /// Report a thread as spam (Gmail: add SPAM, remove INBOX).
 pub async fn spam(account_id: &str, thread_id: &str) -> Result<(), SyncError> {
     let access = valid_token(account_id).await?;
-    modify_thread(&access, thread_id, serde_json::json!({ "addLabelIds": ["SPAM"], "removeLabelIds": ["INBOX"] })).await
+    modify_thread(
+        &access,
+        thread_id,
+        serde_json::json!({ "addLabelIds": ["SPAM"], "removeLabelIds": ["INBOX"] }),
+    )
+    .await
 }
 
 /// Move a thread to Trash.
@@ -215,7 +225,8 @@ pub async fn incremental(store: &Store, account_id: &str) -> Result<(), SyncErro
     let resp = authenticated_get(
         account_id,
         format!("{GMAIL_API}/history?startHistoryId={start}&historyTypes=messageAdded"),
-    ).await?;
+    )
+    .await?;
 
     if resp.status() == reqwest::StatusCode::NOT_FOUND {
         return initial_sync(store, account_id).await; // cursor expired
@@ -272,7 +283,8 @@ async fn fetch_message(account_id: &str, id: &str) -> Result<Value, SyncError> {
         account_id,
         format!("{GMAIL_API}/messages/{id}?format=full"),
         "Gmail message fetch",
-    ).await
+    )
+    .await
 }
 
 /// Convert a Gmail `messages.get` payload into a store Thread (one message).
@@ -300,7 +312,11 @@ fn parse_message(account_id: &str, msg: &Value) -> Option<Thread> {
         account_id: account_id.to_string(),
         subject,
         preview: snippet,
-        participants: vec![if from_name.is_empty() { from_addr.clone() } else { from_name.clone() }],
+        participants: vec![if from_name.is_empty() {
+            from_addr.clone()
+        } else {
+            from_name.clone()
+        }],
         last_time: h("Date").unwrap_or_default(),
         unread,
         labels: vec![],
@@ -371,7 +387,8 @@ fn extract_body(payload: &Value) -> Option<String> {
         }
         None
     }
-    walk(payload, "text/html").or_else(|| walk(payload, "text/plain").map(|t| format!("<p>{t}</p>")))
+    walk(payload, "text/html")
+        .or_else(|| walk(payload, "text/plain").map(|t| format!("<p>{t}</p>")))
 }
 
 fn split_addr(raw: &str) -> (String, String) {

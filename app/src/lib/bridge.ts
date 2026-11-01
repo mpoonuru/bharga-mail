@@ -2,40 +2,40 @@
 // When running in the browser (vite dev without Tauri), we fall back to mock data
 // so the whole UI is explorable. In the Tauri shell, these call real `#[tauri::command]`s.
 
-import type {
-  DeadLetter,
-  Account,
-  AiProfile,
-  Calendar,
-  CalendarConflict,
-  CalendarEvent,
-  CalendarSource,
-  CalendarSyncHealth,
-  CalendarSourceRemovalPolicy,
-  ConflictResolution,
-  CreateLocalCalendarInput,
-  EventMutation,
-  EventRange,
-  FreeBusyResult,
-  FolderInfo,
-  InvitationInspection,
-  InvitationResponseInput,
-  MailProviderCapability,
-  CalDavDiscoveryInput,
-  SaveCalDavSourceInput,
-  RemoteCalendar,
-  SaveAiProviderInput,
-  Task,
-  Thread,
-} from "@/types";
 import dayjs from "dayjs";
-import { parseExternalWebUrl } from "@/lib/externalLinks";
 import {
   account as mockAccount,
   aiProfile as mockAiProfile,
   tasks as mockTasks,
   threads as mockThreads,
 } from "@/data/mock";
+import { parseExternalWebUrl } from "@/lib/externalLinks";
+import type {
+  Account,
+  AiProfile,
+  CalDavDiscoveryInput,
+  Calendar,
+  CalendarConflict,
+  CalendarEvent,
+  CalendarSource,
+  CalendarSourceRemovalPolicy,
+  CalendarSyncHealth,
+  ConflictResolution,
+  CreateLocalCalendarInput,
+  DeadLetter,
+  EventMutation,
+  EventRange,
+  FolderInfo,
+  FreeBusyResult,
+  InvitationInspection,
+  InvitationResponseInput,
+  MailProviderCapability,
+  RemoteCalendar,
+  SaveAiProviderInput,
+  SaveCalDavSourceInput,
+  Task,
+  Thread,
+} from "@/types";
 
 export interface ImapAccountInput {
   accountId?: string;
@@ -122,20 +122,22 @@ const browserCalendarSource: CalendarSource = {
   syncError: null,
   disabled: false,
 };
-let browserCalendars: Calendar[] = [{
-  id: "browser-local-calendar",
-  sourceId: browserCalendarSource.id,
-  providerId: null,
-  name: "Personal",
-  description: "",
-  color: "#6f8df6",
-  timezone: "Europe/Berlin",
-  accessRole: "owner",
-  writable: true,
-  visible: true,
-  isDefault: true,
-  sortOrder: 0,
-}];
+let browserCalendars: Calendar[] = [
+  {
+    id: "browser-local-calendar",
+    sourceId: browserCalendarSource.id,
+    providerId: null,
+    name: "Personal",
+    description: "",
+    color: "#6f8df6",
+    timezone: "Europe/Berlin",
+    accessRole: "owner",
+    writable: true,
+    visible: true,
+    isDefault: true,
+    sortOrder: 0,
+  },
+];
 let browserCalendarEvents: CalendarEvent[] = [];
 let browserCalendarSequence = 0;
 let pendingCalendarDraft: EventMutation | null = null;
@@ -145,16 +147,19 @@ function copyCalendarEvent(event: CalendarEvent): CalendarEvent {
     ...event,
     attendees: event.attendees.map((attendee) => ({ ...attendee })),
     reminders: event.reminders.map((reminder) => ({ ...reminder })),
-    recurrence: event.recurrence ? {
-      rules: [...event.recurrence.rules],
-      dates: [...event.recurrence.dates],
-      excludedDates: [...event.recurrence.excludedDates],
-    } : null,
+    recurrence: event.recurrence
+      ? {
+          rules: [...event.recurrence.rules],
+          dates: [...event.recurrence.dates],
+          excludedDates: [...event.recurrence.excludedDates],
+        }
+      : null,
   };
 }
 
 function eventIntersectsRange(event: CalendarEvent, range: EventRange): boolean {
-  const eventStart = event.start.kind === "timed" ? dayjs(event.start.utc) : dayjs(event.start.date);
+  const eventStart =
+    event.start.kind === "timed" ? dayjs(event.start.utc) : dayjs(event.start.date);
   const eventEnd = event.end.kind === "timed" ? dayjs(event.end.utc) : dayjs(event.end.date);
   return eventStart.isBefore(dayjs(range.end)) && eventEnd.isAfter(dayjs(range.start));
 }
@@ -211,13 +216,21 @@ export async function expectedBuildId(): Promise<string | null> {
 
 /** Subscribe to background live-sync events from the core. Returns an unsubscribe
  *  function. No-ops outside the desktop app (browser preview). */
-export async function listenMail(handlers: { onSync?: () => void; onNew?: (count: number) => void }): Promise<() => void> {
+export async function listenMail(handlers: {
+  onSync?: () => void;
+  onNew?: (count: number) => void;
+}): Promise<() => void> {
   if (!inTauri) return () => {};
   try {
     const { listen } = await import("@tauri-apps/api/event");
     const offSync = await listen("mail:sync", () => handlers.onSync?.());
-    const offNew = await listen<{ count: number }>("mail:new", (e) => handlers.onNew?.(e.payload?.count ?? 1));
-    return () => { offSync(); offNew(); };
+    const offNew = await listen<{ count: number }>("mail:new", (e) =>
+      handlers.onNew?.(e.payload?.count ?? 1),
+    );
+    return () => {
+      offSync();
+      offNew();
+    };
   } catch {
     return () => {};
   }
@@ -250,11 +263,15 @@ export const api = {
       return event ? copyCalendarEvent(event) : undefined;
     },
 
-    async createEvent(input: EventMutation, options?: { notifyAttendees?: boolean }): Promise<CalendarEvent> {
-      if (inTauri) return invoke<CalendarEvent>("create_calendar_event", {
-        input,
-        notifyAttendees: options?.notifyAttendees ?? false,
-      });
+    async createEvent(
+      input: EventMutation,
+      options?: { notifyAttendees?: boolean },
+    ): Promise<CalendarEvent> {
+      if (inTauri)
+        return invoke<CalendarEvent>("create_calendar_event", {
+          input,
+          notifyAttendees: options?.notifyAttendees ?? false,
+        });
       browserCalendarSequence += 1;
       const event: CalendarEvent = {
         ...input,
@@ -277,12 +294,17 @@ export const api = {
       return copyCalendarEvent(event);
     },
 
-    async updateEvent(eventId: string, input: EventMutation, options?: { notifyAttendees?: boolean }): Promise<CalendarEvent> {
-      if (inTauri) return invoke<CalendarEvent>("update_calendar_event", {
-        eventId,
-        input,
-        notifyAttendees: options?.notifyAttendees ?? false,
-      });
+    async updateEvent(
+      eventId: string,
+      input: EventMutation,
+      options?: { notifyAttendees?: boolean },
+    ): Promise<CalendarEvent> {
+      if (inTauri)
+        return invoke<CalendarEvent>("update_calendar_event", {
+          eventId,
+          input,
+          notifyAttendees: options?.notifyAttendees ?? false,
+        });
       const existing = browserCalendarEvents.find((candidate) => candidate.id === eventId);
       if (!existing) throw new Error("Calendar event was not found");
       const updated: CalendarEvent = {
@@ -292,7 +314,8 @@ export const api = {
         syncState: "local",
       };
       browserCalendarEvents = browserCalendarEvents.map((candidate) =>
-        candidate.id === eventId ? updated : candidate);
+        candidate.id === eventId ? updated : candidate,
+      );
       return copyCalendarEvent(updated);
     },
 
@@ -304,11 +327,12 @@ export const api = {
       options?: { notifyAttendees?: boolean },
     ): Promise<CalendarEvent[]> {
       if (!inTauri) return [await this.updateEvent(eventId, input, options)];
-      const nativeScope = scope === "occurrence"
-        ? "thisOccurrence"
-        : scope === "following"
-          ? "thisAndFollowing"
-          : "entireSeries";
+      const nativeScope =
+        scope === "occurrence"
+          ? "thisOccurrence"
+          : scope === "following"
+            ? "thisAndFollowing"
+            : "entireSeries";
       const result = await invoke<{
         original: CalendarEvent;
         following: CalendarEvent | null;
@@ -433,14 +457,24 @@ export const api = {
       return invoke<CalendarSyncHealth[]>("list_calendar_sync_health");
     },
 
-    async resolveConflict(eventId: string, resolution: ConflictResolution): Promise<CalendarEvent[]> {
+    async resolveConflict(
+      eventId: string,
+      resolution: ConflictResolution,
+    ): Promise<CalendarEvent[]> {
       if (!inTauri) throw new Error("Conflict resolution requires the desktop app");
       return invoke<CalendarEvent[]>("resolve_calendar_conflict", { eventId, resolution });
     },
 
-    async getAvailability(sourceIds: string[], range: EventRange, attendees: string[]): Promise<FreeBusyResult> {
+    async getAvailability(
+      sourceIds: string[],
+      range: EventRange,
+      attendees: string[],
+    ): Promise<FreeBusyResult> {
       if (!inTauri) return { intervals: [], complete: false };
-      return invoke<FreeBusyResult>("calendar_availability", { sourceIds, request: { range, attendees } });
+      return invoke<FreeBusyResult>("calendar_availability", {
+        sourceIds,
+        request: { range, attendees },
+      });
     },
 
     async updateSourceLabel(sourceId: string, label: string): Promise<void> {
@@ -469,7 +503,8 @@ export const api = {
         deleted: true,
       };
       browserCalendarEvents = browserCalendarEvents.map((candidate) =>
-        candidate.id === eventId ? deleted : candidate);
+        candidate.id === eventId ? deleted : candidate,
+      );
       return copyCalendarEvent(deleted);
     },
 
@@ -503,7 +538,8 @@ export const api = {
         throw new Error("Calendar was not found");
       }
       browserCalendars = browserCalendars.map((calendar) =>
-        calendar.id === calendarId ? { ...calendar, visible } : calendar);
+        calendar.id === calendarId ? { ...calendar, visible } : calendar,
+      );
     },
 
     async syncSource(sourceId: string): Promise<CalendarSyncHealth | void> {
@@ -515,7 +551,8 @@ export const api = {
 
   async openExternalUrl(rawUrl: string): Promise<void> {
     const destination = parseExternalWebUrl(rawUrl);
-    if (!destination) throw new Error("Blocked external link: only valid http and https URLs are allowed.");
+    if (!destination)
+      throw new Error("Blocked external link: only valid http and https URLs are allowed.");
     if (!inTauri) {
       window.open(destination.href, "_blank", "noopener,noreferrer");
       return;
@@ -548,7 +585,10 @@ export const api = {
       const lc = q.toLowerCase();
       return mockThreads.filter((t) =>
         [t.subject, t.preview, t.participants.join(" "), ...t.messages.map((m) => m.bodyHtml)]
-          .join(" ").toLowerCase().includes(lc));
+          .join(" ")
+          .toLowerCase()
+          .includes(lc),
+      );
     }
   },
 
@@ -649,7 +689,10 @@ export const api = {
 
   async removeAiProvider(providerId: string): Promise<AiProfile> {
     if (!inTauri) {
-      return { ...mockAiProfile, models: mockAiProfile.models.filter((model) => model.id !== providerId) };
+      return {
+        ...mockAiProfile,
+        models: mockAiProfile.models.filter((model) => model.id !== providerId),
+      };
     }
     return invoke<AiProfile>("remove_ai_provider", { providerId });
   },
@@ -675,19 +718,43 @@ export const api = {
   async phishingCheck(
     threadText: string,
     links: string,
-  ): Promise<{ level: "phishing" | "suspicious" | "safe"; confidence: number; reason: string } | null> {
+  ): Promise<{
+    level: "phishing" | "suspicious" | "safe";
+    confidence: number;
+    reason: string;
+  } | null> {
     try {
       return JSON.parse(await invoke<string>("ai_phishing_check", { threadText, links }));
     } catch {
       const t = `${threadText} ${links}`.toLowerCase();
       const lc = links.toLowerCase();
-      const threat = /(suspend|unusual activity|within \d+\s?h|verify your|confirm your|update your|account will be|locked|unauthori[sz]ed|act now|click here)/.test(t);
-      const cred = /(log\s?in|sign\s?in|password|verify|account|billing|payment|wallet|bank)/.test(t);
+      const threat =
+        /(suspend|unusual activity|within \d+\s?h|verify your|confirm your|update your|account will be|locked|unauthori[sz]ed|act now|click here)/.test(
+          t,
+        );
+      const cred = /(log\s?in|sign\s?in|password|verify|account|billing|payment|wallet|bank)/.test(
+        t,
+      );
       const hasDanger = /dangerous/.test(lc);
       const hasRisky = /dangerous|suspicious/.test(lc);
-      if (hasDanger && (threat || cred)) return { level: "phishing", confidence: 88, reason: "Urgency/credential lure paired with a deceptive link." };
-      if (threat && cred) return { level: "phishing", confidence: 80, reason: "Urgent account threat asking you to verify or sign in." };
-      if (hasRisky || threat) return { level: "suspicious", confidence: 58, reason: hasRisky ? "Contains a suspicious link." : "Uses pressure/urgency language." };
+      if (hasDanger && (threat || cred))
+        return {
+          level: "phishing",
+          confidence: 88,
+          reason: "Urgency/credential lure paired with a deceptive link.",
+        };
+      if (threat && cred)
+        return {
+          level: "phishing",
+          confidence: 80,
+          reason: "Urgent account threat asking you to verify or sign in.",
+        };
+      if (hasRisky || threat)
+        return {
+          level: "suspicious",
+          confidence: 58,
+          reason: hasRisky ? "Contains a suspicious link." : "Uses pressure/urgency language.",
+        };
       return { level: "safe", confidence: 12, reason: "No phishing signals detected." };
     }
   },
@@ -959,7 +1026,12 @@ export const api = {
   },
 
   /** Fetch an attachment as a data: URL for inline preview (images/PDF). */
-  async previewAttachment(accountId: string, messageId: string, name: string, mime: string): Promise<string> {
+  async previewAttachment(
+    accountId: string,
+    messageId: string,
+    name: string,
+    mime: string,
+  ): Promise<string> {
     return invoke<string>("preview_attachment", { accountId, messageId, name, mime });
   },
 };

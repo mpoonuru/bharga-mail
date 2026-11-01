@@ -28,13 +28,18 @@ describe("calendar local repository", () => {
     };
     const created = await api.calendar.createEvent(input);
     expect(created.title).toBe("Offline architecture review");
-    const updated = await api.calendar.updateEvent(created.id, { ...input, title: "Updated offline review" });
+    const updated = await api.calendar.updateEvent(created.id, {
+      ...input,
+      title: "Updated offline review",
+    });
     expect(updated.revision).toBe(created.revision + 1);
     const listed = await api.calendar.listEvents({
       start: "2026-09-01T00:00:00Z",
       end: "2026-10-01T00:00:00Z",
     });
-    expect(listed.some((event) => event.id === created.id && event.title === "Updated offline review")).toBe(true);
+    expect(
+      listed.some((event) => event.id === created.id && event.title === "Updated offline review"),
+    ).toBe(true);
     expect(listed.some((event) => /example event|marco.*pipeline/i.test(event.title))).toBe(false);
     await api.calendar.deleteEvent(created.id);
     expect(await api.calendar.getEvent(created.id)).toMatchObject({ deleted: true });

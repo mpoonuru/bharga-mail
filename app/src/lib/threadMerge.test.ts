@@ -11,7 +11,20 @@ const message = (id: string, bodyHtml = ""): Message => ({
 });
 
 const thread = (id: string, messages: Message[], extra: Partial<Thread> = {}): Thread =>
-  ({ id, accountId: "acc", subject: id, preview: "", participants: [], lastTime: "", unread: false, labels: [], view: ["inbox"], folder: "INBOX", messages, ...extra }) as Thread;
+  ({
+    id,
+    accountId: "acc",
+    subject: id,
+    preview: "",
+    participants: [],
+    lastTime: "",
+    unread: false,
+    labels: [],
+    view: ["inbox"],
+    folder: "INBOX",
+    messages,
+    ...extra,
+  }) as Thread;
 
 describe("keepLoadedBodies", () => {
   it("keeps a loaded body when a body-less refresh arrives (the blank reader bug)", () => {
@@ -33,11 +46,16 @@ describe("keepLoadedBodies", () => {
   });
 
   it("does not move a body between threads that share a message id", () => {
-    const merged = keepLoadedBodies([thread("t2", [message("m1")])], [thread("t1", [message("m1", "<p>t1</p>")])]);
+    const merged = keepLoadedBodies(
+      [thread("t2", [message("m1")])],
+      [thread("t1", [message("m1", "<p>t1</p>")])],
+    );
     expect(merged[0].messages[0].bodyHtml).toBe("");
   });
 
   it("signature changes when a message arrives", () => {
-    expect(messageSignature(thread("t", [message("a")]))).not.toBe(messageSignature(thread("t", [message("a"), message("b")])));
+    expect(messageSignature(thread("t", [message("a")]))).not.toBe(
+      messageSignature(thread("t", [message("a"), message("b")])),
+    );
   });
 });

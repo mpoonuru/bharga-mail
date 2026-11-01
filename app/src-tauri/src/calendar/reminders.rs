@@ -45,9 +45,9 @@ pub struct ReminderNotification {
 
 fn start_at(candidate: &ReminderCandidate) -> Option<i64> {
     match &candidate.start {
-        EventMoment::Timed { utc } => DateTime::parse_from_rfc3339(utc)
-            .ok()
-            .map(|value| value.timestamp()),
+        EventMoment::Timed { utc } => {
+            DateTime::parse_from_rfc3339(utc).ok().map(|value| value.timestamp())
+        }
         EventMoment::AllDay { date } => {
             let timezone = candidate.timezone.parse::<chrono_tz::Tz>().ok()?;
             let date = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
@@ -85,10 +85,7 @@ pub fn reconcile_reminders(
 }
 
 pub fn reminder_notification(reminder: &DueReminder) -> ReminderNotification {
-    if matches!(
-        reminder.visibility,
-        EventVisibility::Private | EventVisibility::Confidential
-    ) {
+    if matches!(reminder.visibility, EventVisibility::Private | EventVisibility::Confidential) {
         return ReminderNotification {
             title: "Private event".into(),
             body: "An event is starting soon.".into(),
@@ -108,18 +105,11 @@ pub fn reminder_notification(reminder: &DueReminder) -> ReminderNotification {
 }
 
 fn query_window(now: i64) -> (String, String) {
-    let start = DateTime::from_timestamp(now, 0)
-        .unwrap_or_else(Utc::now)
-        .date_naive()
+    let start = DateTime::from_timestamp(now, 0).unwrap_or_else(Utc::now).date_naive()
         - Duration::days(QUERY_HORIZON_DAYS);
-    let end = DateTime::from_timestamp(now, 0)
-        .unwrap_or_else(Utc::now)
-        .date_naive()
-        + Duration::days(2);
-    (
-        start.format("%Y-%m-%d").to_string(),
-        end.format("%Y-%m-%d").to_string(),
-    )
+    let end =
+        DateTime::from_timestamp(now, 0).unwrap_or_else(Utc::now).date_naive() + Duration::days(2);
+    (start.format("%Y-%m-%d").to_string(), end.format("%Y-%m-%d").to_string())
 }
 
 fn deliver_due(app: &AppHandle, store: &Store, earliest: i64, now: i64) {
@@ -129,14 +119,7 @@ fn deliver_due(app: &AppHandle, store: &Store, earliest: i64, now: i64) {
     };
     for reminder in reconcile_reminders(now, earliest, candidates) {
         let notice = reminder_notification(&reminder);
-        if app
-            .notification()
-            .builder()
-            .title(notice.title)
-            .body(notice.body)
-            .show()
-            .is_ok()
-        {
+        if app.notification().builder().title(notice.title).body(notice.body).show().is_ok() {
             let _ = store.mark_calendar_reminder_delivered(&reminder.id, now);
         }
     }
@@ -171,17 +154,11 @@ mod tests {
 
     #[test]
     fn private_event_notification_hides_details() {
-        let start = DateTime::parse_from_rfc3339("2025-10-01T07:56:40Z")
-            .unwrap()
-            .timestamp();
+        let start = DateTime::parse_from_rfc3339("2025-10-01T07:56:40Z").unwrap().timestamp();
         let due = reconcile_reminders(
             start - 10 * 60,
             start - 20 * 60,
-            vec![candidate(
-                "Board acquisition",
-                EventVisibility::Private,
-                "2025-10-01T07:56:40Z",
-            )],
+            vec![candidate("Board acquisition", EventVisibility::Private, "2025-10-01T07:56:40Z")],
         );
         let notice = reminder_notification(&due[0]);
         assert_eq!(notice.title, "Private event");
@@ -195,11 +172,7 @@ mod tests {
         let due = reconcile_reminders(
             now,
             now - STARTUP_LOOKBACK_MINUTES * 60,
-            vec![candidate(
-                "Old event",
-                EventVisibility::Default,
-                "2025-10-01T04:00:00Z",
-            )],
+            vec![candidate("Old event", EventVisibility::Default, "2025-10-01T04:00:00Z")],
         );
         assert!(due.is_empty());
     }

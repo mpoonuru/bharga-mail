@@ -22,10 +22,11 @@ export function accountAddress(accounts: Account[], accountId: string): string {
 }
 
 export function resolveSendAccountId(input: SendAccountResolution): string {
-  const candidate = input.explicitId
-    ?? input.threadAccountId
-    ?? input.selectedId
-    ?? (input.accounts.length === 1 ? input.accounts[0].id : undefined);
+  const candidate =
+    input.explicitId ??
+    input.threadAccountId ??
+    input.selectedId ??
+    (input.accounts.length === 1 ? input.accounts[0].id : undefined);
   if (!candidate) throw new Error("Choose a connected account before sending.");
   if (!input.accounts.some((account) => account.id === candidate)) {
     throw new Error("The selected sending account is no longer connected.");
@@ -36,12 +37,13 @@ export function resolveSendAccountId(input: SendAccountResolution): string {
 export function replyRecipients(input: ReplyRecipientInput): { to: string; cc: string } {
   const self = input.self.trim().toLowerCase();
   const seen = new Set<string>();
-  const unique = (values: string[]) => values.filter((value) => {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized || normalized === self || seen.has(normalized)) return false;
-    seen.add(normalized);
-    return true;
-  });
+  const unique = (values: string[]) =>
+    values.filter((value) => {
+      const normalized = value.trim().toLowerCase();
+      if (!normalized || normalized === self || seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
   const to = unique([input.sender, ...input.to]);
   const cc = unique(input.cc);
   return { to: to.join(", "), cc: cc.join(", ") };

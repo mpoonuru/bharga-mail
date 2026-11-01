@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/icons";
-import { api } from "@/lib/bridge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { api } from "@/lib/bridge";
 import { useApp } from "@/store";
 import type { AiModel, AiRole, SaveAiProviderInput } from "@/types";
 
@@ -40,7 +40,9 @@ export function AiProviderManager() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<AiModel | null>(null);
   const [removeReturnFocus, setRemoveReturnFocus] = useState<HTMLElement | null>(null);
-  const [messages, setMessages] = useState<Record<string, { tone: "error" | "success"; text: string }>>({});
+  const [messages, setMessages] = useState<
+    Record<string, { tone: "error" | "success"; text: string }>
+  >({});
   const addProviderRef = useRef<HTMLButtonElement>(null);
 
   function setBusy(id: string, busy: boolean) {
@@ -63,10 +65,11 @@ export function AiProviderManager() {
 
   useEffect(() => {
     if (!ai) return;
-    setDrafts((current) => Object.fromEntries(ai.models.map((model) => [
-      model.id,
-      current[model.id] ?? draftFor(model),
-    ])));
+    setDrafts((current) =>
+      Object.fromEntries(
+        ai.models.map((model) => [model.id, current[model.id] ?? draftFor(model)]),
+      ),
+    );
   }, [ai]);
 
   function patch(id: string, value: Partial<Draft>) {
@@ -165,7 +168,10 @@ export function AiProviderManager() {
       <div className="provider-manager-head">
         <div>
           <b>AI providers</b>
-          <p>Credentials are encrypted in the local database; its unlocking key stays in your OS keychain.</p>
+          <p>
+            Credentials are encrypted in the local database; its unlocking key stays in your OS
+            keychain.
+          </p>
         </div>
         <button ref={addProviderRef} className="af-btn ghost" onClick={addProvider}>
           <Icon name="plus" size={14} /> Add provider
@@ -176,7 +182,8 @@ export function AiProviderManager() {
         {ai?.models.map((model) => {
           const draft = drafts[model.id] ?? draftFor(model);
           const keyBased = model.kind !== "local";
-          const configurableEndpoint = model.kind === "openai-compatible" || model.kind === "custom" || model.kind === "local";
+          const configurableEndpoint =
+            model.kind === "openai-compatible" || model.kind === "custom" || model.kind === "local";
           const expanded = expandedId === model.id;
           const message = messages[model.id];
           const editorId = `provider-editor-${model.id}`;
@@ -193,11 +200,21 @@ export function AiProviderManager() {
                   aria-controls={editorId}
                   onClick={() => setExpandedId(expanded ? null : model.id)}
                 >
-                  <span className={`provider-state ${model.ready ? "ready" : ""}`} aria-hidden="true" />
+                  <span
+                    className={`provider-state ${model.ready ? "ready" : ""}`}
+                    aria-hidden="true"
+                  />
                   <span className="provider-summary-copy">
-                    <span className="provider-summary-title"><b>{draft.label}</b><small>{model.kind}</small></span>
+                    <span className="provider-summary-title">
+                      <b>{draft.label}</b>
+                      <small>{model.kind}</small>
+                    </span>
                     <span className="provider-role-summary">
-                      {draft.roles.length ? draft.roles.map((role) => ROLES.find((entry) => entry.id === role)?.label ?? role).join(" · ") : "No roles assigned"}
+                      {draft.roles.length
+                        ? draft.roles
+                            .map((role) => ROLES.find((entry) => entry.id === role)?.label ?? role)
+                            .join(" · ")
+                        : "No roles assigned"}
                     </span>
                   </span>
                   <span className={`provider-status ${model.ready ? "ready" : ""}`}>
@@ -253,7 +270,11 @@ export function AiProviderManager() {
                         <span>Endpoint</span>
                         <input
                           value={draft.endpoint}
-                          placeholder={model.kind === "local" ? "http://localhost:11434" : "https://api.example.com/v1"}
+                          placeholder={
+                            model.kind === "local"
+                              ? "http://localhost:11434"
+                              : "https://api.example.com/v1"
+                          }
                           onChange={(event) => patch(model.id, { endpoint: event.target.value })}
                         />
                       </label>
@@ -265,7 +286,11 @@ export function AiProviderManager() {
                           type="password"
                           autoComplete="new-password"
                           value={draft.apiKey}
-                          placeholder={model.ready ? "Stored securely — enter only to replace" : "Enter API key"}
+                          placeholder={
+                            model.ready
+                              ? "Stored securely — enter only to replace"
+                              : "Enter API key"
+                          }
                           onChange={(event) => patch(model.id, { apiKey: event.target.value })}
                         />
                       </label>
@@ -288,11 +313,18 @@ export function AiProviderManager() {
 
                   <div className="provider-card-foot">
                     {message && (
-                      <p className={`provider-message ${message.tone}`} role={message.tone === "error" ? "alert" : "status"}>
+                      <p
+                        className={`provider-message ${message.tone}`}
+                        role={message.tone === "error" ? "alert" : "status"}
+                      >
                         {message.text}
                       </p>
                     )}
-                    <Button variant="ghost" onClick={() => void testConnection(model)} disabled={busyIds.has(model.id)}>
+                    <Button
+                      variant="ghost"
+                      onClick={() => void testConnection(model)}
+                      disabled={busyIds.has(model.id)}
+                    >
                       Test connection
                     </Button>
                     <Button onClick={() => void save(model)} loading={busyIds.has(model.id)}>
@@ -316,16 +348,24 @@ export function AiProviderManager() {
       >
         <div className="provider-confirm">
           <p>
-            Remove <b>{removeTarget?.label}</b>? Its saved credential will be permanently deleted from this device.
+            Remove <b>{removeTarget?.label}</b>? Its saved credential will be permanently deleted
+            from this device.
           </p>
           {!!removeTarget?.roles.length && (
             <p className="provider-impact">
-              These roles will become unassigned: {removeTarget.roles.map((role) => role.replace("-", " ")).join(", ")}.
+              These roles will become unassigned:{" "}
+              {removeTarget.roles.map((role) => role.replace("-", " ")).join(", ")}.
             </p>
           )}
           <div className="af-actions">
-            <Button variant="ghost" onClick={() => setRemoveTarget(null)}>Cancel</Button>
-            <button className="af-btn danger" onClick={() => void confirmRemove()} disabled={!!removeTarget && busyIds.has(removeTarget.id)}>
+            <Button variant="ghost" onClick={() => setRemoveTarget(null)}>
+              Cancel
+            </Button>
+            <button
+              className="af-btn danger"
+              onClick={() => void confirmRemove()}
+              disabled={!!removeTarget && busyIds.has(removeTarget.id)}
+            >
               <Icon name="trash" size={14} /> Remove provider
             </button>
           </div>

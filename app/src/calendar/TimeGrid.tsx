@@ -3,7 +3,15 @@
 import dayjs from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from "react";
+import {
+  type CSSProperties,
+  type MouseEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { calendarToday, weekDays } from "@/calendar/date";
 import { layoutTimedEvents } from "@/calendar/layout";
@@ -42,7 +50,9 @@ function occurrenceStart(event: CalendarEvent): string {
 }
 
 function slotTime(minutes: number): string {
-  const hour = Math.floor(minutes / 60).toString().padStart(2, "0");
+  const hour = Math.floor(minutes / 60)
+    .toString()
+    .padStart(2, "0");
   const minute = (minutes % 60).toString().padStart(2, "0");
   return `${hour}:${minute}`;
 }
@@ -63,9 +73,10 @@ export function TimeGrid({
   const activeMinutesRef = useRef(9 * 60);
   const scrollRef = useRef<HTMLDivElement>(null);
   const today = calendarToday(timezoneName);
-  const label = view === "week"
-    ? `Week of ${dayjs(days[0]?.date).format("MMMM D, YYYY")}`
-    : dayjs(anchor).format("dddd, MMMM D, YYYY");
+  const label =
+    view === "week"
+      ? `Week of ${dayjs(days[0]?.date).format("MMMM D, YYYY")}`
+      : dayjs(anchor).format("dddd, MMMM D, YYYY");
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 7 * HOUR_HEIGHT;
@@ -79,19 +90,21 @@ export function TimeGrid({
   const byDate = useMemo(() => {
     const result = new Map<string, CalendarEvent[]>();
     for (const event of events) {
-      const date = event.start.kind === "allDay"
-        ? event.start.date
-        : dayjs(event.start.utc).tz(timezoneName).format("YYYY-MM-DD");
+      const date =
+        event.start.kind === "allDay"
+          ? event.start.date
+          : dayjs(event.start.utc).tz(timezoneName).format("YYYY-MM-DD");
       result.set(date, [...(result.get(date) ?? []), event]);
     }
     return result;
   }, [events, timezoneName]);
 
-  const createActiveSlot = () => onCreate({
-    date: days[activeDayRef.current]?.date ?? anchor,
-    time: slotTime(activeMinutesRef.current),
-    allDay: false,
-  });
+  const createActiveSlot = () =>
+    onCreate({
+      date: days[activeDayRef.current]?.date ?? anchor,
+      time: slotTime(activeMinutesRef.current),
+      allDay: false,
+    });
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowRight") {
       activeDayRef.current = Math.min(days.length - 1, activeDayRef.current + 1);
@@ -105,8 +118,7 @@ export function TimeGrid({
     } else if (event.key === "ArrowUp") {
       activeMinutesRef.current = Math.max(0, activeMinutesRef.current - 30);
       setActiveMinutes(activeMinutesRef.current);
-    }
-    else if (event.key.toLowerCase() === "n" || event.key === "Enter") createActiveSlot();
+    } else if (event.key.toLowerCase() === "n" || event.key === "Enter") createActiveSlot();
     else return;
     event.preventDefault();
   };
@@ -120,8 +132,13 @@ export function TimeGrid({
   return (
     <section className={`calendar-time-grid ${view}`}>
       <div className="calendar-time-grid-head">
-        <div className="calendar-time-corner" aria-hidden="true">GMT</div>
-        <div className="calendar-time-days" style={{ "--calendar-days": days.length } as CSSProperties}>
+        <div className="calendar-time-corner" aria-hidden="true">
+          GMT
+        </div>
+        <div
+          className="calendar-time-days"
+          style={{ "--calendar-days": days.length } as CSSProperties}
+        >
           {days.map((day) => (
             <div className={day.isToday ? "today" : ""} key={day.date}>
               <span>{dayjs(day.date).format("ddd")}</span>
@@ -132,19 +149,30 @@ export function TimeGrid({
       </div>
       <div className="calendar-all-day-row" data-calendar-all-day-layer>
         <div className="calendar-all-day-label">All day</div>
-        <div className="calendar-all-day-days" style={{ "--calendar-days": days.length } as CSSProperties}>
+        <div
+          className="calendar-all-day-days"
+          style={{ "--calendar-days": days.length } as CSSProperties}
+        >
           {days.map((day) => (
             <div key={day.date}>
-              {(byDate.get(day.date) ?? []).filter((event) => event.start.kind === "allDay").map((event) => (
-                <button
-                  type="button"
-                  key={event.id}
-                  style={{ "--event-color": calendars[event.calendarId]?.color ?? "var(--accent)" } as CSSProperties}
-                  onClick={() => onOpen({ eventId: event.id, occurrenceStart: occurrenceStart(event) })}
-                >
-                  {event.title}
-                </button>
-              ))}
+              {(byDate.get(day.date) ?? [])
+                .filter((event) => event.start.kind === "allDay")
+                .map((event) => (
+                  <button
+                    type="button"
+                    key={event.id}
+                    style={
+                      {
+                        "--event-color": calendars[event.calendarId]?.color ?? "var(--accent)",
+                      } as CSSProperties
+                    }
+                    onClick={() =>
+                      onOpen({ eventId: event.id, occurrenceStart: occurrenceStart(event) })
+                    }
+                  >
+                    {event.title}
+                  </button>
+                ))}
             </div>
           ))}
         </div>
@@ -158,16 +186,28 @@ export function TimeGrid({
         onKeyDown={onKeyDown}
       >
         <div className="calendar-time-hours" aria-hidden="true">
-          {HOURS.map((hour) => <span key={hour} style={{ top: hour * HOUR_HEIGHT }}>{`${hour.toString().padStart(2, "0")}:00`}</span>)}
+          {HOURS.map((hour) => (
+            <span
+              key={hour}
+              style={{ top: hour * HOUR_HEIGHT }}
+            >{`${hour.toString().padStart(2, "0")}:00`}</span>
+          ))}
         </div>
-        <div className="calendar-time-columns" style={{ "--calendar-days": days.length, height: DAY_HEIGHT } as CSSProperties}>
+        <div
+          className="calendar-time-columns"
+          style={{ "--calendar-days": days.length, height: DAY_HEIGHT } as CSSProperties}
+        >
           {days.map((day, dayIndex) => {
-            const timedEvents = (byDate.get(day.date) ?? []).filter((event) => event.start.kind === "timed" && event.end.kind === "timed");
-            const layouts = layoutTimedEvents(timedEvents.map((event) => ({
-              id: event.id,
-              start: event.start.kind === "timed" ? event.start.utc : day.date,
-              end: event.end.kind === "timed" ? event.end.utc : day.date,
-            })));
+            const timedEvents = (byDate.get(day.date) ?? []).filter(
+              (event) => event.start.kind === "timed" && event.end.kind === "timed",
+            );
+            const layouts = layoutTimedEvents(
+              timedEvents.map((event) => ({
+                id: event.id,
+                start: event.start.kind === "timed" ? event.start.utc : day.date,
+                end: event.end.kind === "timed" ? event.end.utc : day.date,
+              })),
+            );
             const lookup = new Map(timedEvents.map((event) => [event.id, event]));
             return (
               <div
@@ -177,20 +217,41 @@ export function TimeGrid({
                 key={day.date}
                 onDoubleClick={(event) => createPointerSlot(event, day.date)}
               >
-                {HOURS.map((hour) => <span className="calendar-hour-rule" key={hour} style={{ top: hour * HOUR_HEIGHT }} />)}
+                {HOURS.map((hour) => (
+                  <span
+                    className="calendar-hour-rule"
+                    key={hour}
+                    style={{ top: hour * HOUR_HEIGHT }}
+                  />
+                ))}
                 {dayIndex === activeDay && (
-                  <span className="calendar-active-slot" style={{ top: (activeMinutes / 60) * HOUR_HEIGHT }} aria-hidden="true" />
+                  <span
+                    className="calendar-active-slot"
+                    style={{ top: (activeMinutes / 60) * HOUR_HEIGHT }}
+                    aria-hidden="true"
+                  />
                 )}
                 {day.date === today && (
                   <span
                     className="calendar-now-line"
-                    style={{ top: ((dayjs().tz(timezoneName).hour() * 60 + dayjs().tz(timezoneName).minute()) / 60) * HOUR_HEIGHT }}
+                    style={{
+                      top:
+                        ((dayjs().tz(timezoneName).hour() * 60 +
+                          dayjs().tz(timezoneName).minute()) /
+                          60) *
+                        HOUR_HEIGHT,
+                    }}
                     aria-hidden="true"
                   />
                 )}
                 {layouts.map((layout) => {
                   const calendarEvent = lookup.get(layout.id);
-                  if (!calendarEvent || calendarEvent.start.kind !== "timed" || calendarEvent.end.kind !== "timed") return null;
+                  if (
+                    !calendarEvent ||
+                    calendarEvent.start.kind !== "timed" ||
+                    calendarEvent.end.kind !== "timed"
+                  )
+                    return null;
                   const startUtc = calendarEvent.start.utc;
                   const start = dayjs(startUtc).tz(timezoneName);
                   const end = dayjs(calendarEvent.end.utc).tz(timezoneName);
@@ -204,18 +265,25 @@ export function TimeGrid({
                       data-column={layout.column}
                       data-columns={layout.columnCount}
                       key={layout.id}
-                      style={{
-                        "--event-color": calendars[calendarEvent.calendarId]?.color ?? "var(--accent)",
-                        "--event-column": layout.column,
-                        "--event-columns": layout.columnCount,
-                        top,
-                        height,
-                      } as CSSProperties}
-                      onClick={() => onOpen({ eventId: calendarEvent.id, occurrenceStart: startUtc })}
+                      style={
+                        {
+                          "--event-color":
+                            calendars[calendarEvent.calendarId]?.color ?? "var(--accent)",
+                          "--event-column": layout.column,
+                          "--event-columns": layout.columnCount,
+                          top,
+                          height,
+                        } as CSSProperties
+                      }
+                      onClick={() =>
+                        onOpen({ eventId: calendarEvent.id, occurrenceStart: startUtc })
+                      }
                       title="Open event to edit, move, or resize"
                     >
                       <b>{calendarEvent.title}</b>
-                      <small>{start.format("HH:mm")}–{end.format("HH:mm")}</small>
+                      <small>
+                        {start.format("HH:mm")}–{end.format("HH:mm")}
+                      </small>
                     </button>
                   );
                 })}
@@ -224,7 +292,9 @@ export function TimeGrid({
           })}
         </div>
       </div>
-      <p className="calendar-grid-help">Arrow keys move the active slot. Press N or Enter to create.</p>
+      <p className="calendar-grid-help">
+        Arrow keys move the active slot. Press N or Enter to create.
+      </p>
     </section>
   );
 }

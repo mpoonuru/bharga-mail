@@ -8,7 +8,9 @@ import { api } from "@/lib/bridge";
 import { useHotkeys } from "@/lib/useHotkeys";
 import { useApp } from "@/store";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const roots: Root[] = [];
 const hosts: HTMLDivElement[] = [];
@@ -24,7 +26,14 @@ function renderBody(anchorHtml: string) {
   hosts.push(host);
   const root = createRoot(host);
   roots.push(root);
-  act(() => root.render(<><HotkeyHarness /><EmailBody html={anchorHtml} sender="sender@example.test" /></>));
+  act(() =>
+    root.render(
+      <>
+        <HotkeyHarness />
+        <EmailBody html={anchorHtml} sender="sender@example.test" />
+      </>,
+    ),
+  );
   const frame = host.querySelector<HTMLIFrameElement>("iframe")!;
   const frameDocument = frame.contentDocument!;
   frameDocument.body.innerHTML = anchorHtml;
@@ -35,7 +44,9 @@ function renderBody(anchorHtml: string) {
 afterEach(() => {
   for (const root of roots.splice(0)) act(() => root.unmount());
   for (const host of hosts.splice(0)) host.remove();
-  document.querySelectorAll(".modal-overlay, .link-menu, .link-menu-backdrop").forEach((node) => node.remove());
+  document
+    .querySelectorAll(".modal-overlay, .link-menu, .link-menu-backdrop")
+    .forEach((node) => node.remove());
   document.body.style.overflow = "";
   vi.restoreAllMocks();
   Reflect.deleteProperty(navigator, "clipboard");
@@ -56,14 +67,20 @@ describe("message links", () => {
     const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue(undefined);
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
-    const { anchor } = renderBody('<a href="https://evil.test/login" data-risk="dangerous" data-real="evil.test">paypal.com</a>');
+    const { anchor } = renderBody(
+      '<a href="https://evil.test/login" data-risk="dangerous" data-real="evil.test">paypal.com</a>',
+    );
 
     act(() => anchor.click());
 
     expect(document.querySelector(".modal-head")?.textContent).toContain("Dangerous link");
     expect(document.querySelector(".lc-url")?.textContent).toBe("https://evil.test/login");
     const buttons = [...document.querySelectorAll<HTMLButtonElement>(".lc-actions button")];
-    expect(buttons.map((button) => button.textContent)).toEqual(["Copy link", "Stay safe", "Open anyway"]);
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "Copy link",
+      "Stay safe",
+      "Open anyway",
+    ]);
     act(() => buttons[0].click());
     expect(writeText).toHaveBeenCalledWith("https://evil.test/login");
     expect(openExternalUrl).not.toHaveBeenCalled();
@@ -78,7 +95,11 @@ describe("message links", () => {
     act(() => anchor.click());
 
     expect(document.querySelector(".modal-head")?.textContent).toContain("Link blocked");
-    expect([...document.querySelectorAll(".lc-actions button")].some((button) => button.textContent === "Open anyway")).toBe(false);
+    expect(
+      [...document.querySelectorAll(".lc-actions button")].some(
+        (button) => button.textContent === "Open anyway",
+      ),
+    ).toBe(false);
     expect(openExternalUrl).not.toHaveBeenCalled();
   });
 
@@ -88,8 +109,24 @@ describe("message links", () => {
     const { anchor } = renderBody('<a href="https://example.test/path">Open example</a>');
 
     act(() => {
-      anchor.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 12, clientY: 18 }));
-      anchor.dispatchEvent(new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 2, clientX: 12, clientY: 18 }));
+      anchor.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 12,
+          clientY: 18,
+        }),
+      );
+      anchor.dispatchEvent(
+        new MouseEvent("auxclick", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 12,
+          clientY: 18,
+        }),
+      );
     });
 
     const items = [...document.querySelectorAll<HTMLButtonElement>('.link-menu [role="menuitem"]')];
@@ -105,7 +142,14 @@ describe("message links", () => {
 
     act(() => {
       anchor.focus();
-      anchor.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "F10", shiftKey: true }));
+      anchor.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "F10",
+          shiftKey: true,
+        }),
+      );
     });
 
     expect(document.querySelector('.link-menu [role="menuitem"]')?.textContent).toBe("Open link");
@@ -114,16 +158,28 @@ describe("message links", () => {
   it("isolates global shortcuts and closes on Tab with focus restored", () => {
     vi.useFakeTimers();
     try {
-      const { anchor, frameDocument } = renderBody('<a href="https://example.test/path">Open example</a>');
-      act(() => anchor.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 })));
+      const { anchor, frameDocument } = renderBody(
+        '<a href="https://example.test/path">Open example</a>',
+      );
+      act(() =>
+        anchor.dispatchEvent(
+          new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
+        ),
+      );
       const firstItem = document.querySelector<HTMLButtonElement>('.link-menu [role="menuitem"]')!;
 
-      act(() => firstItem.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "c" })));
+      act(() =>
+        firstItem.dispatchEvent(
+          new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "c" }),
+        ),
+      );
       expect(useApp.getState().composeOpen).toBe(false);
       expect(document.querySelector(".link-menu")).not.toBeNull();
 
       act(() => {
-        firstItem.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Tab" }));
+        firstItem.dispatchEvent(
+          new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Tab" }),
+        );
         vi.runAllTimers();
       });
       expect(document.querySelector(".link-menu")).toBeNull();

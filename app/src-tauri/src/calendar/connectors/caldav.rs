@@ -4,16 +4,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use quick_xml::events::Event;
 use quick_xml::Reader;
-use reqwest::{header, Client, Method, StatusCode, Url};
+use quick_xml::events::Event;
+use reqwest::{Client, Method, StatusCode, Url, header};
 
 use super::{
     CalendarConnector, ConnectorError, ConnectorErrorKind, FreeBusyRequest, FreeBusyResult,
     PushOutcome, RemoteCalendar, RemoteChange, SyncBatch,
 };
 use crate::calendar::domain::{CalendarOperation, OperationKind};
-use crate::calendar::ical::{parse_calendar, write_calendar, ExportOptions, Limits, ParsedEvent};
+use crate::calendar::ical::{ExportOptions, Limits, ParsedEvent, parse_calendar, write_calendar};
 use crate::store::Store;
 
 const MAX_XML_BYTES: usize = 2 * 1024 * 1024;
@@ -49,21 +49,11 @@ fn error(kind: ConnectorErrorKind, code: &str, message: impl Into<String>) -> Co
 
 fn xml_text(reader: &Reader<&[u8]>, value: &[u8]) -> Result<String, ConnectorError> {
     let decoded = reader.decoder().decode(value).map_err(|_| {
-        error(
-            ConnectorErrorKind::Permanent,
-            "invalid-xml",
-            "CalDAV XML is not valid UTF-8",
-        )
+        error(ConnectorErrorKind::Permanent, "invalid-xml", "CalDAV XML is not valid UTF-8")
     })?;
-    quick_xml::escape::unescape(&decoded)
-        .map(|value| value.into_owned())
-        .map_err(|_| {
-            error(
-                ConnectorErrorKind::Permanent,
-                "invalid-xml",
-                "CalDAV XML contains invalid escaping",
-            )
-        })
+    quick_xml::escape::unescape(&decoded).map(|value| value.into_owned()).map_err(|_| {
+        error(ConnectorErrorKind::Permanent, "invalid-xml", "CalDAV XML contains invalid escaping")
+    })
 }
 
 fn local_name(value: &[u8]) -> String {
@@ -72,9 +62,7 @@ fn local_name(value: &[u8]) -> String {
 }
 
 fn parse_status(value: &str) -> Option<u16> {
-    value
-        .split_whitespace()
-        .find_map(|part| part.parse::<u16>().ok())
+    value.split_whitespace().find_map(|part| part.parse::<u16>().ok())
 }
 
 fn parse_multistatus(bytes: &[u8]) -> Result<DavDocument, ConnectorError> {
@@ -183,7 +171,7 @@ fn parse_multistatus(bytes: &[u8]) -> Result<DavDocument, ConnectorError> {
                     ConnectorErrorKind::Permanent,
                     "invalid-xml",
                     format!("CalDAV response is malformed: {parse_error}"),
-                ))
+                ));
             }
         }
     }
@@ -192,21 +180,13 @@ fn parse_multistatus(bytes: &[u8]) -> Result<DavDocument, ConnectorError> {
 
 fn status_error(status: StatusCode, retry_after: Option<&header::HeaderValue>) -> ConnectorError {
     let (kind, code, message) = match status.as_u16() {
-        401 => (
-            ConnectorErrorKind::AuthRequired,
-            "auth-required",
-            "CalDAV credentials were rejected",
-        ),
-        403 => (
-            ConnectorErrorKind::PermissionDenied,
-            "permission-denied",
-            "CalDAV access was denied",
-        ),
-        409 => (
-            ConnectorErrorKind::Conflict,
-            "remote-conflict",
-            "CalDAV resource is in conflict",
-        ),
+        401 => {
+            (ConnectorErrorKind::AuthRequired, "auth-required", "CalDAV credentials were rejected")
+        }
+        403 => {
+            (ConnectorErrorKind::PermissionDenied, "permission-denied", "CalDAV access was denied")
+        }
+        409 => (ConnectorErrorKind::Conflict, "remote-conflict", "CalDAV resource is in conflict"),
         412 => (
             ConnectorErrorKind::Conflict,
             "precondition-failed",
@@ -222,26 +202,17 @@ fn status_error(status: StatusCode, retry_after: Option<&header::HeaderValue>) -
             "server-error",
             "CalDAV server is temporarily unavailable",
         ),
-        _ => (
-            ConnectorErrorKind::Permanent,
-            "dav-error",
-            "CalDAV request failed",
-        ),
+        _ => (ConnectorErrorKind::Permanent, "dav-error", "CalDAV request failed"),
     };
     let mut result = error(kind, code, format!("{message} ({status})"));
-    result.retry_after_seconds = retry_after
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse().ok());
+    result.retry_after_seconds =
+        retry_after.and_then(|value| value.to_str().ok()).and_then(|value| value.parse().ok());
     result
 }
 
 fn validated_url(raw: &str) -> Result<Url, ConnectorError> {
     let url = Url::parse(raw).map_err(|_| {
-        error(
-            ConnectorErrorKind::Permanent,
-            "invalid-url",
-            "Enter a valid CalDAV URL",
-        )
+        error(ConnectorErrorKind::Permanent, "invalid-url", "Enter a valid CalDAV URL")
     })?;
     let loopback = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
     if url.scheme() != "https" && !(cfg!(test) && url.scheme() == "http" && loopback) {
@@ -276,16 +247,15 @@ impl CalDavConnector {
             base_url: validated_url(url)?,
             collection_url: None,
             credentials,
-            client: Client::builder()
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .map_err(|_| {
+            client: Client::builder().redirect(reqwest::redirect::Policy::none()).build().map_err(
+                |_| {
                     error(
                         ConnectorErrorKind::Permanent,
                         "client-error",
                         "CalDAV client could not be initialized",
                     )
-                })?,
+                },
+            )?,
             store: None,
         })
     }
@@ -407,10 +377,7 @@ impl CalDavConnector {
                 None,
             )
             .await?;
-        if response
-            .content_length()
-            .is_some_and(|length| length > MAX_XML_BYTES as u64)
-        {
+        if response.content_length().is_some_and(|length| length > MAX_XML_BYTES as u64) {
             return Err(error(
                 ConnectorErrorKind::Permanent,
                 "xml-too-large",
@@ -429,14 +396,8 @@ impl CalDavConnector {
 
     async fn collection_discovery(&self, url: Url) -> Result<Vec<RemoteCalendar>, ConnectorError> {
         let body = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/"><d:prop><d:displayname/><d:resourcetype/><d:current-user-privilege-set/><d:supported-report-set/><d:sync-token/><cs:getctag/><c:calendar-description/><c:calendar-color/><c:calendar-timezone/><c:schedule-calendar-transp/></d:prop></d:propfind>"#;
-        let document = self
-            .dav_xml(
-                Method::from_bytes(b"PROPFIND").unwrap(),
-                url.clone(),
-                "1",
-                body,
-            )
-            .await?;
+        let document =
+            self.dav_xml(Method::from_bytes(b"PROPFIND").unwrap(), url.clone(), "1", body).await?;
         document
             .responses
             .into_iter()
@@ -488,12 +449,7 @@ impl CalDavConnector {
     async fn discover_from(&self, url: Url) -> Result<Vec<RemoteCalendar>, ConnectorError> {
         let root_body = r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:current-user-principal/><c:calendar-home-set/><c:schedule-inbox-URL/><c:schedule-outbox-URL/></d:prop></d:propfind>"#;
         let root = self
-            .dav_xml(
-                Method::from_bytes(b"PROPFIND").unwrap(),
-                url.clone(),
-                "0",
-                root_body,
-            )
+            .dav_xml(Method::from_bytes(b"PROPFIND").unwrap(), url.clone(), "0", root_body)
             .await?;
         let properties = root.responses.first().map(|response| &response.properties);
         let principal_href =
@@ -581,15 +537,12 @@ impl CalendarConnector for CalDavConnector {
         } else {
             (r#"<?xml version="1.0"?><c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/><c:calendar-data/></d:prop><c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"/></c:comp-filter></c:filter></c:calendar-query>"#.into(), "1")
         };
-        let document = self
-            .dav_xml(Method::from_bytes(b"REPORT").unwrap(), url, depth, &body)
-            .await?;
+        let document =
+            self.dav_xml(Method::from_bytes(b"REPORT").unwrap(), url, depth, &body).await?;
         let mut changes = Vec::new();
         for response in document.responses {
             if response.status == Some(404) {
-                changes.push(RemoteChange::Delete {
-                    href: response.href,
-                });
+                changes.push(RemoteChange::Delete { href: response.href });
                 continue;
             }
             let Some(calendar_data) = response.properties.get("calendar-data") else {
@@ -658,9 +611,7 @@ impl CalendarConnector for CalDavConnector {
                 )
             })?
             .unwrap_or_else(|| {
-                collection
-                    .join(&format!("{}.ics", urlencoding::encode(&event.uid)))
-                    .unwrap()
+                collection.join(&format!("{}.ics", urlencoding::encode(&event.uid))).unwrap()
             });
         let conditional = match operation.kind {
             OperationKind::Create => Some((header::IF_NONE_MATCH.as_str(), "*")),
@@ -670,18 +621,12 @@ impl CalendarConnector for CalDavConnector {
                 .map(|etag| (header::IF_MATCH.as_str(), etag)),
             OperationKind::SendInvitation => None,
         };
-        let method = if operation.kind == OperationKind::Delete {
-            Method::DELETE
-        } else {
-            Method::PUT
-        };
+        let method =
+            if operation.kind == OperationKind::Delete { Method::DELETE } else { Method::PUT };
         let body = if method == Method::PUT {
             Some(
                 write_calendar(
-                    &[ParsedEvent {
-                        event,
-                        preserved_properties: Vec::new(),
-                    }],
+                    &[ParsedEvent { event, preserved_properties: Vec::new() }],
                     ExportOptions::default(),
                 )
                 .map_err(|value| {
@@ -715,18 +660,12 @@ impl CalendarConnector for CalDavConnector {
         &self,
         _request: &FreeBusyRequest,
     ) -> Result<FreeBusyResult, ConnectorError> {
-        Ok(FreeBusyResult {
-            intervals: Vec::new(),
-            complete: false,
-        })
+        Ok(FreeBusyResult { intervals: Vec::new(), complete: false })
     }
 }
 
 fn xml_escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -735,10 +674,7 @@ mod tests {
     use crate::calendar::connectors::test_server::TestServer;
 
     fn credentials() -> Credentials {
-        Credentials::Basic {
-            username: "calendar-user".into(),
-            password: "secret".into(),
-        }
+        Credentials::Basic { username: "calendar-user".into(), password: "secret".into() }
     }
 
     #[tokio::test]
@@ -762,9 +698,7 @@ mod tests {
             "unsafe-xml"
         );
         assert_eq!(
-            parse_multistatus(&vec![b' '; MAX_XML_BYTES + 1])
-                .unwrap_err()
-                .code(),
+            parse_multistatus(&vec![b' '; MAX_XML_BYTES + 1]).unwrap_err().code(),
             "xml-too-large"
         );
     }
@@ -777,10 +711,7 @@ mod tests {
         assert!(document.responses[0].writable);
         assert!(document.responses[0].supports_sync_collection);
         assert_eq!(
-            document.responses[0]
-                .properties
-                .get("sync-token")
-                .map(String::as_str),
+            document.responses[0].properties.get("sync-token").map(String::as_str),
             Some("token-1")
         );
     }

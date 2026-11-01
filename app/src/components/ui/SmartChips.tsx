@@ -7,7 +7,10 @@ import type { SmartChip } from "@/lib/smartChips";
  *  stream to their union; nothing selected = show everything. Each chip explains
  *  itself on hover (why it exists) — AI-first grouping should never be a black box. */
 export function SmartChips({
-  chips, active, onToggle, onClear,
+  chips,
+  active,
+  onToggle,
+  onClear,
 }: {
   chips: SmartChip[];
   active: Set<string>;
@@ -17,11 +20,21 @@ export function SmartChips({
   if (!chips.length) return null;
   return (
     <div className="smart-chips" role="tablist" aria-label="Smart filters">
-      <Tooltip label="Auto-grouped from your inbox by AI — multi-label, so a mail can match several." side="bottom">
-        <span className="smart-chips-lead" aria-hidden><Icon name="ai" size={13} weight="duotone" /></span>
+      <Tooltip
+        label="Auto-grouped from your inbox by AI — multi-label, so a mail can match several."
+        side="bottom"
+      >
+        <span className="smart-chips-lead" aria-hidden>
+          <Icon name="ai" size={13} weight="duotone" />
+        </span>
       </Tooltip>
       {active.size > 0 && (
-        <button className="chip chip-clear" onClick={onClear} title="Clear filters" aria-label="Clear filters">
+        <button
+          className="chip chip-clear"
+          onClick={onClear}
+          title="Clear filters"
+          aria-label="Clear filters"
+        >
           <Icon name="close" size={11} weight="bold" />
         </button>
       )}

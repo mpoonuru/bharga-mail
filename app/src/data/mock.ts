@@ -1,4 +1,4 @@
-import type { Thread, Task, AiProfile, Account } from "@/types";
+import type { Account, AiProfile, Task, Thread } from "@/types";
 
 // Seed data so the UI is fully explorable without a backend.
 // Replace with live data from the Rust core (see src/lib/bridge.ts).
@@ -32,7 +32,11 @@ export const threads: Thread[] = [
         from: { name: "Lena Hoffmann", address: "lena@northwind.co" },
         to: [{ name: "Alex", address: "alex.morgan@example.com" }],
         when: "2026-05-29T09:24:00Z",
-        meta: { auth: "spf=pass; dkim=pass; dmarc=pass", originIp: "203.0.113.24", messageId: "<renewal-7f3a@northwind.co>" },
+        meta: {
+          auth: "spf=pass; dkim=pass; dmarc=pass",
+          originIp: "203.0.113.24",
+          messageId: "<renewal-7f3a@northwind.co>",
+        },
         bodyHtml:
           "<p>Hi Alex,</p><p>Following up on the renewal terms we discussed last week. Legal needs the signed agreement back by <b>Friday</b> to keep the same start date. Terms are identical to last year, with a 7% adjustment on the platform tier.</p><p>Happy to hop on a quick call if it's easier. Let me know how you'd like to proceed.</p><p>Best,<br>Lena</p>",
         attachments: [
@@ -52,7 +56,8 @@ export const threads: Thread[] = [
     unread: true,
     labels: ["meeting"],
     view: ["priority", "inbox"],
-    aiSummary: "Marco wants to meet Thursday afternoon to walk through the new release pipeline. Your calendar is free 14:00–16:00.",
+    aiSummary:
+      "Marco wants to meet Thursday afternoon to walk through the new release pipeline. Your calendar is free 14:00–16:00.",
     aiDraft: "Thursday at 14:00 works for me — I'll send an invite with a Meet link.",
     messages: [
       {
@@ -61,7 +66,8 @@ export const threads: Thread[] = [
         to: [{ name: "Marco Reyes", address: "marco.reyes@example.org" }],
         when: "2026-05-28T17:40:00Z",
         meta: { auth: "spf=pass; dkim=pass; dmarc=pass" },
-        bodyHtml: "<p>Hi Marco,</p><p>The staging deploy is green. Can we do a quick walkthrough before the Friday release? I want to confirm the rollback steps and the migration order.</p><p>Thanks,<br>Alex</p>",
+        bodyHtml:
+          "<p>Hi Marco,</p><p>The staging deploy is green. Can we do a quick walkthrough before the Friday release? I want to confirm the rollback steps and the migration order.</p><p>Thanks,<br>Alex</p>",
       },
       {
         id: "m2",
@@ -69,7 +75,8 @@ export const threads: Thread[] = [
         to: [{ name: "Alex", address: "alex.morgan@example.com" }],
         when: "2026-05-29T08:51:00Z",
         meta: { auth: "spf=pass; dkim=pass; dmarc=pass", originIp: "198.51.100.7" },
-        bodyHtml: "<p>Hey Alex,</p><p>Are you free Thursday afternoon? I'd like to walk through the new release flow before we ship Friday.</p><p>— Marco</p>" +
+        bodyHtml:
+          "<p>Hey Alex,</p><p>Are you free Thursday afternoon? I'd like to walk through the new release flow before we ship Friday.</p><p>— Marco</p>" +
           "<div>________________________________</div><div>From: Alex &lt;alex.morgan@example.com&gt;<br>Sent: Wednesday, May 28, 2026 5:40 PM<br>Subject: Deployment pipeline</div><p>Hi Marco, the staging deploy is green. Can we do a quick walkthrough…</p>",
       },
       {
@@ -78,7 +85,8 @@ export const threads: Thread[] = [
         to: [{ name: "Marco Reyes", address: "marco.reyes@example.org" }],
         when: "2026-05-29T09:32:00Z",
         meta: { auth: "spf=pass; dkim=pass; dmarc=pass" },
-        bodyHtml: "<p>Thursday at 14:00 works for me — I'll send an invite with a Meet link. Let's start with the rollback plan.</p><p>— Alex</p>" +
+        bodyHtml:
+          "<p>Thursday at 14:00 works for me — I'll send an invite with a Meet link. Let's start with the rollback plan.</p><p>— Alex</p>" +
           "<div>On Thu, May 29, 2026, Marco Reyes wrote:</div><blockquote>Hey Alex, Are you free Thursday afternoon? I'd like to walk through the new release flow…</blockquote>",
       },
     ],
@@ -99,8 +107,13 @@ export const threads: Thread[] = [
         from: { name: "Stripe", address: "no-reply@stripe.com" },
         to: [{ name: "Alex", address: "alex.morgan@example.com" }],
         when: "2026-05-29T07:30:00Z",
-        meta: { auth: "spf=pass; dkim=pass; dmarc=pass", originIp: "54.187.205.235", messageId: "<payout-9c11@stripe.com>" },
-        bodyHtml: "<p>We initiated a transfer of <b>€4,210.00</b> to your account ending 4421. Funds typically arrive in 1–2 business days.</p>",
+        meta: {
+          auth: "spf=pass; dkim=pass; dmarc=pass",
+          originIp: "54.187.205.235",
+          messageId: "<payout-9c11@stripe.com>",
+        },
+        bodyHtml:
+          "<p>We initiated a transfer of <b>€4,210.00</b> to your account ending 4421. Funds typically arrive in 1–2 business days.</p>",
       },
     ],
   },
@@ -114,7 +127,8 @@ export const threads: Thread[] = [
     unread: false,
     labels: [],
     view: ["inbox"],
-    aiSummary: "Priya shared design-review notes and an updated prototype. Three action items are assigned to you.",
+    aiSummary:
+      "Priya shared design-review notes and an updated prototype. Three action items are assigned to you.",
     messages: [
       {
         id: "m4",
@@ -122,7 +136,8 @@ export const threads: Thread[] = [
         to: [{ name: "Alex", address: "alex.morgan@example.com" }],
         when: "2026-05-28T16:10:00Z",
         meta: { auth: "spf=pass; dkim=fail; dmarc=none", originIp: "192.0.2.55" },
-        bodyHtml: "<p>Thanks for the call! Notes are attached and the prototype is updated. Let me know your thoughts on the onboarding flow.</p>",
+        bodyHtml:
+          "<p>Thanks for the call! Notes are attached and the prototype is updated. Let me know your thoughts on the onboarding flow.</p>",
       },
     ],
   },
@@ -167,7 +182,7 @@ export const threads: Thread[] = [
         meta: { auth: "spf=softfail; dkim=fail; dmarc=fail", originIp: "45.137.21.9" },
         bodyHtml:
           "<p>Dear Customer,</p><p>We detected unusual activity on your account. To avoid <b>permanent suspension</b>, please verify your details within 24 hours.</p>" +
-          "<p><a href=\"http://paypal.com.account-verify.ru/login\">Verify your PayPal account at paypal.com</a></p>" +
+          '<p><a href="http://paypal.com.account-verify.ru/login">Verify your PayPal account at paypal.com</a></p>' +
           "<p>Thank you,<br>PayPal Security Team</p>",
       },
     ],
@@ -175,9 +190,27 @@ export const threads: Thread[] = [
 ];
 
 export const tasks: Task[] = [
-  { id: "k1", title: "Review renewal terms from Lena", due: "Fri", done: false, sourceThreadId: "t1" },
-  { id: "k2", title: "Send invite to Marco for Thursday 14:00", due: "Today", done: false, sourceThreadId: "t2" },
-  { id: "k3", title: "Reply to Priya with onboarding feedback", due: "Wed", done: false, sourceThreadId: "t4" },
+  {
+    id: "k1",
+    title: "Review renewal terms from Lena",
+    due: "Fri",
+    done: false,
+    sourceThreadId: "t1",
+  },
+  {
+    id: "k2",
+    title: "Send invite to Marco for Thursday 14:00",
+    due: "Today",
+    done: false,
+    sourceThreadId: "t2",
+  },
+  {
+    id: "k3",
+    title: "Reply to Priya with onboarding feedback",
+    due: "Wed",
+    done: false,
+    sourceThreadId: "t4",
+  },
   { id: "k4", title: "Approve Q3 roadmap", done: true },
   { id: "k5", title: "Renew TLS certificate", due: "Jun 3", done: false },
 ];
@@ -186,9 +219,29 @@ export const aiProfile: AiProfile = {
   name: "Hybrid (private)",
   privacy: "hybrid",
   models: [
-    { id: "claude", label: "Claude (Anthropic)", kind: "anthropic", roles: ["draft", "agent", "summarize"], ready: true },
-    { id: "gpt", label: "GPT-4o (OpenAI)", kind: "openai-compatible", roles: [], ready: false, endpoint: "https://api.openai.com/v1" },
-    { id: "llama", label: "Llama 3 8B · local", kind: "local", roles: ["triage", "embeddings"], ready: true, endpoint: "http://localhost:11434" },
+    {
+      id: "claude",
+      label: "Claude (Anthropic)",
+      kind: "anthropic",
+      roles: ["draft", "agent", "summarize"],
+      ready: true,
+    },
+    {
+      id: "gpt",
+      label: "GPT-5.1 (OpenAI)",
+      kind: "openai-compatible",
+      roles: [],
+      ready: false,
+      endpoint: "https://api.openai.com/v1",
+    },
+    {
+      id: "llama",
+      label: "Llama 3.2 · local",
+      kind: "local",
+      roles: ["triage", "embeddings"],
+      ready: true,
+      endpoint: "http://localhost:11434",
+    },
     { id: "custom", label: "Custom endpoint…", kind: "custom", roles: [], ready: false },
   ],
 };

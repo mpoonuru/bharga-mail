@@ -20,10 +20,8 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
 
 /// Return the ids of the `k` most similar items to `query`, best first.
 pub fn top_k(query: &[f32], items: &[(String, Vec<f32>)], k: usize) -> Vec<String> {
-    let mut scored: Vec<(f32, &String)> = items
-        .iter()
-        .map(|(id, v)| (cosine(query, v), id))
-        .collect();
+    let mut scored: Vec<(f32, &String)> =
+        items.iter().map(|(id, v)| (cosine(query, v), id)).collect();
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     scored.into_iter().take(k).map(|(_, id)| id.clone()).collect()
 }

@@ -1,22 +1,22 @@
 /** Frontend-only calendar view, selection, and deterministic layout contracts. */
 
 import type {
+  CalDavDiscoveryInput,
   Calendar,
-  CalendarConflict,
   CalendarCommandError,
+  CalendarConflict,
   CalendarEvent,
   CalendarSource,
-  CalendarSyncHealth,
   CalendarSourceRemovalPolicy,
+  CalendarSyncHealth,
   ConflictResolution,
   EventMutation,
   EventRange,
   FreeBusyResult,
   InvitationInspection,
   InvitationResponseInput,
-  CalDavDiscoveryInput,
-  SaveCalDavSourceInput,
   RemoteCalendar,
+  SaveCalDavSourceInput,
 } from "@/types";
 
 export type CalendarView = "month" | "week" | "day" | "agenda";
@@ -92,7 +92,11 @@ export interface CalendarApi {
   listEvents(range: EventRange): Promise<CalendarEvent[]>;
   getEvent(eventId: string): Promise<CalendarEvent | undefined>;
   createEvent(input: EventMutation, options?: EventWriteOptions): Promise<CalendarEvent>;
-  updateEvent(eventId: string, input: EventMutation, options?: EventWriteOptions): Promise<CalendarEvent>;
+  updateEvent(
+    eventId: string,
+    input: EventMutation,
+    options?: EventWriteOptions,
+  ): Promise<CalendarEvent>;
   updateRecurringEvent?(
     eventId: string,
     recurrenceId: string,
@@ -117,7 +121,11 @@ export interface CalendarApi {
   listConflicts?(): Promise<CalendarConflict[]>;
   listSyncHealth?(): Promise<CalendarSyncHealth[]>;
   resolveConflict?(eventId: string, resolution: ConflictResolution): Promise<CalendarEvent[]>;
-  getAvailability?(sourceIds: string[], range: EventRange, attendees: string[]): Promise<FreeBusyResult>;
+  getAvailability?(
+    sourceIds: string[],
+    range: EventRange,
+    attendees: string[],
+  ): Promise<FreeBusyResult>;
   updateSourceLabel?(sourceId: string, label: string): Promise<void>;
   removeSource?(sourceId: string, policy: CalendarSourceRemovalPolicy): Promise<void>;
   setCalendarOrder?(calendarIds: string[]): Promise<void>;
@@ -143,6 +151,7 @@ export interface CalendarStateSnapshot {
 }
 
 export type {
+  CalDavDiscoveryInput,
   Calendar,
   CalendarCommandError,
   CalendarEvent,
@@ -151,7 +160,6 @@ export type {
   EventRange,
   InvitationInspection,
   InvitationResponseInput,
-  CalDavDiscoveryInput,
-  SaveCalDavSourceInput,
   RemoteCalendar,
+  SaveCalDavSourceInput,
 };

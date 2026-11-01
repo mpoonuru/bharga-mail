@@ -177,11 +177,7 @@ impl Transparency {
     }
 
     pub(crate) fn parse(value: &str) -> Self {
-        if value == "free" {
-            Self::Free
-        } else {
-            Self::Busy
-        }
+        if value == "free" { Self::Free } else { Self::Busy }
     }
 }
 

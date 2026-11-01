@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useApp } from "@/store";
 import { api } from "@/lib/bridge";
+import { useApp } from "@/store";
 
 // The store is a singleton; reload mock data before each test for isolation.
 beforeEach(async () => {
@@ -42,13 +42,21 @@ describe("navigation", () => {
 describe("bulk thread state", () => {
   it("sets one read state across accounts and persists each selected thread", async () => {
     const selected = [
-      { ...useApp.getState().threads[0], id: "personal-thread", accountId: "personal", unread: true },
+      {
+        ...useApp.getState().threads[0],
+        id: "personal-thread",
+        accountId: "personal",
+        unread: true,
+      },
       { ...useApp.getState().threads[1], id: "work-thread", accountId: "work", unread: false },
     ];
     useApp.setState({ threads: selected });
     const persist = vi.spyOn(api, "setThreadRead").mockResolvedValue(undefined);
 
-    const result = await useApp.getState().setThreadsRead(selected.map((thread) => thread.id), true);
+    const result = await useApp.getState().setThreadsRead(
+      selected.map((thread) => thread.id),
+      true,
+    );
 
     expect(useApp.getState().threads.every((thread) => !thread.unread)).toBe(true);
     expect(persist).toHaveBeenCalledTimes(2);
@@ -67,10 +75,17 @@ describe("bulk thread state", () => {
       if (threadId === "failed-thread") throw new Error("provider unavailable");
     });
 
-    const result = await useApp.getState().setThreadsRead(selected.map((thread) => thread.id), true);
+    const result = await useApp.getState().setThreadsRead(
+      selected.map((thread) => thread.id),
+      true,
+    );
 
-    expect(useApp.getState().threads.find((thread) => thread.id === "ok-thread")?.unread).toBe(false);
-    expect(useApp.getState().threads.find((thread) => thread.id === "failed-thread")?.unread).toBe(true);
+    expect(useApp.getState().threads.find((thread) => thread.id === "ok-thread")?.unread).toBe(
+      false,
+    );
+    expect(useApp.getState().threads.find((thread) => thread.id === "failed-thread")?.unread).toBe(
+      true,
+    );
     expect(result).toEqual({ updated: 1, failed: 1 });
   });
 });
@@ -124,9 +139,12 @@ describe("AI engine config", () => {
   it("merges out-of-order provider saves without discarding either result", async () => {
     const original = structuredClone(useApp.getState().ai!);
     const pending = new Map<string, (profile: typeof original) => void>();
-    vi.spyOn(api, "saveAiProvider").mockImplementation((input) => new Promise((resolve) => {
-      pending.set(input.id, resolve);
-    }));
+    vi.spyOn(api, "saveAiProvider").mockImplementation(
+      (input) =>
+        new Promise((resolve) => {
+          pending.set(input.id, resolve);
+        }),
+    );
     const first = { ...original.models[0], label: "First updated" };
     const second = { ...original.models[1], label: "Second updated" };
 
@@ -134,17 +152,21 @@ describe("AI engine config", () => {
     const secondSave = useApp.getState().saveModel(second);
     pending.get(second.id)?.({
       ...original,
-      models: original.models.map((model) => model.id === second.id ? second : model),
+      models: original.models.map((model) => (model.id === second.id ? second : model)),
     });
     await secondSave;
     pending.get(first.id)?.({
       ...original,
-      models: original.models.map((model) => model.id === first.id ? first : model),
+      models: original.models.map((model) => (model.id === first.id ? first : model)),
     });
     await firstSave;
 
-    expect(useApp.getState().ai?.models.find((model) => model.id === first.id)?.label).toBe("First updated");
-    expect(useApp.getState().ai?.models.find((model) => model.id === second.id)?.label).toBe("Second updated");
+    expect(useApp.getState().ai?.models.find((model) => model.id === first.id)?.label).toBe(
+      "First updated",
+    );
+    expect(useApp.getState().ai?.models.find((model) => model.id === second.id)?.label).toBe(
+      "Second updated",
+    );
   });
 
   it("setPrivacy updates the preset", () => {
@@ -184,14 +206,31 @@ describe("undo send", () => {
 
   it("routes a reply through its thread account", async () => {
     const accounts = [
-      { id: "personal", email: "alex@example.com", provider: "imap" as const, displayName: "Personal" },
-      { id: "work", email: "alex@company.test", provider: "microsoft" as const, displayName: "Work" },
+      {
+        id: "personal",
+        email: "alex@example.com",
+        provider: "imap" as const,
+        displayName: "Personal",
+      },
+      {
+        id: "work",
+        email: "alex@company.test",
+        provider: "microsoft" as const,
+        displayName: "Work",
+      },
     ];
     const thread = { ...useApp.getState().threads[0], accountId: "work" };
     useApp.setState({ accounts, threads: [thread], selectedAccountId: "personal" });
     const send = vi.spyOn(api, "queueSend").mockResolvedValue("outbox-1");
 
-    await useApp.getState().queueSend({ threadId: thread.id, to: "person@example.net", subject: "Re: test", body: "Hello" });
+    await useApp
+      .getState()
+      .queueSend({
+        threadId: thread.id,
+        to: "person@example.net",
+        subject: "Re: test",
+        body: "Hello",
+      });
 
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ accountId: "work" }));
   });
@@ -200,8 +239,9 @@ describe("undo send", () => {
     useApp.setState({ accounts: [], threads: [], selectedAccountId: null, undo: null });
     const send = vi.spyOn(api, "queueSend").mockResolvedValue("outbox-1");
 
-    await expect(useApp.getState().queueSend({ to: "person@example.net", subject: "test", body: "Hello" }))
-      .rejects.toThrow("Choose a connected account before sending.");
+    await expect(
+      useApp.getState().queueSend({ to: "person@example.net", subject: "test", body: "Hello" }),
+    ).rejects.toThrow("Choose a connected account before sending.");
     expect(send).not.toHaveBeenCalled();
     expect(useApp.getState().undo).toBeNull();
   });
@@ -212,16 +252,25 @@ describe("message bodies across list refreshes", () => {
     const full = await api.listThreads();
     const target = full.find((t) => t.messages.some((m) => m.bodyHtml))!;
     // The desktop core lists conversations without bodies and serves them per thread.
-    const bodiless = () => full.map((t) => ({ ...t, messages: t.messages.map((m) => ({ ...m, bodyHtml: "" })) }));
+    const bodiless = () =>
+      full.map((t) => ({ ...t, messages: t.messages.map((m) => ({ ...m, bodyHtml: "" })) }));
     vi.spyOn(api, "listThreads").mockImplementation(async () => bodiless());
-    const getThread = vi.spyOn(api, "getThread").mockImplementation(async (id) => full.find((t) => t.id === id) ?? null);
+    const getThread = vi
+      .spyOn(api, "getThread")
+      .mockImplementation(async (id) => full.find((t) => t.id === id) ?? null);
     vi.spyOn(api, "loadOlder").mockResolvedValue(0);
-    useApp.setState({ threads: [], selectedThreadId: null, loadingOlder: false, reachedEnd: false });
+    useApp.setState({
+      threads: [],
+      selectedThreadId: null,
+      loadingOlder: false,
+      reachedEnd: false,
+    });
     useApp.getState().applyThreads(bodiless()); // fresh launch: nothing loaded yet
 
     useApp.getState().selectThread(target.id);
     await vi.waitFor(() => expect(getThread).toHaveBeenCalledWith(target.id));
-    const body = () => useApp.getState().threads.find((t) => t.id === target.id)!.messages[0].bodyHtml;
+    const body = () =>
+      useApp.getState().threads.find((t) => t.id === target.id)!.messages[0].bodyHtml;
     await vi.waitFor(() => expect(body()).toBe(target.messages[0].bodyHtml));
 
     await useApp.getState().loadOlder(); // list refresh with body-less threads

@@ -10,10 +10,11 @@ export function mailDragPolicy(coarse: boolean) {
 }
 
 export function useCoarsePointer(): boolean {
-  const [coarse, setCoarse] = useState(() =>
-    typeof window !== "undefined"
-    && typeof window.matchMedia === "function"
-    && window.matchMedia(COARSE_POINTER).matches,
+  const [coarse, setCoarse] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia(COARSE_POINTER).matches,
   );
 
   useEffect(() => {

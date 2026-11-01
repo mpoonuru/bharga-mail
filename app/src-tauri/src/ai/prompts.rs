@@ -29,7 +29,8 @@ mod tests {
 
     #[test]
     fn phishing_parses_verdict() {
-        let v = parse_phishing("VERDICT=phishing CONFIDENCE=92 REASON=Urgent account-suspension lure.");
+        let v =
+            parse_phishing("VERDICT=phishing CONFIDENCE=92 REASON=Urgent account-suspension lure.");
         assert_eq!(v.level, "phishing");
         assert_eq!(v.confidence, 92);
         assert_eq!(v.reason, "Urgent account-suspension lure");
@@ -55,7 +56,9 @@ pub fn draft_reply(thread_text: &str, style: Option<&str>) -> Vec<ChatMessage> {
 /// Summarize a thread into 1–2 sentences plus any deadlines/asks.
 pub fn summarize(thread_text: &str) -> Vec<ChatMessage> {
     vec![
-        sys("Summarize the email thread in 1–2 sentences. Surface any deadline, decision needed, or explicit ask. Be terse."),
+        sys(
+            "Summarize the email thread in 1–2 sentences. Surface any deadline, decision needed, or explicit ask. Be terse.",
+        ),
         user(format!("Thread:\n\n{thread_text}")),
     ]
 }
@@ -103,11 +106,13 @@ pub struct Triage {
 /// Runs on the local Triage model — private, no API cost.
 pub fn phishing_check(message_text: &str, links: &str) -> Vec<ChatMessage> {
     vec![
-        sys("You are an email security analyst. Decide whether the email is a phishing or social-engineering \
+        sys(
+            "You are an email security analyst. Decide whether the email is a phishing or social-engineering \
              attempt. Weigh: urgency or threats (account suspension, deadlines), requests to verify/log in/pay, \
              credential or payment harvesting, and deceptive or mismatched links. \
              Reply on ONE line in EXACTLY this format and nothing else: \
-             VERDICT=<phishing|suspicious|safe> CONFIDENCE=<0-100> REASON=<one short sentence>"),
+             VERDICT=<phishing|suspicious|safe> CONFIDENCE=<0-100> REASON=<one short sentence>",
+        ),
         user(format!("Flagged links:\n{links}\n\nEmail:\n{message_text}")),
     ]
 }
@@ -133,15 +138,23 @@ pub fn parse_phishing(text: &str) -> PhishingVerdict {
         .map(|v| v.split_whitespace().next().unwrap_or("").to_lowercase())
         .filter(|v| v == "phishing" || v == "suspicious" || v == "safe")
         .unwrap_or_else(|| {
-            if up.contains("PHISHING") { "phishing".into() }
-            else if up.contains("SUSPICIOUS") { "suspicious".into() }
-            else { "safe".into() }
+            if up.contains("PHISHING") {
+                "phishing".into()
+            } else if up.contains("SUSPICIOUS") {
+                "suspicious".into()
+            } else {
+                "safe".into()
+            }
         });
     let confidence = field("CONFIDENCE=")
         .and_then(|v| v.split(|c: char| !c.is_ascii_digit()).next().map(str::to_string))
         .and_then(|n| n.parse::<u32>().ok())
         .map(|n| n.min(100) as u8)
-        .unwrap_or(match level.as_str() { "phishing" => 85, "suspicious" => 60, _ => 10 });
+        .unwrap_or(match level.as_str() {
+            "phishing" => 85,
+            "suspicious" => 60,
+            _ => 10,
+        });
     let reason = field("REASON=")
         .map(|s| s.trim().trim_matches(|c| c == '"' || c == '.').to_string())
         .filter(|s| !s.is_empty())

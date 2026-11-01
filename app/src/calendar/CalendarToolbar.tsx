@@ -73,11 +73,23 @@ export function CalendarToolbar({
         <p aria-live="polite">{heading(anchor, view, timezoneName)}</p>
       </div>
       <div className="calendar-toolbar-nav" aria-label="Calendar navigation">
-        <button type="button" className="calendar-button calendar-button-quiet" onClick={onToday}>Today</button>
-        <button type="button" className="calendar-icon-button" aria-label="Previous period" onClick={onPrevious}>
+        <button type="button" className="calendar-button calendar-button-quiet" onClick={onToday}>
+          Today
+        </button>
+        <button
+          type="button"
+          className="calendar-icon-button"
+          aria-label="Previous period"
+          onClick={onPrevious}
+        >
           <Icon name="caretLeft" size={17} weight="bold" />
         </button>
-        <button type="button" className="calendar-icon-button" aria-label="Next period" onClick={onNext}>
+        <button
+          type="button"
+          className="calendar-icon-button"
+          aria-label="Next period"
+          onClick={onNext}
+        >
           <Icon name="caretRight" size={17} weight="bold" />
         </button>
       </div>
@@ -99,8 +111,24 @@ export function CalendarToolbar({
       </button>
       {(onImport || onExport) && (
         <div className="calendar-file-actions" aria-label="Calendar files">
-          {onImport && <button type="button" className="calendar-button calendar-button-quiet" onClick={onImport}>Import .ics</button>}
-          {onExport && <button type="button" className="calendar-button calendar-button-quiet" onClick={onExport}>Export .ics</button>}
+          {onImport && (
+            <button
+              type="button"
+              className="calendar-button calendar-button-quiet"
+              onClick={onImport}
+            >
+              Import .ics
+            </button>
+          )}
+          {onExport && (
+            <button
+              type="button"
+              className="calendar-button calendar-button-quiet"
+              onClick={onExport}
+            >
+              Export .ics
+            </button>
+          )}
         </div>
       )}
       {(pendingCount > 0 || conflictCount > 0 || hasSyncError) && (
@@ -110,8 +138,10 @@ export function CalendarToolbar({
           onClick={conflictCount > 0 ? onOpenConflicts : undefined}
           aria-label={conflictCount > 0 ? `Resolve ${conflictCount} calendar conflicts` : undefined}
         >
-          {conflictCount > 0 ? `${conflictCount} conflict${conflictCount === 1 ? "" : "s"}`
-            : hasSyncError ? "Sync needs attention"
+          {conflictCount > 0
+            ? `${conflictCount} conflict${conflictCount === 1 ? "" : "s"}`
+            : hasSyncError
+              ? "Sync needs attention"
               : `${pendingCount} pending`}
         </button>
       )}

@@ -18,8 +18,8 @@ import type {
   EventWriteOptions,
   SelectedOccurrence,
 } from "@/calendar/types";
-import type { CalendarSourceRemovalPolicy } from "@/types";
 import { api } from "@/lib/bridge";
+import type { CalendarSourceRemovalPolicy } from "@/types";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -32,7 +32,11 @@ export interface CalendarState extends CalendarStateSnapshot {
   setTimezone(timezone: string): Promise<void>;
   setSelectedOccurrence(selection: SelectedOccurrence | null): void;
   createEvent(input: EventMutation, options?: EventWriteOptions): Promise<CalendarEvent>;
-  updateEvent(eventId: string, patch: Partial<EventMutation>, options?: EventWriteOptions): Promise<CalendarEvent>;
+  updateEvent(
+    eventId: string,
+    patch: Partial<EventMutation>,
+    options?: EventWriteOptions,
+  ): Promise<CalendarEvent>;
   deleteEvent(eventId: string): Promise<CalendarEvent>;
   createLocalCalendar(input: { name: string; color: string; timezone: string }): Promise<Calendar>;
   setCalendarVisibility(calendarId: string, visible: boolean): Promise<void>;
@@ -309,7 +313,11 @@ function calendarState(calendarApi: CalendarApi): StateCreator<CalendarState> {
       try {
         await calendarApi.setCalendarOrder(calendarIds);
       } catch (error) {
-        set({ calendars: previous, visibleCalendarIds: visibleCalendarIds(previous), error: calendarError(error, "calendar-order-failed") });
+        set({
+          calendars: previous,
+          visibleCalendarIds: visibleCalendarIds(previous),
+          error: calendarError(error, "calendar-order-failed"),
+        });
         throw error;
       }
     },

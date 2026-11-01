@@ -166,9 +166,7 @@ export interface Calendar {
   sortOrder: number;
 }
 
-export type EventMoment =
-  | { kind: "timed"; utc: string }
-  | { kind: "allDay"; date: string };
+export type EventMoment = { kind: "timed"; utc: string } | { kind: "allDay"; date: string };
 
 export interface RecurrenceSet {
   rules: string[];
@@ -180,7 +178,12 @@ export type EventStatus = "tentative" | "confirmed" | "cancelled";
 export type EventTransparency = "busy" | "free";
 export type EventVisibility = "default" | "public" | "private" | "confidential";
 export type AttendeeRole = "required" | "optional" | "chair" | "nonParticipant";
-export type ParticipationStatus = "needsAction" | "accepted" | "declined" | "tentative" | "delegated";
+export type ParticipationStatus =
+  | "needsAction"
+  | "accepted"
+  | "declined"
+  | "tentative"
+  | "delegated";
 export type ReminderMethod = "display" | "email";
 export type EventSyncState = "local" | "pending" | "synced" | "conflict" | "error";
 
@@ -343,12 +346,7 @@ export interface SaveCalDavSourceInput extends CalDavDiscoveryInput {
 
 // ---- Plug-and-play AI engine (mirrors Rust `ai` module) ----
 
-export type AiProviderKind =
-  | "anthropic"
-  | "openai-compatible"
-  | "google"
-  | "local"
-  | "custom";
+export type AiProviderKind = "anthropic" | "openai-compatible" | "google" | "local" | "custom";
 
 export type AiRole = "triage" | "embeddings" | "summarize" | "draft" | "agent";
 
@@ -361,7 +359,7 @@ export interface AiModel {
   /** whether the user has supplied credentials / a reachable endpoint */
   ready: boolean;
   endpoint?: string; // for local / custom / openai-compatible
-  /** provider-specific model id, e.g. "gpt-4o", "llama3" */
+  /** provider-specific model id, e.g. "gpt-5.1", "llama3.2" */
   model?: string;
   caps?: {
     context_tokens: number;

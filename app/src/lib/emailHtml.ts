@@ -14,7 +14,19 @@ import { assessLink, type LinkAssessment } from "@/lib/linkRisk";
 const SANITIZE_OPTS: Config = {
   ADD_TAGS: ["style"],
   ADD_ATTR: ["target"],
-  FORBID_TAGS: ["script", "iframe", "object", "embed", "base", "form", "noscript", "meta", "link", "map", "area"],
+  FORBID_TAGS: [
+    "script",
+    "iframe",
+    "object",
+    "embed",
+    "base",
+    "form",
+    "noscript",
+    "meta",
+    "link",
+    "map",
+    "area",
+  ],
   FORBID_ATTR: ["ping", "formaction", "form", "xlink:href"],
   ALLOW_UNKNOWN_PROTOCOLS: false,
 };
@@ -36,7 +48,18 @@ const PATTERNS: RegExp[] = [
 
 function highlightEntities(doc: Document) {
   const combined = new RegExp(PATTERNS.map((re) => `(${re.source})`).join("|"), "gi");
-  const skip = new Set(["A", "STYLE", "SCRIPT", "CODE", "PRE", "MARK", "HEAD", "TITLE", "TEXTAREA", "BUTTON"]);
+  const skip = new Set([
+    "A",
+    "STYLE",
+    "SCRIPT",
+    "CODE",
+    "PRE",
+    "MARK",
+    "HEAD",
+    "TITLE",
+    "TEXTAREA",
+    "BUTTON",
+  ]);
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       let el = node.parentElement;
@@ -44,7 +67,9 @@ function highlightEntities(doc: Document) {
         if (skip.has(el.tagName)) return NodeFilter.FILTER_REJECT;
         el = el.parentElement;
       }
-      return node.nodeValue && node.nodeValue.trim().length > 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      return node.nodeValue && node.nodeValue.trim().length > 0
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
     },
   });
 
@@ -108,21 +133,39 @@ function blockRemoteInDoc(doc: Document): number {
 // in dark mode while emails that already use light-on-dark are left untouched.
 
 const NAMED: Record<string, [number, number, number]> = {
-  black: [0, 0, 0], white: [255, 255, 255], red: [255, 0, 0], green: [0, 128, 0],
-  blue: [0, 0, 255], gray: [128, 128, 128], grey: [128, 128, 128], silver: [192, 192, 192],
-  navy: [0, 0, 128], maroon: [128, 0, 0], dimgray: [105, 105, 105], dimgrey: [105, 105, 105],
+  black: [0, 0, 0],
+  white: [255, 255, 255],
+  red: [255, 0, 0],
+  green: [0, 128, 0],
+  blue: [0, 0, 255],
+  gray: [128, 128, 128],
+  grey: [128, 128, 128],
+  silver: [192, 192, 192],
+  navy: [0, 0, 128],
+  maroon: [128, 0, 0],
+  dimgray: [105, 105, 105],
+  dimgrey: [105, 105, 105],
 };
 
 function parseColor(raw: string): [number, number, number, number] | null {
   const v = raw.trim().toLowerCase();
   if (v === "transparent") return [0, 0, 0, 0];
-  if (NAMED[v]) { const [r, g, b] = NAMED[v]; return [r, g, b, 1]; }
+  if (NAMED[v]) {
+    const [r, g, b] = NAMED[v];
+    return [r, g, b, 1];
+  }
   let m = /^#([0-9a-f]{3,8})$/i.exec(v);
   if (m) {
     let h = m[1];
-    if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+    if (h.length === 3)
+      h = h
+        .split("")
+        .map((c) => c + c)
+        .join("");
     if (h.length === 6 || h.length === 8) {
-      const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+      const r = parseInt(h.slice(0, 2), 16),
+        g = parseInt(h.slice(2, 4), 16),
+        b = parseInt(h.slice(4, 6), 16);
       const a = h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
       return [r, g, b, a];
     }
@@ -131,7 +174,9 @@ function parseColor(raw: string): [number, number, number, number] | null {
   if (m) {
     const p = m[1].split(",").map((x) => x.trim());
     if (p.length >= 3) {
-      const r = parseFloat(p[0]), g = parseFloat(p[1]), b = parseFloat(p[2]);
+      const r = parseFloat(p[0]),
+        g = parseFloat(p[1]),
+        b = parseFloat(p[2]);
       const a = p.length >= 4 ? parseFloat(p[3]) : 1;
       if ([r, g, b].every((n) => !Number.isNaN(n))) return [r, g, b, a];
     }
@@ -140,7 +185,10 @@ function parseColor(raw: string): [number, number, number, number] | null {
 }
 
 function relLum([r, g, b]: [number, number, number, number]): number {
-  const f = (c: number) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  const f = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
 }
 
@@ -159,7 +207,9 @@ function adaptCssText(css: string): string {
 }
 
 function adaptForDark(doc: Document): void {
-  doc.querySelectorAll("style").forEach((s) => { if (s.textContent) s.textContent = adaptCssText(s.textContent); });
+  doc.querySelectorAll("style").forEach((s) => {
+    if (s.textContent) s.textContent = adaptCssText(s.textContent);
+  });
   doc.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
     const st = el.getAttribute("style");
     if (st) el.setAttribute("style", adaptCssText(st));
@@ -194,16 +244,22 @@ function scanLinksInDoc(doc: Document, senderDomain?: string): LinkAssessment[] 
 // card above, the embedded copy is redundant, so remove it (just the tail — never
 // an accordion, never the original message). Conservative: only acts on a clear
 // quote container or header, and never strips when there's no new content above.
-const TRIM_CONTAINERS = ".gmail_quote, blockquote[type='cite'], .moz-cite-prefix, .yahoo_quoted, #divRplyFwdMsg, #appendonsend, #x_divRplyFwdMsg, #x_appendonsend";
-const TRIM_FWD = /\b(from|von|da):.*\b(sent|gesendet|inviato|date):.*(subject|betreff|oggetto|objet|asunto):/i;
-const TRIM_REPLY = /\bon\b.+\bwrote:|am\b.+\bschrieb.*:|il\b.+\bha\s+scritto:|le\b.+\ba\s+écrit\s*:|el\b.+\bescribió\s*:/i;
+const TRIM_CONTAINERS =
+  ".gmail_quote, blockquote[type='cite'], .moz-cite-prefix, .yahoo_quoted, #divRplyFwdMsg, #appendonsend, #x_divRplyFwdMsg, #x_appendonsend";
+const TRIM_FWD =
+  /\b(from|von|da):.*\b(sent|gesendet|inviato|date):.*(subject|betreff|oggetto|objet|asunto):/i;
+const TRIM_REPLY =
+  /\bon\b.+\bwrote:|am\b.+\bschrieb.*:|il\b.+\bha\s+scritto:|le\b.+\ba\s+écrit\s*:|el\b.+\bescribió\s*:/i;
 
 function trimQuotedTail(doc: Document): void {
   let b: Element | null = doc.body.querySelector(TRIM_CONTAINERS);
   if (!b) {
     for (const el of doc.body.querySelectorAll("p,div,blockquote,td,font,pre")) {
       const t = (el.textContent ?? "").replace(/\s+/g, " ").trim();
-      if (t && (TRIM_REPLY.test(t) || TRIM_FWD.test(t))) { b = el; break; }
+      if (t && (TRIM_REPLY.test(t) || TRIM_FWD.test(t))) {
+        b = el;
+        break;
+      }
     }
   }
   if (!b?.parentNode) return;
@@ -211,16 +267,22 @@ function trimQuotedTail(doc: Document): void {
   let s: Element = b;
   for (
     let p = s.previousElementSibling;
-    p && (p.tagName === "HR" || /^[\s_–—-]{6,}$/.test((p.textContent ?? "").trim()) || ((p.textContent ?? "").trim() === "" && !p.querySelector("img,table")));
+    p &&
+    (p.tagName === "HR" ||
+      /^[\s_–—-]{6,}$/.test((p.textContent ?? "").trim()) ||
+      ((p.textContent ?? "").trim() === "" && !p.querySelector("img,table")));
     p = s.previousElementSibling
-  ) s = p;
+  )
+    s = p;
   // Never strip if there's essentially no new content above (would blank the card).
   try {
     const r = doc.createRange();
     r.setStart(doc.body, 0);
     r.setEndBefore(s);
     if (r.toString().replace(/\s+/g, "").length < 3) return;
-  } catch { return; }
+  } catch {
+    return;
+  }
   const parent = s.parentNode;
   if (!parent) return;
   while (s.nextSibling) parent.removeChild(s.nextSibling);
@@ -229,20 +291,42 @@ function trimQuotedTail(doc: Document): void {
 
 export function processEmail(
   html: string,
-  opts: { showImages: boolean; highlight: boolean; dark?: boolean; sender?: string; trimQuote?: boolean },
+  opts: {
+    showImages: boolean;
+    highlight: boolean;
+    dark?: boolean;
+    sender?: string;
+    trimQuote?: boolean;
+  },
 ): { html: string; blocked: number; links: LinkAssessment[] } {
   const doc = new DOMParser().parseFromString(sanitizeEmail(html), "text/html");
   if (opts.trimQuote) {
-    try { trimQuotedTail(doc); } catch { /* never let trimming break rendering */ }
+    try {
+      trimQuotedTail(doc);
+    } catch {
+      /* never let trimming break rendering */
+    }
   }
   if (opts.dark) {
-    try { adaptForDark(doc); } catch { /* never let adaptation break rendering */ }
+    try {
+      adaptForDark(doc);
+    } catch {
+      /* never let adaptation break rendering */
+    }
   }
   if (opts.highlight) {
-    try { highlightEntities(doc); } catch { /* never let highlighting break rendering */ }
+    try {
+      highlightEntities(doc);
+    } catch {
+      /* never let highlighting break rendering */
+    }
   }
   let links: LinkAssessment[] = [];
-  try { links = scanLinksInDoc(doc, opts.sender?.split("@")[1]?.toLowerCase()); } catch { /* never let link-scan break rendering */ }
+  try {
+    links = scanLinksInDoc(doc, opts.sender?.split("@")[1]?.toLowerCase());
+  } catch {
+    /* never let link-scan break rendering */
+  }
   const blocked = opts.showImages ? 0 : blockRemoteInDoc(doc);
   return { html: doc.body.innerHTML, blocked, links };
 }

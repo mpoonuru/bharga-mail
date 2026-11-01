@@ -17,11 +17,50 @@ export interface LinkAssessment {
 }
 
 // TLDs disproportionately used for abuse / look-alikes.
-const SUSPICIOUS_TLDS = new Set(["zip", "mov", "top", "xyz", "gq", "tk", "ml", "cf", "country", "click", "link", "rest", "fit", "review"]);
+const SUSPICIOUS_TLDS = new Set([
+  "zip",
+  "mov",
+  "top",
+  "xyz",
+  "gq",
+  "tk",
+  "ml",
+  "cf",
+  "country",
+  "click",
+  "link",
+  "rest",
+  "fit",
+  "review",
+]);
 // Commonly-impersonated brands.
-const BRANDS = ["paypal", "apple", "icloud", "microsoft", "outlook", "office365", "google", "gmail", "amazon", "netflix", "facebook", "instagram", "whatsapp", "dhl", "fedex", "ups", "stripe", "coinbase", "binance", "linkedin", "telekom", "sparkasse"];
+const BRANDS = [
+  "paypal",
+  "apple",
+  "icloud",
+  "microsoft",
+  "outlook",
+  "office365",
+  "google",
+  "gmail",
+  "amazon",
+  "netflix",
+  "facebook",
+  "instagram",
+  "whatsapp",
+  "dhl",
+  "fedex",
+  "ups",
+  "stripe",
+  "coinbase",
+  "binance",
+  "linkedin",
+  "telekom",
+  "sparkasse",
+];
 // Credential / urgency lures.
-const LURE = /\b(verify|login|log[-\s]?in|sign[-\s]?in|account|password|secure|update|confirm|suspend|unlock|billing|payment|invoice|wallet|reset|bank)\b/i;
+const LURE =
+  /\b(verify|login|log[-\s]?in|sign[-\s]?in|account|password|secure|update|confirm|suspend|unlock|billing|payment|invoice|wallet|reset|bank)\b/i;
 
 // Lightweight eTLD+1. Not a full Public Suffix List, but covers the common
 // two-level TLDs (co.uk, com.au, …) well enough for a phishing heuristic.
@@ -47,27 +86,49 @@ function domainInText(text: string): string | null {
 const RANK: Record<RiskLevel, number> = { safe: 0, suspicious: 1, dangerous: 2 };
 
 /** Assess a single link. Returns null for non-web links (mailto/tel/anchors). */
-export function assessLink(href: string, text: string, senderDomain?: string): LinkAssessment | null {
+export function assessLink(
+  href: string,
+  text: string,
+  senderDomain?: string,
+): LinkAssessment | null {
   let url: URL;
-  try { url = new URL(href); } catch { return null; }
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
 
   const host = url.hostname.toLowerCase();
   const reg = registrableDomain(host);
   const reasons: string[] = [];
   let level: RiskLevel = "safe";
-  const bump = (l: RiskLevel) => { if (RANK[l] > RANK[level]) level = l; };
+  const bump = (l: RiskLevel) => {
+    if (RANK[l] > RANK[level]) level = l;
+  };
 
   // Userinfo trick: http://paypal.com@evil.ru — the real host is after the '@'.
-  if (url.username || url.password) { reasons.push("Hides its real destination using '@' in the address"); bump("dangerous"); }
+  if (url.username || url.password) {
+    reasons.push("Hides its real destination using '@' in the address");
+    bump("dangerous");
+  }
   // Raw IP instead of a named domain.
-  if (IPV4.test(host)) { reasons.push("Points to a raw IP address, not a domain"); bump("suspicious"); }
+  if (IPV4.test(host)) {
+    reasons.push("Points to a raw IP address, not a domain");
+    bump("suspicious");
+  }
   // Punycode / homograph look-alikes.
-  if (host.split(".").some((l) => l.startsWith("xn--"))) { reasons.push("Uses a look-alike (punycode) domain"); bump("dangerous"); }
+  if (host.split(".").some((l) => l.startsWith("xn--"))) {
+    reasons.push("Uses a look-alike (punycode) domain");
+    bump("dangerous");
+  }
 
   // The classic tell: link text shows one domain, href goes to another.
   const textDom = domainInText(text);
-  if (textDom && textDom !== reg) { reasons.push(`Text says “${textDom}” but it actually goes to “${reg}”`); bump("dangerous"); }
+  if (textDom && textDom !== reg) {
+    reasons.push(`Text says “${textDom}” but it actually goes to “${reg}”`);
+    bump("dangerous");
+  }
 
   // Brand impersonation. A domain is the brand's only when the registrable
   // domain's main label EXACTLY equals the brand (paypal.com / paypal.de) — not
@@ -84,14 +145,25 @@ export function assessLink(href: string, text: string, senderDomain?: string): L
   }
 
   // Sign-in request over plain http.
-  if (url.protocol === "http:" && LURE.test(hay)) { reasons.push("Asks you to sign in over an unencrypted (http) link"); bump("suspicious"); }
+  if (url.protocol === "http:" && LURE.test(hay)) {
+    reasons.push("Asks you to sign in over an unencrypted (http) link");
+    bump("suspicious");
+  }
 
   // Abuse-prone TLD.
   const tld = reg.split(".").pop() ?? "";
-  if (SUSPICIOUS_TLDS.has(tld)) { reasons.push(`Unusual top-level domain (.${tld})`); bump("suspicious"); }
+  if (SUSPICIOUS_TLDS.has(tld)) {
+    reasons.push(`Unusual top-level domain (.${tld})`);
+    bump("suspicious");
+  }
 
   // Slight nudge if it claims to sign you in somewhere other than the sender's domain.
-  if (senderDomain && reg !== registrableDomain(senderDomain) && LURE.test(hay) && level === "safe") {
+  if (
+    senderDomain &&
+    reg !== registrableDomain(senderDomain) &&
+    LURE.test(hay) &&
+    level === "safe"
+  ) {
     reasons.push(`Sign-in link to “${reg}”, not the sender’s domain`);
     bump("suspicious");
   }
@@ -100,7 +172,10 @@ export function assessLink(href: string, text: string, senderDomain?: string): L
 }
 
 /** Assess many (href,text) pairs; returns only the risky ones, worst first. */
-export function scanLinks(links: { href: string; text: string }[], senderDomain?: string): LinkAssessment[] {
+export function scanLinks(
+  links: { href: string; text: string }[],
+  senderDomain?: string,
+): LinkAssessment[] {
   return links
     .map((l) => assessLink(l.href, l.text, senderDomain))
     .filter((a): a is LinkAssessment => !!a && a.level !== "safe")

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { assessLink, registrableDomain, scanLinks } from "@/lib/linkRisk";
 
 describe("registrableDomain", () => {
@@ -25,7 +25,10 @@ describe("assessLink", () => {
   });
 
   it("flags brand impersonation with a sign-in lure", () => {
-    const a = assessLink("http://paypal.com.account-verify.ru/login", "Verify your PayPal account")!;
+    const a = assessLink(
+      "http://paypal.com.account-verify.ru/login",
+      "Verify your PayPal account",
+    )!;
     expect(a.level).toBe("dangerous");
     expect(a.host).toBe("account-verify.ru");
   });

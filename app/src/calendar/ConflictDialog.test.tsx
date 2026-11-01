@@ -12,13 +12,32 @@ afterEach(() => cleanup?.());
 
 function event(title: string): CalendarEvent {
   return {
-    id: "event", calendarId: "calendar", uid: "uid", providerId: "remote",
-    title, description: "", location: "", conferenceUrl: null, sourceThreadId: null,
+    id: "event",
+    calendarId: "calendar",
+    uid: "uid",
+    providerId: "remote",
+    title,
+    description: "",
+    location: "",
+    conferenceUrl: null,
+    sourceThreadId: null,
     start: { kind: "timed", utc: "2026-09-25T10:00:00Z" },
-    end: { kind: "timed", utc: "2026-09-25T11:00:00Z" }, timezone: "UTC",
-    recurrence: null, recurrenceId: null, parentEventId: null, status: "confirmed",
-    transparency: "busy", visibility: "default", organizer: null, attendees: [], reminders: [],
-    sequence: 0, providerVersion: "v1", revision: 2, syncState: "conflict", deleted: false,
+    end: { kind: "timed", utc: "2026-09-25T11:00:00Z" },
+    timezone: "UTC",
+    recurrence: null,
+    recurrenceId: null,
+    parentEventId: null,
+    status: "confirmed",
+    transparency: "busy",
+    visibility: "default",
+    organizer: null,
+    attendees: [],
+    reminders: [],
+    sequence: 0,
+    providerVersion: "v1",
+    revision: 2,
+    syncState: "conflict",
+    deleted: false,
   };
 }
 
@@ -26,15 +45,24 @@ describe("ConflictDialog", () => {
   it("shows both versions and requires an explicit resolution", () => {
     const onResolve = vi.fn();
     const conflict: CalendarConflict = {
-      eventId: "event", local: event("Local title"), remote: event("Remote title"),
-      providerVersion: "v2", createdAt: 1,
+      eventId: "event",
+      local: event("Local title"),
+      remote: event("Remote title"),
+      providerVersion: "v2",
+      createdAt: 1,
     };
-    const rendered = renderTest(<ConflictDialog conflict={conflict} onClose={() => {}} onResolve={onResolve} />);
+    const rendered = renderTest(
+      <ConflictDialog conflict={conflict} onClose={() => {}} onResolve={onResolve} />,
+    );
     cleanup = rendered.unmount;
     expect(document.body.textContent).toContain("Local title");
     expect(document.body.textContent).toContain("Remote title");
     expect(onResolve).not.toHaveBeenCalled();
-    act(() => [...document.querySelectorAll("button")].find((button) => button.textContent === "Keep local")?.click());
+    act(() =>
+      [...document.querySelectorAll("button")]
+        .find((button) => button.textContent === "Keep local")
+        ?.click(),
+    );
     expect(onResolve).toHaveBeenCalledWith("keepLocal");
   });
 });

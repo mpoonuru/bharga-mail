@@ -82,38 +82,15 @@ pub fn seed(store: &Store) {
     }
 
     let tasks = vec![
-        (
-            "k1",
-            "Review renewal terms from Lena",
-            Some("Fri"),
-            false,
-            Some("t1"),
-        ),
-        (
-            "k2",
-            "Send invite to Marco for Thursday 14:00",
-            Some("Today"),
-            false,
-            Some("t2"),
-        ),
-        (
-            "k3",
-            "Reply to Priya with onboarding feedback",
-            Some("Wed"),
-            false,
-            None,
-        ),
+        ("k1", "Review renewal terms from Lena", Some("Fri"), false, Some("t1")),
+        ("k2", "Send invite to Marco for Thursday 14:00", Some("Today"), false, Some("t2")),
+        ("k3", "Reply to Priya with onboarding feedback", Some("Wed"), false, None),
         ("k4", "Approve Q3 roadmap", None, true, None),
         ("k5", "Renew TLS certificate", Some("Jun 3"), false, None),
     ];
     for (id, title, due, done, src) in tasks {
         let _ = store.add_task(
-            &Task {
-                id: id.into(),
-                title: title.into(),
-                due: due.map(String::from),
-                done,
-            },
+            &Task { id: id.into(), title: title.into(), due: due.map(String::from), done },
             src,
         );
     }

@@ -9,10 +9,12 @@ beforeEach(() => {
   // jsdom has no layout engine; ProseMirror measures the selection when it
   // restores editor focus. Keep its real formatting commands under test.
   Object.defineProperty(Range.prototype, "getClientRects", {
-    configurable: true, value: () => [],
+    configurable: true,
+    value: () => [],
   });
   Object.defineProperty(Range.prototype, "getBoundingClientRect", {
-    configurable: true, value: () => new DOMRect(),
+    configurable: true,
+    value: () => new DOMRect(),
   });
 });
 
@@ -24,7 +26,9 @@ describe("RichText", () => {
   it("exposes the editable message body with an accessible name", async () => {
     const rendered = renderTest(<RichText />);
 
-    await vi.waitFor(() => expect(rendered.host.querySelector('.ProseMirror[contenteditable="true"]')).not.toBeNull());
+    await vi.waitFor(() =>
+      expect(rendered.host.querySelector('.ProseMirror[contenteditable="true"]')).not.toBeNull(),
+    );
 
     const editor = rendered.host.querySelector('.ProseMirror[contenteditable="true"]');
     expect(editor?.getAttribute("aria-label")).toBe("Message body");
@@ -44,14 +48,17 @@ describe("RichText", () => {
   it("changes text style through the custom listbox and returns focus to the editor", async () => {
     const ref = createRef<RichTextHandle>();
     const rendered = renderTest(<RichText ref={ref} initialHtml="<p>Draft text</p>" />);
-    await vi.waitFor(() => expect(rendered.host.querySelector('.ProseMirror')).not.toBeNull());
+    await vi.waitFor(() => expect(rendered.host.querySelector(".ProseMirror")).not.toBeNull());
 
-    const trigger = rendered.host.querySelector<HTMLButtonElement>('button[aria-label="Text style"]');
+    const trigger = rendered.host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Text style"]',
+    );
     expect(trigger).not.toBeNull();
     expect(rendered.host.querySelector("select")).toBeNull();
     act(() => trigger!.click());
-    const option = [...rendered.host.querySelectorAll<HTMLButtonElement>('[role="option"]')]
-      .find((node) => node.textContent === "Heading 2");
+    const option = [...rendered.host.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(
+      (node) => node.textContent === "Heading 2",
+    );
     expect(option).toBeDefined();
     act(() => option!.click());
 
@@ -59,7 +66,9 @@ describe("RichText", () => {
       expect(ref.current?.getHtml()).toContain("<h2>Draft text</h2>");
       expect(document.activeElement?.classList.contains("ProseMirror")).toBe(true);
       expect(rendered.host.querySelector('[role="listbox"]')).toBeNull();
-      expect(rendered.host.querySelector('button[aria-label="Text style"]')?.textContent).toBe("Heading 2");
+      expect(rendered.host.querySelector('button[aria-label="Text style"]')?.textContent).toBe(
+        "Heading 2",
+      );
     });
     rendered.unmount();
   });
@@ -67,13 +76,21 @@ describe("RichText", () => {
   it("closes the style listbox with Escape without changing the draft", async () => {
     const ref = createRef<RichTextHandle>();
     const rendered = renderTest(<RichText ref={ref} initialHtml="<p>Keep this draft</p>" />);
-    await vi.waitFor(() => expect(rendered.host.querySelector('.ProseMirror')).not.toBeNull());
-    const trigger = rendered.host.querySelector<HTMLButtonElement>('button[aria-label="Text style"]');
+    await vi.waitFor(() => expect(rendered.host.querySelector(".ProseMirror")).not.toBeNull());
+    const trigger = rendered.host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Text style"]',
+    );
     expect(trigger).not.toBeNull();
-    act(() => trigger!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    act(() =>
+      trigger!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })),
+    );
     await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
     expect(document.activeElement?.getAttribute("role")).toBe("option");
-    act(() => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    act(() =>
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
     await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
     expect(rendered.host.querySelector('[role="listbox"]')).toBeNull();

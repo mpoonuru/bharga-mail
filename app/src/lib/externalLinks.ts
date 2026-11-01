@@ -15,7 +15,8 @@ export function parseExternalWebUrl(raw: string): ExternalWebUrl | null {
       !url.hostname ||
       url.username !== "" ||
       url.password !== ""
-    ) return null;
+    )
+      return null;
     return { href: url.href, host: url.hostname.toLowerCase() };
   } catch {
     return null;

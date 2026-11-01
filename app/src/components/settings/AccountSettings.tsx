@@ -33,8 +33,15 @@ export function AccountSettings() {
   const groupConversations = useApp((state) => state.groupConversations);
   const [operations, setOperations] = useState<Record<string, AccountOperation>>({});
   const [menuAccountId, setMenuAccountId] = useState<string | null>(null);
-  const [editAccount, setEditAccount] = useState<{ id: string; initial: Partial<ImapAccountInput>; returnFocus: HTMLElement | null } | null>(null);
-  const [removalAccount, setRemovalAccount] = useState<{ account: Account; returnFocus: HTMLElement | null } | null>(null);
+  const [editAccount, setEditAccount] = useState<{
+    id: string;
+    initial: Partial<ImapAccountInput>;
+    returnFocus: HTMLElement | null;
+  } | null>(null);
+  const [removalAccount, setRemovalAccount] = useState<{
+    account: Account;
+    returnFocus: HTMLElement | null;
+  } | null>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const accountMenuRefs = useRef(new Map<string, HTMLButtonElement>());
   const openMenuRef = useRef<HTMLDivElement>(null);
@@ -55,7 +62,11 @@ export function AccountSettings() {
       await api.syncNow(account.id, groupConversations);
       await load();
       const refreshed = useApp.getState().accounts.find((candidate) => candidate.id === account.id);
-      setOperation(account.id, { state: "success", message: "Up to date", healthKey: accountHealthKey(refreshed) });
+      setOperation(account.id, {
+        state: "success",
+        message: "Up to date",
+        healthKey: accountHealthKey(refreshed),
+      });
     } catch (cause) {
       try {
         await load();
@@ -92,7 +103,9 @@ export function AccountSettings() {
       return;
     }
     setMenuAccountId(accountId);
-    requestAnimationFrame(() => openMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus());
+    requestAnimationFrame(() =>
+      openMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus(),
+    );
   }
 
   function handleMenuKeyDown(event: KeyboardEvent<HTMLDivElement>, accountId: string) {
@@ -146,13 +159,17 @@ export function AccountSettings() {
         <div className="account-card-list">
           {accounts.map((account) => {
             const storedOperation = operations[account.id] ?? null;
-            const persistedHealthChanged = storedOperation?.state !== "syncing"
-              && storedOperation?.healthKey !== undefined
-              && storedOperation.healthKey !== accountHealthKey(account);
+            const persistedHealthChanged =
+              storedOperation?.state !== "syncing" &&
+              storedOperation?.healthKey !== undefined &&
+              storedOperation.healthKey !== accountHealthKey(account);
             const accountOperation = persistedHealthChanged ? null : storedOperation;
             return (
               <article className="account-card" key={account.id}>
-                <span className={`account-health-dot${accountOperation?.state === "error" || account.syncError ? " error" : account.lastSyncAt ? "" : " neutral"}`} aria-hidden="true" />
+                <span
+                  className={`account-health-dot${accountOperation?.state === "error" || account.syncError ? " error" : account.lastSyncAt ? "" : " neutral"}`}
+                  aria-hidden="true"
+                />
                 <div className="account-card-copy">
                   <div className="account-card-title">
                     <b>{account.displayName?.trim() || account.email}</b>
@@ -161,17 +178,31 @@ export function AccountSettings() {
                   <p>{account.email}</p>
                   <div className="account-health-meta">
                     <span>{account.unread ? `${account.unread} unread` : "No unread mail"}</span>
-                    <span>{account.syncError ?? (account.lastSyncAt ? `Last synced ${relativeUnixTime(account.lastSyncAt)}` : "Not synced yet")}</span>
+                    <span>
+                      {account.syncError ??
+                        (account.lastSyncAt
+                          ? `Last synced ${relativeUnixTime(account.lastSyncAt)}`
+                          : "Not synced yet")}
+                    </span>
                   </div>
                   {accountOperation && (
-                    <div className={`account-operation ${accountOperation.state}`} role={accountOperation.state === "error" ? "alert" : "status"}>
+                    <div
+                      className={`account-operation ${accountOperation.state}`}
+                      role={accountOperation.state === "error" ? "alert" : "status"}
+                    >
                       {accountOperation.message}
                     </div>
                   )}
                 </div>
                 <div className="account-card-actions">
-                  <button type="button" className="af-btn ghost" disabled={accountOperation?.state === "syncing"} onClick={() => void syncAccount(account)}>
-                    <Icon name="cloud" size={14} /> {accountOperation?.state === "syncing" ? "Syncing…" : "Sync"}
+                  <button
+                    type="button"
+                    className="af-btn ghost"
+                    disabled={accountOperation?.state === "syncing"}
+                    onClick={() => void syncAccount(account)}
+                  >
+                    <Icon name="cloud" size={14} />{" "}
+                    {accountOperation?.state === "syncing" ? "Syncing…" : "Sync"}
                   </button>
                   <button
                     ref={(node) => {
@@ -189,16 +220,39 @@ export function AccountSettings() {
                   </button>
                   {menuAccountId === account.id && (
                     <>
-                      <button className="settings-menu-backdrop" tabIndex={-1} aria-hidden="true" onClick={() => setMenuAccountId(null)} />
-                      <div ref={openMenuRef} className="settings-menu" role="menu" onKeyDown={(event) => handleMenuKeyDown(event, account.id)}>
+                      <button
+                        className="settings-menu-backdrop"
+                        tabIndex={-1}
+                        aria-hidden="true"
+                        onClick={() => setMenuAccountId(null)}
+                      />
+                      <div
+                        ref={openMenuRef}
+                        className="settings-menu"
+                        role="menu"
+                        onKeyDown={(event) => handleMenuKeyDown(event, account.id)}
+                      >
                         {account.provider === "imap" && (
-                          <button type="button" role="menuitem" onClick={() => void openEdit(account)}><Icon name="compose" size={14} /> Edit server settings</button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => void openEdit(account)}
+                          >
+                            <Icon name="compose" size={14} /> Edit server settings
+                          </button>
                         )}
-                        <button type="button" role="menuitem" className="danger" onClick={() => {
-                          const returnFocus = accountMenuRefs.current.get(account.id) ?? null;
-                          setMenuAccountId(null);
-                          setRemovalAccount({ account, returnFocus });
-                        }}><Icon name="trash" size={14} /> Remove account</button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="danger"
+                          onClick={() => {
+                            const returnFocus = accountMenuRefs.current.get(account.id) ?? null;
+                            setMenuAccountId(null);
+                            setRemovalAccount({ account, returnFocus });
+                          }}
+                        >
+                          <Icon name="trash" size={14} /> Remove account
+                        </button>
                       </div>
                     </>
                   )}
@@ -217,7 +271,13 @@ export function AccountSettings() {
         fallbackFocus={addButtonRef.current}
       >
         {editAccount && (
-          <AccountForm editing accountId={editAccount.id} initial={editAccount.initial} onClose={() => setEditAccount(null)} onStatus={() => setEditAccount(null)} />
+          <AccountForm
+            editing
+            accountId={editAccount.id}
+            initial={editAccount.initial}
+            onClose={() => setEditAccount(null)}
+            onStatus={() => setEditAccount(null)}
+          />
         )}
       </Modal>
       {removalAccount && (

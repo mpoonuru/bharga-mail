@@ -27,11 +27,15 @@ describe("RecurrenceEditor", () => {
   it("preserves a custom RFC rule without executing it in the browser", () => {
     const onChange = vi.fn();
     const rendered = renderTest(
-      <RecurrenceEditor value={{ rules: ["FREQ=WEEKLY;INTERVAL=2"], dates: [], excludedDates: [] }} onChange={onChange} />,
+      <RecurrenceEditor
+        value={{ rules: ["FREQ=WEEKLY;INTERVAL=2"], dates: [], excludedDates: [] }}
+        onChange={onChange}
+      />,
     );
     cleanup = rendered.unmount;
 
-    expect(rendered.host.querySelector<HTMLInputElement>('input[aria-label="Recurrence rule"]')?.value)
-      .toBe("FREQ=WEEKLY;INTERVAL=2");
+    expect(
+      rendered.host.querySelector<HTMLInputElement>('input[aria-label="Recurrence rule"]')?.value,
+    ).toBe("FREQ=WEEKLY;INTERVAL=2");
   });
 });

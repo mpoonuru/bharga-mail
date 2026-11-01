@@ -40,7 +40,11 @@ function responseErrorMessage(cause: unknown): string {
   return "The response was not queued. Try again.";
 }
 
-export function InvitationCard({ inspection, timezone: timezoneName, onRespond }: InvitationCardProps) {
+export function InvitationCard({
+  inspection,
+  timezone: timezoneName,
+  onRespond,
+}: InvitationCardProps) {
   const [pending, setPending] = useState<ResponseStatus | null>(null);
   const [result, setResult] = useState<ResponseStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +53,8 @@ export function InvitationCard({ inspection, timezone: timezoneName, onRespond }
     ? `${event.organizer.name ? `${event.organizer.name} · ` : ""}${event.organizer.email}`
     : "Organizer unavailable";
   const recurrence = event.recurrence?.rules[0]?.replace(/^RRULE:/, "") ?? null;
-  const canRespond = !["stale", "cancelled"].includes(inspection.state) && inspection.method !== "REPLY";
+  const canRespond =
+    !["stale", "cancelled"].includes(inspection.state) && inspection.method !== "REPLY";
 
   const respond = async (status: ResponseStatus) => {
     setPending(status);
@@ -72,32 +77,92 @@ export function InvitationCard({ inspection, timezone: timezoneName, onRespond }
       </div>
       <h3>{event.title}</h3>
       <dl>
-        <div><dt>When</dt><dd>{eventTime(inspection, timezoneName)}</dd></div>
-        <div><dt>Organizer</dt><dd>{organizer}</dd></div>
-        {event.location && <div><dt>Where</dt><dd>{event.location}</dd></div>}
-        <div><dt>Timezone</dt><dd>{event.timezone}{event.timezone !== timezoneName ? ` · shown in ${timezoneName}` : ""}</dd></div>
-        {recurrence && <div><dt>Repeats</dt><dd>{recurrence}</dd></div>}
-        <div><dt>Received via</dt><dd>Email calendar attachment</dd></div>
+        <div>
+          <dt>When</dt>
+          <dd>{eventTime(inspection, timezoneName)}</dd>
+        </div>
+        <div>
+          <dt>Organizer</dt>
+          <dd>{organizer}</dd>
+        </div>
+        {event.location && (
+          <div>
+            <dt>Where</dt>
+            <dd>{event.location}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Timezone</dt>
+          <dd>
+            {event.timezone}
+            {event.timezone !== timezoneName ? ` · shown in ${timezoneName}` : ""}
+          </dd>
+        </div>
+        {recurrence && (
+          <div>
+            <dt>Repeats</dt>
+            <dd>{recurrence}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Received via</dt>
+          <dd>Email calendar attachment</dd>
+        </div>
       </dl>
       {inspection.conflicts.length > 0 && (
         <p className="invitation-card-warning" role="status">
-          Conflicts with {inspection.conflicts.length} calendar {inspection.conflicts.length === 1 ? "event" : "events"}.
+          Conflicts with {inspection.conflicts.length} calendar{" "}
+          {inspection.conflicts.length === 1 ? "event" : "events"}.
         </p>
       )}
       {inspection.state === "stale" && (
-        <p className="invitation-card-warning">A newer version of this invitation is already in your calendar.</p>
+        <p className="invitation-card-warning">
+          A newer version of this invitation is already in your calendar.
+        </p>
       )}
-      {inspection.state === "cancelled" && <p className="invitation-card-warning">This meeting was cancelled.</p>}
+      {inspection.state === "cancelled" && (
+        <p className="invitation-card-warning">This meeting was cancelled.</p>
+      )}
       {result ? (
-        <p className="invitation-card-result" role="status">Response queued · {result}</p>
+        <p className="invitation-card-result" role="status">
+          Response queued · {result}
+        </p>
       ) : canRespond ? (
         <div className="invitation-card-actions" aria-label="Respond to invitation">
-          <button type="button" disabled={pending !== null} onClick={() => { void respond("accepted"); }}>Accept</button>
-          <button type="button" disabled={pending !== null} onClick={() => { void respond("tentative"); }}>Maybe</button>
-          <button type="button" disabled={pending !== null} onClick={() => { void respond("declined"); }}>Decline</button>
+          <button
+            type="button"
+            disabled={pending !== null}
+            onClick={() => {
+              void respond("accepted");
+            }}
+          >
+            Accept
+          </button>
+          <button
+            type="button"
+            disabled={pending !== null}
+            onClick={() => {
+              void respond("tentative");
+            }}
+          >
+            Maybe
+          </button>
+          <button
+            type="button"
+            disabled={pending !== null}
+            onClick={() => {
+              void respond("declined");
+            }}
+          >
+            Decline
+          </button>
         </div>
       ) : null}
-      {error && <p className="invitation-card-error" role="alert">{error}</p>}
+      {error && (
+        <p className="invitation-card-error" role="alert">
+          {error}
+        </p>
+      )}
     </section>
   );
 }

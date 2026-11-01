@@ -17,9 +17,7 @@ fn offline_calendar_operation_survives_database_reopen() {
     let path = temporary_database();
     let event_id = {
         let store = Store::open(path.clone()).unwrap();
-        let calendar = store
-            .create_local_calendar("Offline", "#6f8df6", "UTC")
-            .unwrap();
+        let calendar = store.create_local_calendar("Offline", "#6f8df6", "UTC").unwrap();
         let event = store
             .create_calendar_event(EventMutation {
                 calendar_id: calendar.id,
@@ -28,12 +26,8 @@ fn offline_calendar_operation_survives_database_reopen() {
                 location: String::new(),
                 conference_url: None,
                 source_thread_id: None,
-                start: EventMoment::Timed {
-                    utc: "2026-09-25T10:00:00Z".into(),
-                },
-                end: EventMoment::Timed {
-                    utc: "2026-09-25T11:00:00Z".into(),
-                },
+                start: EventMoment::Timed { utc: "2026-09-25T10:00:00Z".into() },
+                end: EventMoment::Timed { utc: "2026-09-25T11:00:00Z".into() },
                 timezone: "UTC".into(),
                 recurrence: None,
                 status: EventStatus::Confirmed,
@@ -44,18 +38,12 @@ fn offline_calendar_operation_survives_database_reopen() {
                 reminders: Vec::new(),
             })
             .unwrap();
-        assert_eq!(
-            event.sync_state,
-            bharga_mail_lib::calendar::domain::EventSyncState::Local
-        );
+        assert_eq!(event.sync_state, bharga_mail_lib::calendar::domain::EventSyncState::Local);
         assert!(store.calendar_operation_for(&event.id).is_err());
         event.id
     };
     let reopened = Store::open(path.clone()).unwrap();
-    assert_eq!(
-        reopened.calendar_event(&event_id).unwrap().unwrap().title,
-        "Offline change"
-    );
+    assert_eq!(reopened.calendar_event(&event_id).unwrap().unwrap().title, "Offline change");
     drop(reopened);
     for candidate in [
         path.clone(),

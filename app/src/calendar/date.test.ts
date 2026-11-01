@@ -5,10 +5,7 @@ import { allDayLabel, calendarRange, monthCells, weekDays } from "@/calendar/dat
 describe("calendar date math", () => {
   it("keeps an all-day event on its source dates in every viewer timezone", () => {
     expect(
-      allDayLabel(
-        { startDate: "2026-10-25", endDate: "2026-10-26" },
-        "America/Los_Angeles",
-      ),
+      allDayLabel({ startDate: "2026-10-25", endDate: "2026-10-26" }, "America/Los_Angeles"),
     ).toEqual({ start: "2026-10-25", endExclusive: "2026-10-26" });
   });
 

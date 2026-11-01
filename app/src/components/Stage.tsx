@@ -1,36 +1,44 @@
-import { createRef, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "motion/react";
 import dayjs from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
-import { useApp } from "@/store";
-import { api, titlebarDoubleClick } from "@/lib/bridge";
-import type { AttachmentMeta, InvitationInspection, Thread } from "@/types";
+import { AnimatePresence, motion } from "motion/react";
+import { createRef, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { InvitationCard } from "@/calendar/InvitationCard";
 import { Icon } from "@/components/icons";
-import { IconButton } from "@/components/ui/IconButton";
-import { Tooltip } from "@/components/ui/Tooltip";
-import { Chip } from "@/components/ui/Chip";
+import {
+  ReaderDisplayControls,
+  ReaderDisplayProvider,
+  useReaderDisplay,
+} from "@/components/reader/ReaderDisplay";
+import { type Attach, Attachments } from "@/components/ui/Attachments";
 import { Button } from "@/components/ui/Button";
-import { RichText, type RichTextHandle } from "@/components/ui/RichText";
-import { Attachments, type Attach } from "@/components/ui/Attachments";
-import { SendLater } from "@/components/ui/SendLater";
-import { RecipientChips } from "@/components/ui/RecipientChips";
+import { Chip } from "@/components/ui/Chip";
+import { IconButton } from "@/components/ui/IconButton";
 import { Modal } from "@/components/ui/Modal";
-import { ReaderDisplayProvider, ReaderDisplayControls, useReaderDisplay } from "@/components/reader/ReaderDisplay";
-import { bindEmailFrameLayout, type EmailFrameLayout, type FrameSize } from "@/lib/emailFrameLayout";
-import { fullTime, whenMs } from "@/lib/date";
-import { avatarColor } from "@/lib/colors";
-import { initials, senderLabel, showAddressLine, folderLabel } from "@/lib/avatar";
-import { senderTrust } from "@/lib/senderTrust";
-import { messageThreat } from "@/lib/threat";
-import { processEmail } from "@/lib/emailHtml";
+import { RecipientChips } from "@/components/ui/RecipientChips";
+import { RichText, type RichTextHandle } from "@/components/ui/RichText";
+import { SendLater } from "@/components/ui/SendLater";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { accountAddress, replyRecipients } from "@/lib/accountIdentity";
+import { folderLabel, initials, senderLabel, showAddressLine } from "@/lib/avatar";
+import { api, titlebarDoubleClick } from "@/lib/bridge";
+import { avatarColor } from "@/lib/colors";
+import { fullTime, whenMs } from "@/lib/date";
+import {
+  bindEmailFrameLayout,
+  type EmailFrameLayout,
+  type FrameSize,
+} from "@/lib/emailFrameLayout";
+import { processEmail } from "@/lib/emailHtml";
 import { parseExternalWebUrl } from "@/lib/externalLinks";
 import { isKeyboardContextMenu } from "@/lib/keyboard";
 import { registerOpenModal } from "@/lib/modalStack";
 import { THREAD_CROSSFADE, useMotionTransition } from "@/lib/motion";
+import { senderTrust } from "@/lib/senderTrust";
+import { messageThreat } from "@/lib/threat";
+import { useApp } from "@/store";
+import type { AttachmentMeta, InvitationInspection, Thread } from "@/types";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -53,7 +61,15 @@ interface LinkMenuState {
  * sanitize (DOMPurify) → block remote images by default → render in a sandboxed
  * iframe (no scripts) with an internal CSP. Auto-sizes to its content.
  */
-export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: string; trimQuote?: boolean }) {
+export function EmailBody({
+  html,
+  sender,
+  trimQuote,
+}: {
+  html: string;
+  sender?: string;
+  trimQuote?: boolean;
+}) {
   const ref = useRef<HTMLIFrameElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<HTMLDivElement>(null);
@@ -87,21 +103,39 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
   // Phase-2: ask the local AI model whether the message itself reads like a
   // phishing attempt (intent — urgency, credential harvesting), beyond the
   // deterministic link checks. Only runs when there's something worth judging.
-  const [aiVerdict, setAiVerdict] = useState<{ level: string; confidence: number; reason: string } | null>(null);
+  const [aiVerdict, setAiVerdict] = useState<{
+    level: string;
+    confidence: number;
+    reason: string;
+  } | null>(null);
   useEffect(() => {
     setAiVerdict(null);
-    const plain = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000);
-    const lure = /(verify|suspend|unusual activity|within \d+\s?h|confirm your|update your|password|account will be|sign\s?in|log\s?in)/i.test(plain);
+    const plain = html
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 4000);
+    const lure =
+      /(verify|suspend|unusual activity|within \d+\s?h|confirm your|update your|password|account will be|sign\s?in|log\s?in)/i.test(
+        plain,
+      );
     if (processed.links.length === 0 && !lure) return;
-    const summary = processed.links.map((l) => `${l.level.toUpperCase()} ${l.host}: ${l.reasons[0]}`).join("\n");
+    const summary = processed.links
+      .map((l) => `${l.level.toUpperCase()} ${l.host}: ${l.reasons[0]}`)
+      .join("\n");
     let alive = true;
-    void api.phishingCheck(plain, summary).then((v) => { if (alive && v && v.level !== "safe") setAiVerdict(v); });
-    return () => { alive = false; };
+    void api.phishingCheck(plain, summary).then((v) => {
+      if (alive && v && v.level !== "safe") setAiVerdict(v);
+    });
+    return () => {
+      alive = false;
+    };
   }, [html, processed.links]);
   // Defense in depth: the sandbox already blocks scripts (no allow-scripts); this
   // internal CSP additionally forbids scripts/objects/frames inside the email and
   // only permits images, inline styles, and fonts.
-  const csp = "default-src 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'; img-src http: https: data: cid:; style-src 'unsafe-inline'; font-src data: https:; media-src https: data:;";
+  const csp =
+    "default-src 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'; img-src http: https: data: cid:; style-src 'unsafe-inline'; font-src data: https:; media-src https: data:;";
   // Theme-aware base. In dark mode we render the page on a dark surface with light
   // default text (plain-text + simple emails adapt cleanly); emails that ship their
   // own background/colors keep them, exactly like Gmail/Apple Mail do.
@@ -198,11 +232,23 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
     const rawHref = anchor.getAttribute("href")?.trim() ?? "";
     const destination = parseExternalWebUrl(rawHref);
     const frameRect = ref.current?.getBoundingClientRect();
-    const x = Math.min(Math.max((frameRect?.left ?? 0) + clientX, 8), Math.max(window.innerWidth - 190, 8));
-    const y = Math.min(Math.max((frameRect?.top ?? 0) + clientY, 8), Math.max(window.innerHeight - 112, 8));
+    const x = Math.min(
+      Math.max((frameRect?.left ?? 0) + clientX, 8),
+      Math.max(window.innerWidth - 190, 8),
+    );
+    const y = Math.min(
+      Math.max((frameRect?.top ?? 0) + clientY, 8),
+      Math.max(window.innerHeight - 112, 8),
+    );
     linkOpenerRef.current = anchor;
     setCopyStatus("idle");
-    setLinkMenu({ href: destination?.href ?? rawHref, risk: destination ? anchor.getAttribute("data-risk") : "blocked", x, y, opener: anchor });
+    setLinkMenu({
+      href: destination?.href ?? rawHref,
+      risk: destination ? anchor.getAttribute("data-risk") : "blocked",
+      x,
+      y,
+      opener: anchor,
+    });
   };
 
   useEffect(() => () => detachFrameRef.current(), []);
@@ -228,28 +274,38 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
       const viewport = viewportRef.current;
       if (!frame || !d?.body || !viewport) return;
       const sizing = bindEmailFrameLayout(frame, viewport, displayRef.current, (next) => {
-        setFrameSize((current) => current.width === next.width && current.viewportWidth === next.viewportWidth ? current : next);
+        setFrameSize((current) =>
+          current.width === next.width && current.viewportWidth === next.viewportWidth
+            ? current
+            : next,
+        );
       });
       sizingRef.current = sizing;
       // Every link leaves through the validated native opener. The embedded mail
       // document never receives navigation or popup permissions.
       const onLinkClick = (e: MouseEvent) => {
         if (e.type === "auxclick" && e.button !== 1) return;
-        const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+        const a = (e.target as HTMLElement | null)?.closest?.(
+          "a[href]",
+        ) as HTMLAnchorElement | null;
         if (!a) return;
         e.preventDefault();
         e.stopPropagation();
         reviewLink(a);
       };
       const onLinkContextMenu = (e: MouseEvent) => {
-        const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+        const a = (e.target as HTMLElement | null)?.closest?.(
+          "a[href]",
+        ) as HTMLAnchorElement | null;
         if (!a) return;
         e.preventDefault();
         e.stopPropagation();
         showLinkMenu(a, e.clientX, e.clientY);
       };
       const onLinkKeyDown = (e: KeyboardEvent) => {
-        const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+        const a = (e.target as HTMLElement | null)?.closest?.(
+          "a[href]",
+        ) as HTMLAnchorElement | null;
         if (!a || !isKeyboardContextMenu(e)) return;
         e.preventDefault();
         e.stopPropagation();
@@ -297,7 +353,8 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
     items[next]?.focus();
   };
 
-  const danger = processed.links.some((l) => l.level === "dangerous") || aiVerdict?.level === "phishing";
+  const danger =
+    processed.links.some((l) => l.level === "dangerous") || aiVerdict?.level === "phishing";
   const showPhish = processed.links.length > 0 || (!!aiVerdict && aiVerdict.level !== "safe");
   return (
     <div className="email-body">
@@ -307,7 +364,10 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
           <div className="phish-main">
             <b>{danger ? "This message may be a phishing attempt" : "Suspicious message"}</b>
             {aiVerdict && (
-              <div className="phish-ai"><Icon name="ai" size={11} weight="duotone" /> Bharga AI · {aiVerdict.confidence}% confident — {aiVerdict.reason}</div>
+              <div className="phish-ai">
+                <Icon name="ai" size={11} weight="duotone" /> Bharga AI · {aiVerdict.confidence}%
+                confident — {aiVerdict.reason}
+              </div>
             )}
             {processed.links.length > 0 && (
               <ul className="phish-list">
@@ -318,94 +378,178 @@ export function EmailBody({ html, sender, trimQuote }: { html: string; sender?: 
                 ))}
               </ul>
             )}
-            <span className="phish-hint">Bharga will confirm the real destination before opening any flagged link.</span>
+            <span className="phish-hint">
+              Bharga will confirm the real destination before opening any flagged link.
+            </span>
           </div>
         </div>
       )}
       {processed.blocked > 0 && !showImages && (
         <button className="img-banner" onClick={() => setShowImages(true)}>
           <Icon name="attach" size={13} weight="duotone" />
-          {processed.blocked} remote image{processed.blocked > 1 ? "s" : ""} blocked for your privacy — Load images
+          {processed.blocked} remote image{processed.blocked > 1 ? "s" : ""} blocked for your
+          privacy — Load images
         </button>
       )}
       <Modal
         open={!!decision}
         onClose={closeDecision}
-        title={decision?.kind === "blocked" ? "Link blocked" : decision?.kind === "error" ? "Could not open link" : decision?.level === "dangerous" ? "Dangerous link" : "Suspicious link"}
+        title={
+          decision?.kind === "blocked"
+            ? "Link blocked"
+            : decision?.kind === "error"
+              ? "Could not open link"
+              : decision?.level === "dangerous"
+                ? "Dangerous link"
+                : "Suspicious link"
+        }
         maxWidth={560}
       >
         {decision && (
-          <div className={`link-decision${decision.kind === "warning" && decision.level === "dangerous" ? " danger" : ""}`}>
+          <div
+            className={`link-decision${decision.kind === "warning" && decision.level === "dangerous" ? " danger" : ""}`}
+          >
             <div className="link-decision-summary">
               <Icon name="shieldWarning" size={19} weight="fill" />
               <p>
-                {decision.kind === "warning" && <>This link goes to <b>{decision.host}</b>. Bharga flagged the destination as possibly unsafe.</>}
-                {decision.kind === "blocked" && <>Bharga blocked this destination because it is not a valid HTTP or HTTPS web link.</>}
-                {decision.kind === "error" && <>The system browser could not open this link. You can still copy the destination.</>}
+                {decision.kind === "warning" && (
+                  <>
+                    This link goes to <b>{decision.host}</b>. Bharga flagged the destination as
+                    possibly unsafe.
+                  </>
+                )}
+                {decision.kind === "blocked" && (
+                  <>
+                    Bharga blocked this destination because it is not a valid HTTP or HTTPS web
+                    link.
+                  </>
+                )}
+                {decision.kind === "error" && (
+                  <>
+                    The system browser could not open this link. You can still copy the destination.
+                  </>
+                )}
               </p>
             </div>
             <div className="lc-url">{decision.href || "No destination provided"}</div>
             <div className="lc-actions">
-              <button type="button" onClick={() => void copyLink(decision.href)}>Copy link</button>
-              <button type="button" onClick={closeDecision}>Stay safe</button>
-              {decision.kind === "warning" && <button type="button" className="lc-danger" onClick={() => openLink(decision.href)}>Open anyway</button>}
+              <button type="button" onClick={() => void copyLink(decision.href)}>
+                Copy link
+              </button>
+              <button type="button" onClick={closeDecision}>
+                Stay safe
+              </button>
+              {decision.kind === "warning" && (
+                <button type="button" className="lc-danger" onClick={() => openLink(decision.href)}>
+                  Open anyway
+                </button>
+              )}
             </div>
             <div className="link-copy-status" aria-live="polite">
-              {copyStatus === "copied" ? "Link copied." : copyStatus === "error" ? "Could not copy the link." : ""}
+              {copyStatus === "copied"
+                ? "Link copied."
+                : copyStatus === "error"
+                  ? "Could not copy the link."
+                  : ""}
             </div>
           </div>
         )}
       </Modal>
-      {linkMenu && createPortal(
-        <>
-          <div className="link-menu-backdrop" aria-hidden="true" onMouseDown={() => closeLinkMenu()} />
-          <div
-            ref={linkMenuRef}
-            className="link-menu"
-            role="menu"
-            aria-label="Link actions"
-            style={{ left: linkMenu.x, top: linkMenu.y }}
-            onKeyDown={onLinkMenuKeyDown}
-          >
-            {linkMenu.risk !== "blocked" && (
-              <button type="button" role="menuitem" onClick={() => {
-                const menu = linkMenu;
-                closeLinkMenu(false);
-                if (menu.risk) setDecision({ kind: "warning", href: menu.href, host: parseExternalWebUrl(menu.href)?.host ?? "Unknown destination", level: menu.risk });
-                else openLink(menu.href);
-              }}>
-                {linkMenu.risk ? "Review link" : "Open link"}
+      {linkMenu &&
+        createPortal(
+          <>
+            <div
+              className="link-menu-backdrop"
+              aria-hidden="true"
+              onMouseDown={() => closeLinkMenu()}
+            />
+            <div
+              ref={linkMenuRef}
+              className="link-menu"
+              role="menu"
+              aria-label="Link actions"
+              style={{ left: linkMenu.x, top: linkMenu.y }}
+              onKeyDown={onLinkMenuKeyDown}
+            >
+              {linkMenu.risk !== "blocked" && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const menu = linkMenu;
+                    closeLinkMenu(false);
+                    if (menu.risk)
+                      setDecision({
+                        kind: "warning",
+                        href: menu.href,
+                        host: parseExternalWebUrl(menu.href)?.host ?? "Unknown destination",
+                        level: menu.risk,
+                      });
+                    else openLink(menu.href);
+                  }}
+                >
+                  {linkMenu.risk ? "Review link" : "Open link"}
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => void copyLink(linkMenu.href, true)}
+              >
+                Copy link
               </button>
-            )}
-            <button type="button" role="menuitem" onClick={() => void copyLink(linkMenu.href, true)}>Copy link</button>
-          </div>
-        </>,
-        document.body,
-      )}
-      {!decision && copyStatus !== "idle" && createPortal(
-        <div className={`link-copy-toast${copyStatus === "error" ? " error" : ""}`} role="status">
-          {copyStatus === "copied" ? "Link copied." : "Could not copy the link."}
-        </div>,
-        document.body,
-      )}
-      <div ref={viewportRef} className="email-viewport" onScroll={(event) => {
-        if (panRef.current && Math.abs(panRef.current.scrollLeft - event.currentTarget.scrollLeft) > 0.5) panRef.current.scrollLeft = event.currentTarget.scrollLeft;
-      }}>
-      <iframe
-        ref={ref}
-        key={`${showImages ? "i" : "n"}${highlights ? "h" : ""}${dark ? "d" : "l"}${contentPx}`}
-        className="email-frame"
-        aria-label="Message body"
-        sandbox="allow-same-origin"
-        scrolling="no"
-        srcDoc={doc}
-        onLoad={onLoad}
-      />
+            </div>
+          </>,
+          document.body,
+        )}
+      {!decision &&
+        copyStatus !== "idle" &&
+        createPortal(
+          <div className={`link-copy-toast${copyStatus === "error" ? " error" : ""}`} role="status">
+            {copyStatus === "copied" ? "Link copied." : "Could not copy the link."}
+          </div>,
+          document.body,
+        )}
+      <div
+        ref={viewportRef}
+        className="email-viewport"
+        onScroll={(event) => {
+          if (
+            panRef.current &&
+            Math.abs(panRef.current.scrollLeft - event.currentTarget.scrollLeft) > 0.5
+          )
+            panRef.current.scrollLeft = event.currentTarget.scrollLeft;
+        }}
+      >
+        <iframe
+          ref={ref}
+          key={`${showImages ? "i" : "n"}${highlights ? "h" : ""}${dark ? "d" : "l"}${contentPx}`}
+          className="email-frame"
+          aria-label="Message body"
+          sandbox="allow-same-origin"
+          scrolling="no"
+          srcDoc={doc}
+          onLoad={onLoad}
+        />
       </div>
       {frameSize.width > frameSize.viewportWidth + 1 && (
-        <div className="email-pan" role="region" aria-label="Scroll message horizontally" tabIndex={0}
-          ref={(node) => { panRef.current = node; if (node && viewportRef.current) node.scrollLeft = viewportRef.current.scrollLeft; }}
-          onScroll={(event) => { if (viewportRef.current && Math.abs(viewportRef.current.scrollLeft - event.currentTarget.scrollLeft) > 0.5) viewportRef.current.scrollLeft = event.currentTarget.scrollLeft; }}>
+        <div
+          className="email-pan"
+          role="region"
+          aria-label="Scroll message horizontally"
+          tabIndex={0}
+          ref={(node) => {
+            panRef.current = node;
+            if (node && viewportRef.current) node.scrollLeft = viewportRef.current.scrollLeft;
+          }}
+          onScroll={(event) => {
+            if (
+              viewportRef.current &&
+              Math.abs(viewportRef.current.scrollLeft - event.currentTarget.scrollLeft) > 0.5
+            )
+              viewportRef.current.scrollLeft = event.currentTarget.scrollLeft;
+          }}
+        >
           <div style={{ width: frameSize.width, height: 1 }} />
         </div>
       )}
@@ -427,16 +571,26 @@ function CalendarAttachmentPanel({
   attachment: AttachmentMeta;
 }) {
   const [inspections, setInspections] = useState<InvitationInspection[]>([]);
-  const isCalendar = attachment.mime.toLowerCase().startsWith("text/calendar")
-    || /\.ics$/i.test(attachment.name);
+  const isCalendar =
+    attachment.mime.toLowerCase().startsWith("text/calendar") || /\.ics$/i.test(attachment.name);
 
   useEffect(() => {
     let active = true;
-    if (!isCalendar || !api.calendar.inspectAttachment) return () => { active = false; };
-    void api.calendar.inspectAttachment(accountId, messageId, attachment.name)
-      .then((result) => { if (active) setInspections(result); })
-      .catch(() => { if (active) setInspections([]); });
-    return () => { active = false; };
+    if (!isCalendar || !api.calendar.inspectAttachment)
+      return () => {
+        active = false;
+      };
+    void api.calendar
+      .inspectAttachment(accountId, messageId, attachment.name)
+      .then((result) => {
+        if (active) setInspections(result);
+      })
+      .catch(() => {
+        if (active) setInspections([]);
+      });
+    return () => {
+      active = false;
+    };
   }, [accountId, attachment.name, isCalendar, messageId]);
 
   if (!isCalendar || inspections.length === 0) return null;
@@ -448,7 +602,8 @@ function CalendarAttachmentPanel({
           inspection={inspection}
           timezone={dayjs.tz.guess()}
           onRespond={async (status) => {
-            if (!api.calendar.respondToInvitation) throw new Error("Invitation responses are unavailable");
+            if (!api.calendar.respondToInvitation)
+              throw new Error("Invitation responses are unavailable");
             await api.calendar.respondToInvitation({
               accountId,
               threadId,
@@ -464,12 +619,33 @@ function CalendarAttachmentPanel({
 }
 
 export function Stage() {
-  const { threads, accounts, selectedThreadId, selectedMessageId, toggleFocus, createTask, snoozeThread, archiveThread, toggleRead, deleteThread, setView, contentPx, setContentPx } = useApp();
-  const thread = useMemo(() => threads.find((t) => t.id === selectedThreadId) ?? null, [threads, selectedThreadId]);
+  const {
+    threads,
+    accounts,
+    selectedThreadId,
+    selectedMessageId,
+    toggleFocus,
+    createTask,
+    snoozeThread,
+    archiveThread,
+    toggleRead,
+    deleteThread,
+    setView,
+    contentPx,
+    setContentPx,
+  } = useApp();
+  const thread = useMemo(
+    () => threads.find((t) => t.id === selectedThreadId) ?? null,
+    [threads, selectedThreadId],
+  );
   // The conversation root (oldest message) keeps its full content; replies above
   // it have their redundant quoted copy trimmed.
   const oldestMessageId = useMemo(
-    () => thread?.messages.reduce((o, m) => (o && whenMs(o.when) <= whenMs(m.when) ? o : m), thread.messages[0])?.id,
+    () =>
+      thread?.messages.reduce(
+        (o, m) => (o && whenMs(o.when) <= whenMs(m.when) ? o : m),
+        thread.messages[0],
+      )?.id,
     [thread],
   );
   // The mailbox this conversation lives in (account email), for the header chip.
@@ -481,7 +657,11 @@ export function Stage() {
   const [previewing, setPreviewing] = useState<string | null>(null);
   const crossfadeTransition = useMotionTransition(THREAD_CROSSFADE);
 
-  async function openPreview(messageId: string, a: { name: string; mime: string }, accountId: string) {
+  async function openPreview(
+    messageId: string,
+    a: { name: string; mime: string },
+    accountId: string,
+  ) {
     setPreviewing(a.name);
     try {
       const url = await api.previewAttachment(accountId, messageId, a.name, a.mime);
@@ -512,7 +692,13 @@ export function Stage() {
   }
 
   if (!thread) {
-    return <section className="stage" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}><div className="empty" style={{ marginTop: 80 }}>Select a conversation</div></section>;
+    return (
+      <section className="stage" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
+        <div className="empty" style={{ marginTop: 80 }}>
+          Select a conversation
+        </div>
+      </section>
+    );
   }
   const makeTask = () => void createTask(`Follow up: ${thread.subject}`, thread.id);
   const scheduleThread = () => {
@@ -520,7 +706,8 @@ export function Stage() {
       setView("calendar");
       return;
     }
-    void api.calendar.scheduleFromThread(thread.id)
+    void api.calendar
+      .scheduleFromThread(thread.id)
       .then(() => setView("calendar"))
       .catch(() => {});
   };
@@ -528,170 +715,390 @@ export function Stage() {
   return (
     <section className="stage stage-reader">
       <div className="stage-presence" style={{ display: "grid" }}>
-      <AnimatePresence initial={false}>
-        <ReaderDisplayProvider key={thread.id}>
-        <motion.div className="stage-inner" key={thread.id} style={{ gridArea: "1 / 1" }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={crossfadeTransition}>
-          <div className="stage-bar">
-            <IconButton icon="focus" title="Focus mode (F)" onClick={toggleFocus} />
-            <IconButton icon="reply" title="Reply" onClick={() => composerRef.current?.open("reply")} />
-            <IconButton icon="replyAll" title="Reply all" onClick={() => composerRef.current?.open("replyAll")} />
-            <IconButton icon="forward" title="Forward" onClick={() => composerRef.current?.open("forward")} />
-            <IconButton
-              icon={thread.unread ? "envelopeOpen" : "envelope"}
-              title={thread.unread ? "Mark as read (U)" : "Mark as unread (U)"}
-              onClick={() => toggleRead(thread.id)}
-            />
-            <IconButton icon="snoozed" title="Snooze" onClick={() => snoozeThread(thread.id)} />
-            <IconButton icon="tasks" title="Turn into task" onClick={makeTask} />
-            <div className="spacer" data-tauri-drag-region onDoubleClick={titlebarDoubleClick} />
-            <div className="font-step" role="group" aria-label="Text size">
-              <Tooltip label="Smaller text" side="bottom"><button className="iconbtn" aria-label="Smaller text" onClick={() => setContentPx(contentPx - 1)} disabled={contentPx <= 12}>A−</button></Tooltip>
-              <Tooltip label="Reset text size" side="bottom"><button className="iconbtn font-reset" aria-label="Reset text size" onClick={() => setContentPx(14.5)}>A</button></Tooltip>
-              <Tooltip label="Larger text" side="bottom"><button className="iconbtn" aria-label="Larger text" onClick={() => setContentPx(contentPx + 1)} disabled={contentPx >= 22}>A+</button></Tooltip>
-            </div>
-            <div style={{ position: "relative" }}>
-              <IconButton icon="more" title="More" onClick={() => setMoreOpen((v) => !v)} />
-              {moreOpen && (
-                <div className="menu" onMouseLeave={() => setMoreOpen(false)}>
-                  <button onClick={() => { archiveThread(thread.id); setMoreOpen(false); }}>Archive</button>
-                  <button onClick={() => { snoozeThread(thread.id); setMoreOpen(false); }}>Snooze</button>
-                  <button className="danger" onClick={() => { deleteThread(thread.id); setMoreOpen(false); }}>Delete</button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <ReaderDisplayControls />
-          <h1 className="subject">{thread.subject}</h1>
-
-          <div className="reader-scroll" role="region" aria-label="Conversation content" tabIndex={0}>
-          {thread.aiSummary && (
-            <div className="ai-summary">
-              <div className="lbl"><Icon name="ai" size={14} weight="duotone" /> AI Summary · by your model</div>
-              <p>{thread.aiSummary}</p>
-              <div className="chips">
-                <Chip solid icon="reply" onClick={() => composerRef.current?.open("reply", true)}>Use AI draft reply</Chip>
-                {thread.labels.includes("meeting") && <Chip icon="schedule" onClick={scheduleThread}>Schedule from thread</Chip>}
-                <Chip icon="tasks" onClick={makeTask}>Create task</Chip>
-              </div>
-            </div>
-          )}
-
-          {/* Conversation: the message you clicked is on top; the rest of the chain
-              follows newest-first as individual connected cards. */}
-          {[...thread.messages].sort((a, b) => {
-            if (selectedMessageId) {
-              if (a.id === selectedMessageId) return -1;
-              if (b.id === selectedMessageId) return 1;
-            }
-            return whenMs(b.when) - whenMs(a.when);
-          }).map((m, i) => (
-            <div className={`msg${i > 0 ? " reply" : ""}`} key={m.id} style={i > 0 ? { marginLeft: Math.min(i, 5) * 30 } : undefined}>
-              {i > 0 && <span className="reply-arrow" title="Earlier message"><Icon name="reply" size={13} weight="duotone" /></span>}
-              {(() => { const c = avatarColor(m.from.address || m.from.name); return (
-              <div className="avatar" style={{ background: c.bg, color: c.fg, boxShadow: `inset 0 0 0 1.5px ${c.ring}` }}>{initials(m.from.name || m.from.address)}</div>
-              ); })()}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="meta">
-                  <span className="name">{senderLabel(m.from.name, m.from.address)}</span>
-                  {showAddressLine(m.from.name, m.from.address) && <span className="addr">{m.from.address}</span>}
-                  <span className="meta-right">
-                    {(() => {
-                      const tr = senderTrust(m.meta?.auth);
-                      const th = messageThreat(m);
-                      const s = th.level === "phishing"
-                        ? { tone: "bad", icon: "shieldWarning" as const, label: "Likely phishing", detail: th.reason, show: true }
-                        : { tone: tr.tone, icon: tr.icon, label: tr.label, detail: tr.detail, show: tr.level !== "unknown" };
-                      if (!s.show) return null;
-                      return (
-                        <Tooltip label={`${s.label} — ${s.detail}`} side="bottom">
-                          <span className={`trust trust-${s.tone}`} aria-label={s.label}>
-                            <Icon name={s.icon} size={17} weight="duotone" />
-                          </span>
-                        </Tooltip>
-                      );
-                    })()}
-                    <span className="when">{fullTime(m.when)}</span>
-                    <button className="details-toggle" title="Show details" onClick={() => setDetailsFor(detailsFor === m.id ? null : m.id)}>
-                      <Icon name={detailsFor === m.id ? "close" : "more"} size={12} />
+        <AnimatePresence initial={false}>
+          <ReaderDisplayProvider key={thread.id}>
+            <motion.div
+              className="stage-inner"
+              key={thread.id}
+              style={{ gridArea: "1 / 1" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={crossfadeTransition}
+            >
+              <div className="stage-bar">
+                <IconButton icon="focus" title="Focus mode (F)" onClick={toggleFocus} />
+                <IconButton
+                  icon="reply"
+                  title="Reply"
+                  onClick={() => composerRef.current?.open("reply")}
+                />
+                <IconButton
+                  icon="replyAll"
+                  title="Reply all"
+                  onClick={() => composerRef.current?.open("replyAll")}
+                />
+                <IconButton
+                  icon="forward"
+                  title="Forward"
+                  onClick={() => composerRef.current?.open("forward")}
+                />
+                <IconButton
+                  icon={thread.unread ? "envelopeOpen" : "envelope"}
+                  title={thread.unread ? "Mark as read (U)" : "Mark as unread (U)"}
+                  onClick={() => toggleRead(thread.id)}
+                />
+                <IconButton icon="snoozed" title="Snooze" onClick={() => snoozeThread(thread.id)} />
+                <IconButton icon="tasks" title="Turn into task" onClick={makeTask} />
+                <div
+                  className="spacer"
+                  data-tauri-drag-region
+                  onDoubleClick={titlebarDoubleClick}
+                />
+                <div className="font-step" role="group" aria-label="Text size">
+                  <Tooltip label="Smaller text" side="bottom">
+                    <button
+                      className="iconbtn"
+                      aria-label="Smaller text"
+                      onClick={() => setContentPx(contentPx - 1)}
+                      disabled={contentPx <= 12}
+                    >
+                      A−
                     </button>
-                  </span>
+                  </Tooltip>
+                  <Tooltip label="Reset text size" side="bottom">
+                    <button
+                      className="iconbtn font-reset"
+                      aria-label="Reset text size"
+                      onClick={() => setContentPx(14.5)}
+                    >
+                      A
+                    </button>
+                  </Tooltip>
+                  <Tooltip label="Larger text" side="bottom">
+                    <button
+                      className="iconbtn"
+                      aria-label="Larger text"
+                      onClick={() => setContentPx(contentPx + 1)}
+                      disabled={contentPx >= 22}
+                    >
+                      A+
+                    </button>
+                  </Tooltip>
                 </div>
-                <div className="meta-sub">
-                  {m.to.length > 0 && <span className="to-line">To: {m.to.map((p) => p.name || p.address).join(", ")}</span>}
-                  {i === 0 && <span className="mail-chip"><Icon name="folder" size={11} weight="duotone" /> {folderLabel(thread.folder)}{accounts.length > 1 && mailboxLabel ? ` · ${mailboxLabel}` : ""}</span>}
+                <div style={{ position: "relative" }}>
+                  <IconButton icon="more" title="More" onClick={() => setMoreOpen((v) => !v)} />
+                  {moreOpen && (
+                    <div className="menu" onMouseLeave={() => setMoreOpen(false)}>
+                      <button
+                        onClick={() => {
+                          archiveThread(thread.id);
+                          setMoreOpen(false);
+                        }}
+                      >
+                        Archive
+                      </button>
+                      <button
+                        onClick={() => {
+                          snoozeThread(thread.id);
+                          setMoreOpen(false);
+                        }}
+                      >
+                        Snooze
+                      </button>
+                      <button
+                        className="danger"
+                        onClick={() => {
+                          deleteThread(thread.id);
+                          setMoreOpen(false);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {detailsFor === m.id && (
-                  <div className="msg-details">
-                    <div><span>From</span><b>{m.from.name ? `${m.from.name} <${m.from.address}>` : m.from.address}</b></div>
-                    {m.to.length > 0 && <div><span>To</span><b>{m.to.map((p) => p.address).join(", ")}</b></div>}
-                    {m.meta?.cc && m.meta.cc.length > 0 && <div><span>Cc</span><b>{m.meta.cc.map((p) => p.address).join(", ")}</b></div>}
-                    <div><span>Date</span><b>{fullTime(m.when)}</b></div>
-                    {m.meta?.originIp && <div><span>Origin IP</span><b>{m.meta.originIp}</b></div>}
-                    {m.meta?.auth && <div><span>Authentication</span><b className={/fail/i.test(m.meta.auth) ? "auth-bad" : "auth-ok"}>{m.meta.auth}</b></div>}
-                    {m.meta?.messageId && <div><span>Message-ID</span><b className="mono">{m.meta.messageId}</b></div>}
-                    {!m.meta && <div className="msg-details-note">Full headers are captured for IMAP accounts on the next sync.</div>}
+              </div>
+
+              <ReaderDisplayControls />
+              <h1 className="subject">{thread.subject}</h1>
+
+              <div
+                className="reader-scroll"
+                role="region"
+                aria-label="Conversation content"
+                tabIndex={0}
+              >
+                {thread.aiSummary && (
+                  <div className="ai-summary">
+                    <div className="lbl">
+                      <Icon name="ai" size={14} weight="duotone" /> AI Summary · by your model
+                    </div>
+                    <p>{thread.aiSummary}</p>
+                    <div className="chips">
+                      <Chip
+                        solid
+                        icon="reply"
+                        onClick={() => composerRef.current?.open("reply", true)}
+                      >
+                        Use AI draft reply
+                      </Chip>
+                      {thread.labels.includes("meeting") && (
+                        <Chip icon="schedule" onClick={scheduleThread}>
+                          Schedule from thread
+                        </Chip>
+                      )}
+                      <Chip icon="tasks" onClick={makeTask}>
+                        Create task
+                      </Chip>
+                    </div>
                   </div>
                 )}
-                <EmailBody html={m.bodyHtml} sender={m.from.address} trimQuote={m.id !== oldestMessageId} />
-                {m.attachments && m.attachments.length > 0 && (
-                  <>
-                    <div className="attach-row" style={{ marginTop: 10 }}>
-                      {m.attachments.map((a) => {
-                      const busy = dl?.name === a.name && dl.state === "busy";
-                      const failed = dl?.name === a.name && dl.state === "error";
-                      const prev = previewing === a.name;
-                      return (
-                        <span className="attach-group" key={a.name}>
-                          <button
-                            className="attach-chip"
-                            disabled={busy}
-                            onClick={() => downloadAttachment(m.id, a.name, thread.accountId)}
-                            title={failed ? "Download failed — click to retry" : `Download · ${a.mime} · ${humanSize(a.size)}`}
-                          >
-                            <Icon name={busy ? "ai" : failed ? "close" : "attach"} size={12} /> {a.name}{" "}
-                            <span className="attach-size">{busy ? "downloading…" : humanSize(a.size)}</span>
-                          </button>
-                          {canPreview(a.mime) && (
-                            <button
-                              className="attach-preview"
-                              title="Preview"
-                              disabled={prev}
-                              onClick={() => openPreview(m.id, a, thread.accountId)}
-                            >
-                              <Icon name={prev ? "ai" : "focus"} size={12} />
-                            </button>
-                          )}
+
+                {/* Conversation: the message you clicked is on top; the rest of the chain
+              follows newest-first as individual connected cards. */}
+                {[...thread.messages]
+                  .sort((a, b) => {
+                    if (selectedMessageId) {
+                      if (a.id === selectedMessageId) return -1;
+                      if (b.id === selectedMessageId) return 1;
+                    }
+                    return whenMs(b.when) - whenMs(a.when);
+                  })
+                  .map((m, i) => (
+                    <div
+                      className={`msg${i > 0 ? " reply" : ""}`}
+                      key={m.id}
+                      style={i > 0 ? { marginLeft: Math.min(i, 5) * 30 } : undefined}
+                    >
+                      {i > 0 && (
+                        <span className="reply-arrow" title="Earlier message">
+                          <Icon name="reply" size={13} weight="duotone" />
                         </span>
-                      );
-                      })}
+                      )}
+                      {(() => {
+                        const c = avatarColor(m.from.address || m.from.name);
+                        return (
+                          <div
+                            className="avatar"
+                            style={{
+                              background: c.bg,
+                              color: c.fg,
+                              boxShadow: `inset 0 0 0 1.5px ${c.ring}`,
+                            }}
+                          >
+                            {initials(m.from.name || m.from.address)}
+                          </div>
+                        );
+                      })()}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="meta">
+                          <span className="name">{senderLabel(m.from.name, m.from.address)}</span>
+                          {showAddressLine(m.from.name, m.from.address) && (
+                            <span className="addr">{m.from.address}</span>
+                          )}
+                          <span className="meta-right">
+                            {(() => {
+                              const tr = senderTrust(m.meta?.auth);
+                              const th = messageThreat(m);
+                              const s =
+                                th.level === "phishing"
+                                  ? {
+                                      tone: "bad",
+                                      icon: "shieldWarning" as const,
+                                      label: "Likely phishing",
+                                      detail: th.reason,
+                                      show: true,
+                                    }
+                                  : {
+                                      tone: tr.tone,
+                                      icon: tr.icon,
+                                      label: tr.label,
+                                      detail: tr.detail,
+                                      show: tr.level !== "unknown",
+                                    };
+                              if (!s.show) return null;
+                              return (
+                                <Tooltip label={`${s.label} — ${s.detail}`} side="bottom">
+                                  <span className={`trust trust-${s.tone}`} aria-label={s.label}>
+                                    <Icon name={s.icon} size={17} weight="duotone" />
+                                  </span>
+                                </Tooltip>
+                              );
+                            })()}
+                            <span className="when">{fullTime(m.when)}</span>
+                            <button
+                              className="details-toggle"
+                              title="Show details"
+                              onClick={() => setDetailsFor(detailsFor === m.id ? null : m.id)}
+                            >
+                              <Icon name={detailsFor === m.id ? "close" : "more"} size={12} />
+                            </button>
+                          </span>
+                        </div>
+                        <div className="meta-sub">
+                          {m.to.length > 0 && (
+                            <span className="to-line">
+                              To: {m.to.map((p) => p.name || p.address).join(", ")}
+                            </span>
+                          )}
+                          {i === 0 && (
+                            <span className="mail-chip">
+                              <Icon name="folder" size={11} weight="duotone" />{" "}
+                              {folderLabel(thread.folder)}
+                              {accounts.length > 1 && mailboxLabel ? ` · ${mailboxLabel}` : ""}
+                            </span>
+                          )}
+                        </div>
+                        {detailsFor === m.id && (
+                          <div className="msg-details">
+                            <div>
+                              <span>From</span>
+                              <b>
+                                {m.from.name
+                                  ? `${m.from.name} <${m.from.address}>`
+                                  : m.from.address}
+                              </b>
+                            </div>
+                            {m.to.length > 0 && (
+                              <div>
+                                <span>To</span>
+                                <b>{m.to.map((p) => p.address).join(", ")}</b>
+                              </div>
+                            )}
+                            {m.meta?.cc && m.meta.cc.length > 0 && (
+                              <div>
+                                <span>Cc</span>
+                                <b>{m.meta.cc.map((p) => p.address).join(", ")}</b>
+                              </div>
+                            )}
+                            <div>
+                              <span>Date</span>
+                              <b>{fullTime(m.when)}</b>
+                            </div>
+                            {m.meta?.originIp && (
+                              <div>
+                                <span>Origin IP</span>
+                                <b>{m.meta.originIp}</b>
+                              </div>
+                            )}
+                            {m.meta?.auth && (
+                              <div>
+                                <span>Authentication</span>
+                                <b className={/fail/i.test(m.meta.auth) ? "auth-bad" : "auth-ok"}>
+                                  {m.meta.auth}
+                                </b>
+                              </div>
+                            )}
+                            {m.meta?.messageId && (
+                              <div>
+                                <span>Message-ID</span>
+                                <b className="mono">{m.meta.messageId}</b>
+                              </div>
+                            )}
+                            {!m.meta && (
+                              <div className="msg-details-note">
+                                Full headers are captured for IMAP accounts on the next sync.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <EmailBody
+                          html={m.bodyHtml}
+                          sender={m.from.address}
+                          trimQuote={m.id !== oldestMessageId}
+                        />
+                        {m.attachments && m.attachments.length > 0 && (
+                          <>
+                            <div className="attach-row" style={{ marginTop: 10 }}>
+                              {m.attachments.map((a) => {
+                                const busy = dl?.name === a.name && dl.state === "busy";
+                                const failed = dl?.name === a.name && dl.state === "error";
+                                const prev = previewing === a.name;
+                                return (
+                                  <span className="attach-group" key={a.name}>
+                                    <button
+                                      className="attach-chip"
+                                      disabled={busy}
+                                      onClick={() =>
+                                        downloadAttachment(m.id, a.name, thread.accountId)
+                                      }
+                                      title={
+                                        failed
+                                          ? "Download failed — click to retry"
+                                          : `Download · ${a.mime} · ${humanSize(a.size)}`
+                                      }
+                                    >
+                                      <Icon
+                                        name={busy ? "ai" : failed ? "close" : "attach"}
+                                        size={12}
+                                      />{" "}
+                                      {a.name}{" "}
+                                      <span className="attach-size">
+                                        {busy ? "downloading…" : humanSize(a.size)}
+                                      </span>
+                                    </button>
+                                    {canPreview(a.mime) && (
+                                      <button
+                                        className="attach-preview"
+                                        title="Preview"
+                                        disabled={prev}
+                                        onClick={() => openPreview(m.id, a, thread.accountId)}
+                                      >
+                                        <Icon name={prev ? "ai" : "focus"} size={12} />
+                                      </button>
+                                    )}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            {m.attachments.map((attachment) => (
+                              <CalendarAttachmentPanel
+                                key={`calendar:${attachment.name}`}
+                                accountId={thread.accountId}
+                                threadId={thread.id}
+                                messageId={m.id}
+                                attachment={attachment}
+                              />
+                            ))}
+                          </>
+                        )}
+                      </div>
                     </div>
-                    {m.attachments.map((attachment) => (
-                      <CalendarAttachmentPanel
-                        key={`calendar:${attachment.name}`}
-                        accountId={thread.accountId}
-                        threadId={thread.id}
-                        messageId={m.id}
-                        attachment={attachment}
-                      />
-                    ))}
-                  </>
-                )}
+                  ))}
+
+                <Composer ref={composerRef} thread={thread} />
               </div>
-            </div>
-          ))}
 
-          <Composer ref={composerRef} thread={thread} />
-          </div>
-
-          <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.name ?? "Preview"} maxWidth={820}>
-            {preview && (preview.mime.startsWith("image/")
-              ? <img src={preview.url} alt={preview.name} style={{ maxWidth: "100%", borderRadius: 10, display: "block", margin: "0 auto" }} />
-              : <iframe src={preview.url} title={preview.name} style={{ width: "100%", height: "70vh", border: "none", borderRadius: 10 }} />)}
-          </Modal>
-        </motion.div>
-        </ReaderDisplayProvider>
-      </AnimatePresence>
+              <Modal
+                open={!!preview}
+                onClose={() => setPreview(null)}
+                title={preview?.name ?? "Preview"}
+                maxWidth={820}
+              >
+                {preview &&
+                  (preview.mime.startsWith("image/") ? (
+                    <img
+                      src={preview.url}
+                      alt={preview.name}
+                      style={{
+                        maxWidth: "100%",
+                        borderRadius: 10,
+                        display: "block",
+                        margin: "0 auto",
+                      }}
+                    />
+                  ) : (
+                    <iframe
+                      src={preview.url}
+                      title={preview.name}
+                      style={{ width: "100%", height: "70vh", border: "none", borderRadius: 10 }}
+                    />
+                  ))}
+              </Modal>
+            </motion.div>
+          </ReaderDisplayProvider>
+        </AnimatePresence>
       </div>
     </section>
   );
@@ -699,153 +1106,225 @@ export function Stage() {
 
 import { forwardRef, useImperativeHandle } from "react";
 
-const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thread: Thread }>(function Composer({ thread }, ref) {
-  const queueSend = useApp((s) => s.queueSend);
-  const accounts = useApp((s) => s.accounts);
-  const editorRef = useRef<RichTextHandle>(null);
-  const [mode, setMode] = useState<Mode | null>(null);
-  const [to, setTo] = useState("");
-  const [cc, setCc] = useState("");
-  const [bcc, setBcc] = useState("");
-  const [showCc, setShowCc] = useState(false);
-  const [files, setFiles] = useState<Attach[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thread: Thread }>(
+  function Composer({ thread }, ref) {
+    const queueSend = useApp((s) => s.queueSend);
+    const accounts = useApp((s) => s.accounts);
+    const editorRef = useRef<RichTextHandle>(null);
+    const [mode, setMode] = useState<Mode | null>(null);
+    const [to, setTo] = useState("");
+    const [cc, setCc] = useState("");
+    const [bcc, setBcc] = useState("");
+    const [showCc, setShowCc] = useState(false);
+    const [files, setFiles] = useState<Attach[]>([]);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
 
-  const last = thread.messages[thread.messages.length - 1];
+    const last = thread.messages[thread.messages.length - 1];
 
-  const open = (m: Mode, draft = false) => {
-    setError("");
-    setMode(m);
-    const from = last?.from.address ?? "";
-    const recips = (last?.to ?? []).map((p) => p.address);
-    const origCc = (last?.meta?.cc ?? []).map((p) => p.address);
-    setBcc("");
-    if (m === "reply") { setTo(from); setCc(""); setShowCc(false); }
-    else if (m === "replyAll") {
-      // Reply-all: original sender + other To recipients on the To line,
-      // original Cc carried into Cc — all minus yourself, de-duped.
-      try {
-        const recipients = replyRecipients({
-          self: accountAddress(accounts, thread.accountId),
-          sender: from,
-          to: recips,
-          cc: origCc,
-        });
-        setTo(recipients.to);
-        setCc(recipients.cc);
-        setShowCc(Boolean(recipients.cc));
-      } catch (cause) {
-        setMode(null);
-        setError(cause instanceof Error ? cause.message : "The message account is no longer connected.");
-        return;
-      }
-    } else { setTo(""); setCc(""); setShowCc(false); }
-    setTimeout(() => {
-      if (m === "forward") {
-        editorRef.current?.setHtml(`<p></p><p>---------- Forwarded message ----------</p><blockquote>${last?.bodyHtml ?? ""}</blockquote>`);
-      } else if (draft && thread.aiDraft) {
-        editorRef.current?.setHtml(`<p>${thread.aiDraft}</p>`);
+    const open = (m: Mode, draft = false) => {
+      setError("");
+      setMode(m);
+      const from = last?.from.address ?? "";
+      const recips = (last?.to ?? []).map((p) => p.address);
+      const origCc = (last?.meta?.cc ?? []).map((p) => p.address);
+      setBcc("");
+      if (m === "reply") {
+        setTo(from);
+        setCc("");
+        setShowCc(false);
+      } else if (m === "replyAll") {
+        // Reply-all: original sender + other To recipients on the To line,
+        // original Cc carried into Cc — all minus yourself, de-duped.
+        try {
+          const recipients = replyRecipients({
+            self: accountAddress(accounts, thread.accountId),
+            sender: from,
+            to: recips,
+            cc: origCc,
+          });
+          setTo(recipients.to);
+          setCc(recipients.cc);
+          setShowCc(Boolean(recipients.cc));
+        } catch (cause) {
+          setMode(null);
+          setError(
+            cause instanceof Error ? cause.message : "The message account is no longer connected.",
+          );
+          return;
+        }
       } else {
-        editorRef.current?.setHtml("");
+        setTo("");
+        setCc("");
+        setShowCc(false);
       }
-      editorRef.current?.focus();
-    }, 0);
-  };
+      setTimeout(() => {
+        if (m === "forward") {
+          editorRef.current?.setHtml(
+            `<p></p><p>---------- Forwarded message ----------</p><blockquote>${last?.bodyHtml ?? ""}</blockquote>`,
+          );
+        } else if (draft && thread.aiDraft) {
+          editorRef.current?.setHtml(`<p>${thread.aiDraft}</p>`);
+        } else {
+          editorRef.current?.setHtml("");
+        }
+        editorRef.current?.focus();
+      }, 0);
+    };
 
-  useImperativeHandle(ref, () => ({ open }));
+    useImperativeHandle(ref, () => ({ open }));
 
-  // React to a "Reply with AI draft" request from the command bar.
-  const aiReplyFor = useApp((s) => s.aiReplyFor);
-  const clearAiReply = useApp((s) => s.clearAiReply);
-  useEffect(() => {
-    if (aiReplyFor && aiReplyFor === thread.id) {
-      open("reply");
-      void regen();
-      clearAiReply();
+    // React to a "Reply with AI draft" request from the command bar.
+    const aiReplyFor = useApp((s) => s.aiReplyFor);
+    const clearAiReply = useApp((s) => s.clearAiReply);
+    useEffect(() => {
+      if (aiReplyFor && aiReplyFor === thread.id) {
+        open("reply");
+        void regen();
+        clearAiReply();
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [aiReplyFor, thread.id]);
+
+    // Open the composer in a specific mode when requested from the context menu.
+    const composeIntent = useApp((s) => s.composeIntent);
+    const clearComposeIntent = useApp((s) => s.clearComposeIntent);
+    useEffect(() => {
+      if (composeIntent && composeIntent.id === thread.id) {
+        open(composeIntent.mode);
+        clearComposeIntent();
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [composeIntent, thread.id]);
+
+    const subject =
+      mode === "forward"
+        ? thread.subject.startsWith("Fwd:")
+          ? thread.subject
+          : `Fwd: ${thread.subject}`
+        : thread.subject.startsWith("Re:")
+          ? thread.subject
+          : `Re: ${thread.subject}`;
+
+    async function regen() {
+      setBusy(true);
+      const text = `Subject: ${thread.subject}\n${thread.messages.map((m) => m.bodyHtml.replace(/<[^>]+>/g, " ")).join("\n")}`;
+      editorRef.current?.setHtml(await api.draftReply(thread.id, text));
+      setBusy(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiReplyFor, thread.id]);
 
-  // Open the composer in a specific mode when requested from the context menu.
-  const composeIntent = useApp((s) => s.composeIntent);
-  const clearComposeIntent = useApp((s) => s.clearComposeIntent);
-  useEffect(() => {
-    if (composeIntent && composeIntent.id === thread.id) {
-      open(composeIntent.mode);
-      clearComposeIntent();
+    async function send(atTs?: number) {
+      const html = editorRef.current?.getHtml() ?? "";
+      setError("");
+      try {
+        await queueSend({
+          to,
+          cc,
+          bcc,
+          subject,
+          body: html,
+          threadId: thread.id,
+          sendAt: atTs,
+          attachments: files.map(({ name, mime, dataB64 }) => ({ name, mime, dataB64 })),
+        });
+        // Collapse straight back to the reply bar — the global bottom toast ("Sending…
+        // / Scheduled · Undo") is the single confirmation, no inline card.
+        setMode(null);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "The message could not be queued.");
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [composeIntent, thread.id]);
 
-  const subject = mode === "forward"
-    ? (thread.subject.startsWith("Fwd:") ? thread.subject : `Fwd: ${thread.subject}`)
-    : (thread.subject.startsWith("Re:") ? thread.subject : `Re: ${thread.subject}`);
-
-  async function regen() {
-    setBusy(true);
-    const text = `Subject: ${thread.subject}\n${thread.messages.map((m) => m.bodyHtml.replace(/<[^>]+>/g, " ")).join("\n")}`;
-    editorRef.current?.setHtml(await api.draftReply(thread.id, text));
-    setBusy(false);
-  }
-
-  async function send(atTs?: number) {
-    const html = editorRef.current?.getHtml() ?? "";
-    setError("");
-    try {
-      await queueSend({ to, cc, bcc, subject, body: html, threadId: thread.id, sendAt: atTs, attachments: files.map(({ name, mime, dataB64 }) => ({ name, mime, dataB64 })) });
-      // Collapse straight back to the reply bar — the global bottom toast ("Sending…
-      // / Scheduled · Undo") is the single confirmation, no inline card.
-      setMode(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The message could not be queued.");
+    if (!mode) {
+      return (
+        <>
+          {error && (
+            <div className="stream-status err" role="alert">
+              {error}
+            </div>
+          )}
+          <div className="reply-bar">
+            <button className="reply-action" onClick={() => open("reply")}>
+              <Icon name="reply" size={15} weight="duotone" /> Reply
+            </button>
+            <button className="reply-action" onClick={() => open("replyAll")}>
+              <Icon name="replyAll" size={15} weight="duotone" /> Reply all
+            </button>
+            <button className="reply-action" onClick={() => open("forward")}>
+              <Icon name="forward" size={15} weight="duotone" /> Forward
+            </button>
+          </div>
+        </>
+      );
     }
-  }
 
-  if (!mode) {
+    const titleMap: Record<Mode, string> = {
+      reply: "Reply",
+      replyAll: "Reply all",
+      forward: "Forward",
+    };
+
     return (
-      <>
-        {error && <div className="stream-status err" role="alert">{error}</div>}
-        <div className="reply-bar">
-          <button className="reply-action" onClick={() => open("reply")}><Icon name="reply" size={15} weight="duotone" /> Reply</button>
-          <button className="reply-action" onClick={() => open("replyAll")}><Icon name="replyAll" size={15} weight="duotone" /> Reply all</button>
-          <button className="reply-action" onClick={() => open("forward")}><Icon name="forward" size={15} weight="duotone" /> Forward</button>
-        </div>
-      </>
-    );
-  }
-
-  const titleMap: Record<Mode, string> = { reply: "Reply", replyAll: "Reply all", forward: "Forward" };
-
-  return (
-    <div className="composer">
-      {error && <div className="stream-status err" role="alert">{error}</div>}
-      <div className="chead">
-        <Icon name={mode === "forward" ? "forward" : mode === "replyAll" ? "replyAll" : "reply"} size={13} /> {titleMap[mode]}
-        <span style={{ marginLeft: "auto" }} />
-        <IconButton icon="close" title="Discard" onClick={() => setMode(null)} />
-      </div>
-      <div className="recip-row">
-        <span className="recip-lbl">To</span>
-        <RecipientChips value={to} onChange={setTo} placeholder="Add people…" />
-        {!showCc && (
-          <button type="button" className="recip-toggle" onClick={() => setShowCc(true)} title="Add Cc / Bcc">Cc / Bcc</button>
+      <div className="composer">
+        {error && (
+          <div className="stream-status err" role="alert">
+            {error}
+          </div>
         )}
+        <div className="chead">
+          <Icon
+            name={mode === "forward" ? "forward" : mode === "replyAll" ? "replyAll" : "reply"}
+            size={13}
+          />{" "}
+          {titleMap[mode]}
+          <span style={{ marginLeft: "auto" }} />
+          <IconButton icon="close" title="Discard" onClick={() => setMode(null)} />
+        </div>
+        <div className="recip-row">
+          <span className="recip-lbl">To</span>
+          <RecipientChips value={to} onChange={setTo} placeholder="Add people…" />
+          {!showCc && (
+            <button
+              type="button"
+              className="recip-toggle"
+              onClick={() => setShowCc(true)}
+              title="Add Cc / Bcc"
+            >
+              Cc / Bcc
+            </button>
+          )}
+        </div>
+        {showCc && (
+          <div className="recip-row">
+            <span className="recip-lbl">Cc</span>
+            <RecipientChips value={cc} onChange={setCc} placeholder="Add Cc…" />
+          </div>
+        )}
+        {showCc && (
+          <div className="recip-row">
+            <span className="recip-lbl">Bcc</span>
+            <RecipientChips value={bcc} onChange={setBcc} placeholder="Add Bcc…" />
+          </div>
+        )}
+        <div className="recip-subject">{subject}</div>
+        <RichText ref={editorRef} placeholder="Write your message…" minHeight={120} />
+        <div className="cfoot">
+          <Button onClick={() => send()} icon="send">
+            Send
+          </Button>
+          <SendLater onSchedule={(ts) => send(ts)} />
+          <Attachments
+            files={files}
+            onAdd={(f) => setFiles((p) => [...p, ...f])}
+            onRemove={(n) => setFiles((p) => p.filter((x) => x.name !== n))}
+          />
+          <IconButton icon="ai" weight="duotone" title="Draft / rewrite with AI" onClick={regen} />
+          {busy && <span className="ghost-pill">Drafting…</span>}
+        </div>
       </div>
-      {showCc && <div className="recip-row"><span className="recip-lbl">Cc</span><RecipientChips value={cc} onChange={setCc} placeholder="Add Cc…" /></div>}
-      {showCc && <div className="recip-row"><span className="recip-lbl">Bcc</span><RecipientChips value={bcc} onChange={setBcc} placeholder="Add Bcc…" /></div>}
-      <div className="recip-subject">{subject}</div>
-      <RichText ref={editorRef} placeholder="Write your message…" minHeight={120} />
-      <div className="cfoot">
-        <Button onClick={() => send()} icon="send">Send</Button>
-        <SendLater onSchedule={(ts) => send(ts)} />
-        <Attachments files={files} onAdd={(f) => setFiles((p) => [...p, ...f])} onRemove={(n) => setFiles((p) => p.filter((x) => x.name !== n))} />
-        <IconButton icon="ai" weight="duotone" title="Draft / rewrite with AI" onClick={regen} />
-        {busy && <span className="ghost-pill">Drafting…</span>}
-      </div>
-    </div>
-  );
-});
+    );
+  },
+);
 
 function humanSize(bytes: number) {
   if (!bytes) return "";

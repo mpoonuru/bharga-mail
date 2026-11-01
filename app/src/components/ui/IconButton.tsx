@@ -14,7 +14,15 @@ interface Props {
 
 /** Square ghost button used across toolbars and composers, with the custom
  *  (glass) tooltip instead of the native one. */
-export function IconButton({ icon, title, onClick, label, size = 16, weight = "duotone", tipSide = "bottom" }: Props) {
+export function IconButton({
+  icon,
+  title,
+  onClick,
+  label,
+  size = 16,
+  weight = "duotone",
+  tipSide = "bottom",
+}: Props) {
   return (
     <Tooltip label={title} side={tipSide}>
       <button

@@ -7,7 +7,9 @@ import { account, threads } from "@/data/mock";
 import { THREAD_CROSSFADE } from "@/lib/motion";
 import { useApp } from "@/store";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 let host: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -87,7 +89,9 @@ describe("Stage motion", () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
     });
 
-    const toolbarReply = host.querySelector<HTMLButtonElement>('.stage-bar button[aria-label="Reply"]');
+    const toolbarReply = host.querySelector<HTMLButtonElement>(
+      '.stage-bar button[aria-label="Reply"]',
+    );
     if (!toolbarReply) throw new Error("Toolbar Reply button not found");
     act(() => toolbarReply.click());
     expect(host.querySelector(".composer")).not.toBeNull();

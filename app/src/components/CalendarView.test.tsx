@@ -19,6 +19,8 @@ describe("CalendarView", () => {
     });
 
     expect(rendered.host.textContent).not.toMatch(/calendar preview|example events/i);
-    expect([...rendered.host.querySelectorAll("button")].map((button) => button.textContent)).toContain("Month");
+    expect(
+      [...rendered.host.querySelectorAll("button")].map((button) => button.textContent),
+    ).toContain("Month");
   });
 });

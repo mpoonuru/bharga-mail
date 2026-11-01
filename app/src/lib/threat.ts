@@ -5,9 +5,9 @@
 // own might be a forwarded joke. Together they're a strong phishing signal — so
 // we escalate the trust shield to red "Likely phishing" only when they coincide.
 
-import type { Message, Thread } from "@/types";
-import { senderTrust } from "@/lib/senderTrust";
 import { scanLinks } from "@/lib/linkRisk";
+import { senderTrust } from "@/lib/senderTrust";
+import type { Message, Thread } from "@/types";
 
 export type ThreatLevel = "none" | "suspicious" | "phishing";
 export interface Threat {
@@ -16,7 +16,8 @@ export interface Threat {
 }
 
 const ANCHOR = /<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-const LURE = /\b(verify|suspend|unusual activity|confirm your|update your|password|account will be|sign\s?in|log\s?in|unauthori[sz]ed|act now)\b/i;
+const LURE =
+  /\b(verify|suspend|unusual activity|confirm your|update your|password|account will be|sign\s?in|log\s?in|unauthori[sz]ed|act now)\b/i;
 
 function anchors(html: string): { href: string; text: string }[] {
   const out: { href: string; text: string }[] = [];
@@ -40,10 +41,16 @@ export function messageThreat(m: Message): Threat {
 
   // Strongest: failed auth + any deceptive link, OR a dangerous link in a lure.
   if ((authFailed && risky.length > 0) || (dangerous && (authFailed || lure))) {
-    return { level: "phishing", reason: authFailed ? "Failed authentication with a deceptive link" : "Deceptive link in an urgent message" };
+    return {
+      level: "phishing",
+      reason: authFailed
+        ? "Failed authentication with a deceptive link"
+        : "Deceptive link in an urgent message",
+    };
   }
   if (dangerous) return { level: "suspicious", reason: "Contains a deceptive link" };
-  if (authFailed && lure) return { level: "suspicious", reason: "Failed authentication with a sign-in lure" };
+  if (authFailed && lure)
+    return { level: "suspicious", reason: "Failed authentication with a sign-in lure" };
   if (risky.length > 0) return { level: "suspicious", reason: "Contains a risky link" };
   return { level: "none", reason: "" };
 }

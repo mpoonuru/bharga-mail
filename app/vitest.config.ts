@@ -10,6 +10,8 @@ export default defineConfig({
   resolve: { alias: { "@": path.resolve(__dirname, "src") } },
   test: {
     environment: "jsdom",
+    // Set IS_REACT_ACT_ENVIRONMENT before any test file runs (React 19).
+    setupFiles: ["src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
   },
 });

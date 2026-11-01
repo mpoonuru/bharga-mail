@@ -1,5 +1,10 @@
 // Behavioral coverage for responsive settings navigation and keyboard destination selection.
-import { InfoIcon, PulseIcon, UserCircleIcon, type Icon as PhosphorIcon } from "@phosphor-icons/react";
+import {
+  InfoIcon,
+  type Icon as PhosphorIcon,
+  PulseIcon,
+  UserCircleIcon,
+} from "@phosphor-icons/react";
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -26,9 +31,15 @@ describe("SettingsShell", () => {
       return markup;
     };
 
-    expect(buttons.every((button) => button.querySelector("svg")?.getAttribute("width") === "15")).toBe(true);
-    expect(buttonFor("Accounts").querySelector("svg")?.innerHTML).toBe(expectedMarkup(UserCircleIcon));
-    expect(buttonFor("Diagnostics").querySelector("svg")?.innerHTML).toBe(expectedMarkup(PulseIcon));
+    expect(
+      buttons.every((button) => button.querySelector("svg")?.getAttribute("width") === "15"),
+    ).toBe(true);
+    expect(buttonFor("Accounts").querySelector("svg")?.innerHTML).toBe(
+      expectedMarkup(UserCircleIcon),
+    );
+    expect(buttonFor("Diagnostics").querySelector("svg")?.innerHTML).toBe(
+      expectedMarkup(PulseIcon),
+    );
     expect(buttonFor("About").querySelector("svg")?.innerHTML).toBe(expectedMarkup(InfoIcon));
 
     unmount();
@@ -62,16 +73,24 @@ describe("SettingsShell", () => {
     act(() => buttons[0].click());
     expect(onChange).toHaveBeenCalledWith("accounts");
 
-    act(() => buttons[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    act(() =>
+      buttons[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })),
+    );
     expect(onChange).toHaveBeenLastCalledWith("appearance");
 
-    act(() => buttons[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
+    act(() =>
+      buttons[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })),
+    );
     expect(onChange).toHaveBeenLastCalledWith("about");
 
-    act(() => buttons[0].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    act(() =>
+      buttons[0].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })),
+    );
     expect(onChange).toHaveBeenLastCalledWith("about");
 
-    act(() => buttons[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
+    act(() =>
+      buttons[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })),
+    );
     expect(onChange).toHaveBeenLastCalledWith("accounts");
 
     unmount();

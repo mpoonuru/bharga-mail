@@ -21,12 +21,18 @@ export function RecipientChips({
 }) {
   const [draft, setDraft] = useState("");
   const [active, setActive] = useState(0);
-  const chips = value.split(",").map((s) => s.trim()).filter(Boolean);
+  const chips = value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   const setChips = (next: string[]) => onChange(Array.from(new Set(next)).join(", "));
 
   const commit = (raw: string) => {
-    const addr = raw.trim().replace(/[,;]+$/, "").trim();
+    const addr = raw
+      .trim()
+      .replace(/[,;]+$/, "")
+      .trim();
     if (addr) setChips([...chips, addr]);
     setDraft("");
     setActive(0);
@@ -39,14 +45,20 @@ export function RecipientChips({
     const have = new Set(chips.map((c) => c.toLowerCase()));
     return suggestions
       .filter((c) => !have.has(c.address.toLowerCase()))
-      .filter((c) => c.address.toLowerCase().includes(q) || (c.name ?? "").toLowerCase().includes(q))
+      .filter(
+        (c) => c.address.toLowerCase().includes(q) || (c.name ?? "").toLowerCase().includes(q),
+      )
       .slice(0, 6);
   }, [draft, suggestions, chips]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (matches.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
-      setActive((i) => (e.key === "ArrowDown" ? (i + 1) % matches.length : (i - 1 + matches.length) % matches.length));
+      setActive((i) =>
+        e.key === "ArrowDown"
+          ? (i + 1) % matches.length
+          : (i - 1 + matches.length) % matches.length,
+      );
       return;
     }
     if (matches.length && (e.key === "Enter" || e.key === "Tab")) {
@@ -69,7 +81,13 @@ export function RecipientChips({
       {chips.map((c) => (
         <span key={c} className="recip-chip">
           {c}
-          <button type="button" aria-label={`Remove ${c}`} onClick={() => setChips(chips.filter((x) => x !== c))}>×</button>
+          <button
+            type="button"
+            aria-label={`Remove ${c}`}
+            onClick={() => setChips(chips.filter((x) => x !== c))}
+          >
+            ×
+          </button>
         </span>
       ))}
       <div className="chips-entry">
@@ -77,9 +95,16 @@ export function RecipientChips({
           className="chips-field"
           value={draft}
           placeholder={chips.length ? "" : placeholder}
-          onChange={(e) => { setDraft(e.target.value); setActive(0); }}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setActive(0);
+          }}
           onKeyDown={onKeyDown}
-          onBlur={() => setTimeout(() => { if (draft.trim()) commit(draft); }, 120)}
+          onBlur={() =>
+            setTimeout(() => {
+              if (draft.trim()) commit(draft);
+            }, 120)
+          }
         />
         {matches.length > 0 && (
           <ul className="recip-suggest" role="listbox">
@@ -89,7 +114,10 @@ export function RecipientChips({
                 role="option"
                 aria-selected={i === active}
                 className={i === active ? "active" : ""}
-                onMouseDown={(e) => { e.preventDefault(); commit(c.address); }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  commit(c.address);
+                }}
                 onMouseEnter={() => setActive(i)}
               >
                 {c.name && <span className="rs-name">{c.name}</span>}

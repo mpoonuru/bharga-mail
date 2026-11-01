@@ -1,0 +1,6 @@
+# rustfmt configuration for the Rust core.
+# Run "cargo fmt" (and "cargo fmt --check" in CI) to keep this consistent.
+edition = "2024"
+max_width = 100
+use_small_heuristics = "Max"
+reorder_imports = true

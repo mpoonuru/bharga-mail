@@ -33,7 +33,9 @@ describe("AiProviderManager", () => {
     act(() => second.click());
     expect(host.querySelectorAll('.provider-editor[aria-hidden="false"]')).toHaveLength(1);
     act(() => first.click());
-    expect(host.querySelector<HTMLInputElement>('[aria-label="Provider name"]')?.value).toBe("Work Claude");
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Provider name"]')?.value).toBe(
+      "Work Claude",
+    );
     unmount();
   });
 
@@ -53,13 +55,17 @@ describe("AiProviderManager", () => {
 
   it("keeps concurrent provider saves busy and messaged independently", async () => {
     const resolvers = new Map<string, () => void>();
-    const saveModel = vi.fn().mockImplementation((input: { id: string }) => new Promise<void>((resolve) => {
-      resolvers.set(input.id, resolve);
-    }));
+    const saveModel = vi.fn().mockImplementation(
+      (input: { id: string }) =>
+        new Promise<void>((resolve) => {
+          resolvers.set(input.id, resolve);
+        }),
+    );
     useApp.setState({ ai: structuredClone(aiProfile), saveModel });
     const { host, unmount } = renderTest(<AiProviderManager />);
-    const saveButtons = [...host.querySelectorAll<HTMLButtonElement>("button")]
-      .filter((button) => button.textContent?.includes("Save changes"));
+    const saveButtons = [...host.querySelectorAll<HTMLButtonElement>("button")].filter((button) =>
+      button.textContent?.includes("Save changes"),
+    );
 
     act(() => {
       saveButtons[0]?.click();
@@ -79,16 +85,21 @@ describe("AiProviderManager", () => {
   it("moves focus to Add provider after successful removal", async () => {
     const removeModel = vi.fn().mockImplementation(async (id: string) => {
       useApp.setState((state) => ({
-        ai: state.ai ? { ...state.ai, models: state.ai.models.filter((model) => model.id !== id) } : null,
+        ai: state.ai
+          ? { ...state.ai, models: state.ai.models.filter((model) => model.id !== id) }
+          : null,
       }));
     });
     useApp.setState({ ai: structuredClone(aiProfile), removeModel });
     const { host, unmount } = renderTest(<AiProviderManager />);
-    const remove = host.querySelector<HTMLButtonElement>(`[aria-label="Remove ${aiProfile.models[0].label}"]`);
+    const remove = host.querySelector<HTMLButtonElement>(
+      `[aria-label="Remove ${aiProfile.models[0].label}"]`,
+    );
     if (!remove) throw new Error("Provider removal control not found");
     act(() => remove.click());
-    const confirm = [...document.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent?.trim() === "Remove provider");
+    const confirm = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent?.trim() === "Remove provider",
+    );
     if (!confirm) throw new Error("Provider confirmation control not found");
     await act(async () => {
       confirm.click();
@@ -96,7 +107,9 @@ describe("AiProviderManager", () => {
     });
 
     expect(removeModel).toHaveBeenCalledWith(aiProfile.models[0].id);
-    expect(document.activeElement).toBe(host.querySelector<HTMLButtonElement>(".provider-manager-head .af-btn"));
+    expect(document.activeElement).toBe(
+      host.querySelector<HTMLButtonElement>(".provider-manager-head .af-btn"),
+    );
     await act(async () => new Promise<void>((resolve) => setTimeout(resolve, 180)));
     unmount();
   });

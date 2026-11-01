@@ -20,8 +20,9 @@ function renderDialog() {
 }
 
 function buttonContaining(text: string): HTMLButtonElement {
-  const button = [...document.querySelectorAll<HTMLButtonElement>("button")]
-    .find((candidate) => candidate.textContent?.includes(text));
+  const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find((candidate) =>
+    candidate.textContent?.includes(text),
+  );
   if (!button) throw new Error("Button not found: " + text);
   return button;
 }
@@ -61,8 +62,7 @@ describe("AccountConnectorDialog", () => {
     renderDialog();
 
     await act(async () => new Promise<void>((resolve) => setTimeout(resolve, 0)));
-    expect(document.querySelector('[role="alert"]')?.textContent)
-      .toContain("Update Bharga Mail");
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("Update Bharga Mail");
     expect(buttonContaining("Continue with Google").disabled).toBe(true);
     expect(buttonContaining("Continue with Microsoft").disabled).toBe(true);
   });
@@ -70,7 +70,12 @@ describe("AccountConnectorDialog", () => {
   it("connects once, refreshes state, focuses the account, and closes", async () => {
     vi.spyOn(api, "listMailProviderCapabilities").mockResolvedValue([
       { provider: "gmail", available: true, configured: true, reason: "ready" },
-      { provider: "microsoft", available: false, configured: false, reason: "build_not_configured" },
+      {
+        provider: "microsoft",
+        available: false,
+        configured: false,
+        reason: "build_not_configured",
+      },
       { provider: "imap", available: true, configured: true, reason: "ready" },
     ]);
     const connectGmail = vi.fn().mockResolvedValue("gmail:person@example.test");
@@ -96,14 +101,18 @@ describe("AccountConnectorDialog", () => {
     expect(load).toHaveBeenCalledTimes(1);
     expect(setAccount).toHaveBeenCalledWith("gmail:person@example.test");
     expect(useApp.getState().accountConnectorOpen).toBe(false);
-    expect(document.querySelector('[role="status"]')?.textContent)
-      .toContain("Account connected");
+    expect(document.querySelector('[role="status"]')?.textContent).toContain("Account connected");
   });
 
   it("shows safe structured provider failures", async () => {
     vi.spyOn(api, "listMailProviderCapabilities").mockResolvedValue([
       { provider: "gmail", available: true, configured: true, reason: "ready" },
-      { provider: "microsoft", available: false, configured: false, reason: "build_not_configured" },
+      {
+        provider: "microsoft",
+        available: false,
+        configured: false,
+        reason: "build_not_configured",
+      },
       { provider: "imap", available: true, configured: true, reason: "ready" },
     ]);
     useApp.setState({
@@ -118,14 +127,20 @@ describe("AccountConnectorDialog", () => {
     await act(async () => new Promise<void>((resolve) => setTimeout(resolve, 0)));
     await act(async () => buttonContaining("Continue with Google").click());
 
-    expect(document.querySelector('[role="alert"]')?.textContent)
-      .toContain("Your organization blocked this sign-in.");
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+      "Your organization blocked this sign-in.",
+    );
   });
 
   it("keeps and selects an account when only its first sync fails", async () => {
     vi.spyOn(api, "listMailProviderCapabilities").mockResolvedValue([
       { provider: "gmail", available: true, configured: true, reason: "ready" },
-      { provider: "microsoft", available: false, configured: false, reason: "build_not_configured" },
+      {
+        provider: "microsoft",
+        available: false,
+        configured: false,
+        reason: "build_not_configured",
+      },
       { provider: "imap", available: true, configured: true, reason: "ready" },
     ]);
     const load = vi.fn().mockResolvedValue(undefined);
@@ -148,8 +163,9 @@ describe("AccountConnectorDialog", () => {
     expect(load).toHaveBeenCalledTimes(1);
     expect(setAccount).toHaveBeenCalledWith("gmail:person@example.test");
     expect(useApp.getState().accountConnectorOpen).toBe(false);
-    expect(document.querySelector('[role="status"]')?.textContent)
-      .toContain("connected, but its first sync did not finish");
+    expect(document.querySelector('[role="status"]')?.textContent).toContain(
+      "connected, but its first sync did not finish",
+    );
   });
 
   it("restores focus to a connected fallback when the opener disappears", async () => {

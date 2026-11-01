@@ -1,8 +1,7 @@
 // Strict aggregation boundary for support exports: identifiers and content cannot cross it.
 import dayjs from "dayjs";
-
-import type { Account, AiModel, AiRole, CalendarSource, CalendarSyncHealth } from "@/types";
 import { FONTS, LOCALES } from "@/lib/prefs";
+import type { Account, AiModel, AiRole, CalendarSource, CalendarSyncHealth } from "@/types";
 
 export interface DiagnosticsInput {
   version: string;
@@ -68,7 +67,9 @@ function safeVersion(value: string): string {
 function countBy(values: string[]): Record<string, number> {
   const counts = new Map<string, number>();
   for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
-  return Object.fromEntries([...counts.entries()].sort(([left], [right]) => left.localeCompare(right)));
+  return Object.fromEntries(
+    [...counts.entries()].sort(([left], [right]) => left.localeCompare(right)),
+  );
 }
 
 function lastSuccessBucket(timestamp: number | null, now: number): string {
@@ -83,9 +84,19 @@ function lastSuccessBucket(timestamp: number | null, now: number): string {
 function calendarErrorCategory(value: string | null): string | null {
   if (!value) return null;
   const normalized = value.toLowerCase();
-  if (normalized.includes("auth") || normalized.includes("credential") || normalized.includes("permission")) return "authorization";
+  if (
+    normalized.includes("auth") ||
+    normalized.includes("credential") ||
+    normalized.includes("permission")
+  )
+    return "authorization";
   if (normalized.includes("rate")) return "rateLimited";
-  if (normalized.includes("network") || normalized.includes("server") || normalized.includes("timeout")) return "connectivity";
+  if (
+    normalized.includes("network") ||
+    normalized.includes("server") ||
+    normalized.includes("timeout")
+  )
+    return "connectivity";
   if (normalized.includes("storage")) return "storage";
   if (normalized.includes("conflict") || normalized.includes("precondition")) return "conflict";
   return "other";
@@ -94,27 +105,47 @@ function calendarErrorCategory(value: string | null): string | null {
 export function buildRedactedDiagnostics(input: DiagnosticsInput): DiagnosticsSnapshot {
   const providerCounts = new Map<string, number>();
   for (const account of input.accounts) {
-    const provider = ACCOUNT_PROVIDERS.includes(account.provider as typeof ACCOUNT_PROVIDERS[number])
+    const provider = ACCOUNT_PROVIDERS.includes(
+      account.provider as (typeof ACCOUNT_PROVIDERS)[number],
+    )
       ? account.provider
       : "unknown";
     providerCounts.set(provider, (providerCounts.get(provider) ?? 0) + 1);
   }
-  const byProvider = Object.fromEntries([...providerCounts.entries()].sort(([left], [right]) => left.localeCompare(right)));
-  const roleCoverage = Object.fromEntries(AI_ROLES.map((role) => [
-    role,
-    input.models.filter((model) => model.roles.includes(role)).length,
-  ])) as Record<AiRole, number>;
+  const byProvider = Object.fromEntries(
+    [...providerCounts.entries()].sort(([left], [right]) => left.localeCompare(right)),
+  );
+  const roleCoverage = Object.fromEntries(
+    AI_ROLES.map((role) => [
+      role,
+      input.models.filter((model) => model.roles.includes(role)).length,
+    ]),
+  ) as Record<AiRole, number>;
   const calendarSources = input.calendar?.sources ?? [];
   const calendarHealth = input.calendar?.health ?? [];
   const now = dayjs().unix();
-  const calendarProviders = calendarSources.map((source) => CALENDAR_PROVIDERS.has(source.provider) ? source.provider : "unknown");
-  const capabilities = [...new Set(calendarSources.flatMap((source) => source.capabilities).filter((capability) => CALENDAR_CAPABILITIES.has(capability)))].sort();
+  const calendarProviders = calendarSources.map((source) =>
+    CALENDAR_PROVIDERS.has(source.provider) ? source.provider : "unknown",
+  );
+  const capabilities = [
+    ...new Set(
+      calendarSources
+        .flatMap((source) => source.capabilities)
+        .filter((capability) => CALENDAR_CAPABILITIES.has(capability)),
+    ),
+  ].sort();
   const healthBySource = new Map(calendarHealth.map((health) => [health.sourceId, health]));
-  const lastSuccess = countBy(calendarSources.map((source) => lastSuccessBucket(source.lastSyncAt, now)));
-  const errorCategories = countBy(calendarSources.flatMap((source) => {
-    const category = calendarErrorCategory(source.syncError ?? healthBySource.get(source.id)?.errorCode ?? null);
-    return category ? [category] : [];
-  }));
+  const lastSuccess = countBy(
+    calendarSources.map((source) => lastSuccessBucket(source.lastSyncAt, now)),
+  );
+  const errorCategories = countBy(
+    calendarSources.flatMap((source) => {
+      const category = calendarErrorCategory(
+        source.syncError ?? healthBySource.get(source.id)?.errorCode ?? null,
+      );
+      return category ? [category] : [];
+    }),
+  );
 
   return {
     schemaVersion: 1,
@@ -142,12 +173,19 @@ export function buildRedactedDiagnostics(input: DiagnosticsInput): DiagnosticsSn
       byProvider: countBy(calendarProviders),
       capabilities,
       status: {
-        ready: calendarSources.filter((source) => source.authState === "ready" && !source.syncError).length,
-        reconnect: calendarSources.filter((source) => source.authState === "reauthorizationRequired").length,
-        error: calendarSources.filter((source) => source.authState === "error" || !!source.syncError).length,
+        ready: calendarSources.filter((source) => source.authState === "ready" && !source.syncError)
+          .length,
+        reconnect: calendarSources.filter(
+          (source) => source.authState === "reauthorizationRequired",
+        ).length,
+        error: calendarSources.filter(
+          (source) => source.authState === "error" || !!source.syncError,
+        ).length,
       },
       pending: safeCount(calendarHealth.reduce((total, health) => total + health.pendingCount, 0)),
-      conflicts: safeCount(calendarHealth.reduce((total, health) => total + health.conflictCount, 0)),
+      conflicts: safeCount(
+        calendarHealth.reduce((total, health) => total + health.conflictCount, 0),
+      ),
       lastSuccess,
       errorCategories,
     },

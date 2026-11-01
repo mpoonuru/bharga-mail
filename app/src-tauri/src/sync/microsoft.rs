@@ -7,7 +7,7 @@
 use serde_json::Value;
 
 use super::oauth::{self, OAuthConfig, OAuthPurpose, TokenSet};
-use super::{provider_config, tokens, SyncError};
+use super::{SyncError, provider_config, tokens};
 use crate::store::{Message, Party, Store, Thread};
 
 const GRAPH: &str = "https://graph.microsoft.com/v1.0";
@@ -16,9 +16,7 @@ fn config() -> OAuthConfig {
     OAuthConfig {
         auth_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".into(),
         token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token".into(),
-        client_id: provider_config::microsoft_client_id()
-            .unwrap_or_default()
-            .to_owned(),
+        client_id: provider_config::microsoft_client_id().unwrap_or_default().to_owned(),
         scopes: vec![
             "offline_access".into(),
             "User.Read".into(),
@@ -34,9 +32,7 @@ fn config() -> OAuthConfig {
 pub async fn connect(store: &Store) -> Result<String, SyncError> {
     let cfg = config();
     if cfg.client_id.is_empty() {
-        return Err(SyncError::NotConfigured(
-            "Microsoft sign-in is not configured in this build",
-        ));
+        return Err(SyncError::NotConfigured("Microsoft sign-in is not configured in this build"));
     }
     let tok = oauth::run_pkce_flow(&cfg).await.map_err(SyncError::from)?;
     let email = fetch_email(&tok.access_token).await.unwrap_or_else(|| "me".into());
@@ -50,9 +46,7 @@ pub async fn connect(store: &Store) -> Result<String, SyncError> {
 
     initial_sync(store, &account_id)
         .await
-        .map_err(|_| SyncError::InitialSyncFailed {
-            account_id: account_id.clone(),
-        })?;
+        .map_err(|_| SyncError::InitialSyncFailed { account_id: account_id.clone() })?;
     Ok(account_id)
 }
 
@@ -65,15 +59,17 @@ async fn valid_token(account_id: &str) -> Result<String, SyncError> {
 }
 
 async fn refresh_access(account_id: &str, refresh: &str) -> Result<String, SyncError> {
-    let new: TokenSet = oauth::refresh(&config(), refresh)
-        .await
-        .map_err(super::refresh_error)?;
+    let new: TokenSet = oauth::refresh(&config(), refresh).await.map_err(super::refresh_error)?;
     tokens::save(account_id, &new.access_token, new.refresh_token.as_deref())
         .map_err(SyncError::Transient)?;
     Ok(new.access_token)
 }
 
-async fn authenticated_json(account_id: &str, url: &str, operation: &str) -> Result<Value, SyncError> {
+async fn authenticated_json(
+    account_id: &str,
+    url: &str,
+    operation: &str,
+) -> Result<Value, SyncError> {
     let client = reqwest::Client::new();
     let mut access = valid_token(account_id).await?;
     for attempt in 0..2 {
@@ -133,11 +129,17 @@ pub async fn incremental(store: &Store, account_id: &str) -> Result<(), SyncErro
         }
 
         if let Some(delta) = v["@odata.deltaLink"].as_str() {
-            super::store_write(store.set_sync_token(account_id, delta), "persist Microsoft sync cursor")?; // caught up
+            super::store_write(
+                store.set_sync_token(account_id, delta),
+                "persist Microsoft sync cursor",
+            )?; // caught up
             break;
         } else if let Some(next) = v["@odata.nextLink"].as_str() {
             url = next.to_string();
-            super::store_write(store.set_sync_token(account_id, next), "persist Microsoft sync cursor")?; // resume here next run
+            super::store_write(
+                store.set_sync_token(account_id, next),
+                "persist Microsoft sync cursor",
+            )?; // resume here next run
         } else {
             break;
         }
@@ -146,16 +148,26 @@ pub async fn incremental(store: &Store, account_id: &str) -> Result<(), SyncErro
 }
 
 /// Send via Graph `sendMail` (with optional file attachments).
-pub async fn send(account_id: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[crate::store::Attachment]) -> Result<(), SyncError> {
+pub async fn send(
+    account_id: &str,
+    to: &str,
+    cc: &str,
+    bcc: &str,
+    subject: &str,
+    body_html: &str,
+    attachments: &[crate::store::Attachment],
+) -> Result<(), SyncError> {
     let access = valid_token(account_id).await?;
     let atts: Vec<Value> = attachments
         .iter()
-        .map(|a| serde_json::json!({
-            "@odata.type": "#microsoft.graph.fileAttachment",
-            "name": a.name,
-            "contentType": a.mime,
-            "contentBytes": a.data_b64,
-        }))
+        .map(|a| {
+            serde_json::json!({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": a.name,
+                "contentType": a.mime,
+                "contentBytes": a.data_b64,
+            })
+        })
         .collect();
     // Graph wants one recipient object per address; split comma-separated lists.
     let recipients = |list: &str| -> Vec<Value> {
@@ -191,7 +203,11 @@ pub async fn send(account_id: &str, to: &str, cc: &str, bcc: &str, subject: &str
 }
 
 /// Mark every message in a conversation read/unread.
-pub async fn set_read(account_id: &str, conversation_id: &str, unread: bool) -> Result<(), SyncError> {
+pub async fn set_read(
+    account_id: &str,
+    conversation_id: &str,
+    unread: bool,
+) -> Result<(), SyncError> {
     let access = valid_token(account_id).await?;
     let client = reqwest::Client::new();
     for id in message_ids(&access, conversation_id).await? {
@@ -207,7 +223,11 @@ pub async fn set_read(account_id: &str, conversation_id: &str, unread: bool) -> 
 
 /// Move a conversation to a well-known folder ("deleteditems" for trash,
 /// "archive" for archive).
-pub async fn move_conversation(account_id: &str, conversation_id: &str, destination: &str) -> Result<(), SyncError> {
+pub async fn move_conversation(
+    account_id: &str,
+    conversation_id: &str,
+    destination: &str,
+) -> Result<(), SyncError> {
     let access = valid_token(account_id).await?;
     let client = reqwest::Client::new();
     for id in message_ids(&access, conversation_id).await? {
@@ -223,7 +243,9 @@ pub async fn move_conversation(account_id: &str, conversation_id: &str, destinat
 
 /// Resolve the Graph message ids that belong to a conversation.
 async fn message_ids(access: &str, conversation_id: &str) -> Result<Vec<String>, SyncError> {
-    let url = format!("{GRAPH}/me/messages?$filter=conversationId eq '{conversation_id}'&$select=id&$top=50");
+    let url = format!(
+        "{GRAPH}/me/messages?$filter=conversationId eq '{conversation_id}'&$select=id&$top=50"
+    );
     let v: Value = reqwest::Client::new()
         .get(url)
         .bearer_auth(access)
@@ -256,7 +278,8 @@ async fn fetch_email(access: &str) -> Option<String> {
 fn parse_message(account_id: &str, msg: &Value) -> Option<Thread> {
     let thread_id = msg["conversationId"].as_str().or_else(|| msg["id"].as_str())?.to_string();
     let msg_id = msg["id"].as_str()?.to_string();
-    let subject = msg["subject"].as_str().filter(|s| !s.is_empty()).unwrap_or("(no subject)").to_string();
+    let subject =
+        msg["subject"].as_str().filter(|s| !s.is_empty()).unwrap_or("(no subject)").to_string();
     let from_name = msg["from"]["emailAddress"]["name"].as_str().unwrap_or("").to_string();
     let from_addr = msg["from"]["emailAddress"]["address"].as_str().unwrap_or("").to_string();
     let preview = msg["bodyPreview"].as_str().unwrap_or("").to_string();
@@ -272,7 +295,11 @@ fn parse_message(account_id: &str, msg: &Value) -> Option<Thread> {
         account_id: account_id.to_string(),
         subject,
         preview,
-        participants: vec![if from_name.is_empty() { from_addr.clone() } else { from_name.clone() }],
+        participants: vec![if from_name.is_empty() {
+            from_addr.clone()
+        } else {
+            from_name.clone()
+        }],
         last_time: when.clone(),
         unread,
         labels: vec![],

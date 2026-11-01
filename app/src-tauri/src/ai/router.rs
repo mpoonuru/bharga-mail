@@ -64,11 +64,7 @@ mod tests {
     #[test]
     fn unavailable_assignment_does_not_fall_back_to_another_cloud_provider() {
         let mut p = default_profile();
-        let assigned = p
-            .models
-            .iter_mut()
-            .find(|model| model.id == "claude")
-            .unwrap();
+        let assigned = p.models.iter_mut().find(|model| model.id == "claude").unwrap();
         assigned.ready = false;
         let mut fallback = assigned.clone();
         fallback.id = "other-cloud".into();

@@ -6,7 +6,7 @@
 //! (`/api/chat`) for free, offline, private inference.
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{AiError, AiProvider, Capabilities, ChatMessage};
 
@@ -15,10 +15,7 @@ fn http() -> reqwest::Client {
 }
 
 fn to_openai_messages(messages: &[ChatMessage]) -> Vec<Value> {
-    messages
-        .iter()
-        .map(|m| json!({ "role": m.role, "content": m.content }))
-        .collect()
+    messages.iter().map(|m| json!({ "role": m.role, "content": m.content })).collect()
 }
 
 // ---------- OpenAI-compatible (OpenAI, OpenRouter, Groq, vLLM, LM Studio, …) ----------
@@ -161,7 +158,12 @@ impl AiProvider for LocalProvider {
         // Ollama chat API. (LM Studio exposes an OpenAI-compatible endpoint instead.)
         let url = format!("{}/api/chat", self.base_url.trim_end_matches('/'));
         let body = json!({ "model": self.model, "messages": to_openai_messages(messages), "stream": false });
-        let resp = http().post(&url).json(&body).send().await.map_err(|e| AiError::Request(e.to_string()))?;
+        let resp = http()
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AiError::Request(e.to_string()))?;
         let v: Value = resp.json().await.map_err(|e| AiError::Request(e.to_string()))?;
         v["message"]["content"]
             .as_str()
@@ -172,12 +174,21 @@ impl AiProvider for LocalProvider {
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, AiError> {
         let url = format!("{}/api/embed", self.base_url.trim_end_matches('/'));
         let body = json!({ "model": self.model, "input": texts });
-        let resp = http().post(&url).json(&body).send().await.map_err(|e| AiError::Request(e.to_string()))?;
+        let resp = http()
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AiError::Request(e.to_string()))?;
         let v: Value = resp.json().await.map_err(|e| AiError::Request(e.to_string()))?;
-        let arr = v["embeddings"].as_array().ok_or_else(|| AiError::Request("no embeddings".into()))?;
+        let arr =
+            v["embeddings"].as_array().ok_or_else(|| AiError::Request("no embeddings".into()))?;
         Ok(arr
             .iter()
-            .filter_map(|e| e.as_array().map(|a| a.iter().filter_map(|x| x.as_f64().map(|f| f as f32)).collect()))
+            .filter_map(|e| {
+                e.as_array()
+                    .map(|a| a.iter().filter_map(|x| x.as_f64().map(|f| f as f32)).collect())
+            })
             .collect())
     }
 }

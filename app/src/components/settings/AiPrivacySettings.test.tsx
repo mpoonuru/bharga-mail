@@ -25,16 +25,25 @@ describe("AiPrivacySettings", () => {
     await act(async () => local.click());
 
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("Storage unavailable");
-    expect(host.querySelector('[role="radio"][aria-label="Hybrid"]')?.getAttribute("aria-checked")).toBe("true");
-    expect([...host.querySelectorAll("button")].some((button) => button.textContent?.includes(["Save", "engine"].join(" ")))).toBe(false);
+    expect(
+      host.querySelector('[role="radio"][aria-label="Hybrid"]')?.getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      [...host.querySelectorAll("button")].some((button) =>
+        button.textContent?.includes(["Save", "engine"].join(" ")),
+      ),
+    ).toBe(false);
     unmount();
   });
 
   it("retains provider updates when privacy persistence fails later", async () => {
     let rejectPersistence: (reason: Error) => void = () => undefined;
-    vi.spyOn(api, "setAiPrivacy").mockImplementation(() => new Promise<void>((_resolve, reject) => {
-      rejectPersistence = reject;
-    }));
+    vi.spyOn(api, "setAiPrivacy").mockImplementation(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectPersistence = reject;
+        }),
+    );
     useApp.setState({ ai: structuredClone(aiProfile) });
 
     const saving = useApp.getState().savePrivacy("local");
@@ -48,9 +57,12 @@ describe("AiPrivacySettings", () => {
 
   it("retains provider updates when privacy persistence succeeds later", async () => {
     let resolvePersistence: () => void = () => undefined;
-    vi.spyOn(api, "setAiPrivacy").mockImplementation(() => new Promise<void>((resolve) => {
-      resolvePersistence = resolve;
-    }));
+    vi.spyOn(api, "setAiPrivacy").mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePersistence = resolve;
+        }),
+    );
     useApp.setState({ ai: structuredClone(aiProfile) });
 
     const saving = useApp.getState().savePrivacy("local");

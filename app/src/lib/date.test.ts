@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
 import dayjs from "dayjs";
-import { shortTime, fullTime } from "@/lib/date";
+import { describe, expect, it } from "vitest";
+import { fullTime, shortTime } from "@/lib/date";
 
 describe("date formatting", () => {
   it("shows HH:mm for today (ISO)", () => {

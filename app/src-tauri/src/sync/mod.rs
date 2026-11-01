@@ -60,9 +60,7 @@ impl From<oauth::OAuthError> for SyncError {
     fn from(error: oauth::OAuthError) -> Self {
         match error {
             oauth::OAuthError::Cancelled => Self::Cancelled,
-            oauth::OAuthError::StateMismatch | oauth::OAuthError::NoCode => {
-                Self::RedirectMismatch
-            }
+            oauth::OAuthError::StateMismatch | oauth::OAuthError::NoCode => Self::RedirectMismatch,
             oauth::OAuthError::Timeout => Self::AuthorizationTimeout,
             oauth::OAuthError::Browser(_)
             | oauth::OAuthError::Loopback(_)
@@ -130,23 +128,37 @@ impl Default for SyncEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::{http_status_error, refresh_error, store_write, SyncError};
+    use super::{SyncError, http_status_error, refresh_error, store_write};
 
     #[test]
     fn authentication_http_statuses_are_not_reported_as_transient() {
-        assert!(matches!(http_status_error(reqwest::StatusCode::UNAUTHORIZED, "sync"), SyncError::AuthRequired));
-        assert!(matches!(http_status_error(reqwest::StatusCode::FORBIDDEN, "sync"), SyncError::AuthRequired));
-        assert!(matches!(http_status_error(reqwest::StatusCode::BAD_GATEWAY, "sync"), SyncError::Transient(_)));
+        assert!(matches!(
+            http_status_error(reqwest::StatusCode::UNAUTHORIZED, "sync"),
+            SyncError::AuthRequired
+        ));
+        assert!(matches!(
+            http_status_error(reqwest::StatusCode::FORBIDDEN, "sync"),
+            SyncError::AuthRequired
+        ));
+        assert!(matches!(
+            http_status_error(reqwest::StatusCode::BAD_GATEWAY, "sync"),
+            SyncError::Transient(_)
+        ));
     }
 
     #[test]
     fn rejected_refresh_requires_reauthentication() {
-        assert!(matches!(refresh_error("token exchange failed: HTTP 400 Bad Request"), SyncError::AuthRequired));
+        assert!(matches!(
+            refresh_error("token exchange failed: HTTP 400 Bad Request"),
+            SyncError::AuthRequired
+        ));
     }
 
     #[test]
     fn failed_local_persistence_fails_the_sync() {
         let result = store_write::<()>(Err(rusqlite::Error::InvalidQuery), "persist message");
-        assert!(matches!(result, Err(SyncError::Transient(message)) if message.contains("persist message")));
+        assert!(
+            matches!(result, Err(SyncError::Transient(message)) if message.contains("persist message"))
+        );
     }
 }

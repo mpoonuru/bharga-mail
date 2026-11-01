@@ -5,8 +5,8 @@
 //! server to catch the `?code=` redirect → exchange code+verifier for tokens.
 //! Tokens are encrypted in the local store under a Keychain-held master key.
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use rand::Rng;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use rand::RngExt;
 use sha2::{Digest, Sha256};
 use std::time::{Duration, Instant};
 
@@ -62,7 +62,7 @@ pub struct TokenSet {
 
 fn pkce_pair() -> (String, String) {
     let verifier: String = {
-        let bytes: [u8; 32] = rand::thread_rng().gen();
+        let bytes: [u8; 32] = rand::rng().random();
         URL_SAFE_NO_PAD.encode(bytes)
     };
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
@@ -72,7 +72,8 @@ fn pkce_pair() -> (String, String) {
 /// Run the interactive auth flow and return tokens.
 pub async fn run_pkce_flow(cfg: &OAuthConfig) -> Result<TokenSet, OAuthError> {
     // 1. bind a loopback port first so we know the redirect URI.
-    let server = tiny_http::Server::http("127.0.0.1:0").map_err(|e| OAuthError::Loopback(e.to_string()))?;
+    let server =
+        tiny_http::Server::http("127.0.0.1:0").map_err(|e| OAuthError::Loopback(e.to_string()))?;
     let port = match server.server_addr() {
         tiny_http::ListenAddr::IP(addr) => addr.port(),
         _ => return Err(OAuthError::Loopback("non-ip listen addr".into())),
@@ -80,7 +81,7 @@ pub async fn run_pkce_flow(cfg: &OAuthConfig) -> Result<TokenSet, OAuthError> {
     let redirect_uri = format!("http://127.0.0.1:{port}");
 
     let (verifier, challenge) = pkce_pair();
-    let state: String = URL_SAFE_NO_PAD.encode(rand::thread_rng().gen::<[u8; 16]>());
+    let state: String = URL_SAFE_NO_PAD.encode(rand::rng().random::<[u8; 16]>());
 
     // 2. build the consent URL and open the browser.
     let scope = cfg.scopes.join(" ");
@@ -152,12 +153,9 @@ fn capture_code(server: &tiny_http::Server, expected_state: &str) -> Result<Stri
         if now >= deadline {
             return Err(OAuthError::Timeout);
         }
-        let wait = deadline
-            .saturating_duration_since(now)
-            .min(Duration::from_secs(1));
-        let Some(request) = server
-            .recv_timeout(wait)
-            .map_err(|error| OAuthError::Loopback(error.to_string()))?
+        let wait = deadline.saturating_duration_since(now).min(Duration::from_secs(1));
+        let Some(request) =
+            server.recv_timeout(wait).map_err(|error| OAuthError::Loopback(error.to_string()))?
         else {
             continue;
         };
@@ -184,9 +182,15 @@ fn parse_callback(url: &str, expected_state: &str) -> Result<CallbackOutcome, OA
     for pair in q.split('&') {
         let mut it = pair.splitn(2, '=');
         match (it.next(), it.next()) {
-            (Some("code"), Some(v)) => code = Some(urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default()),
-            (Some("state"), Some(v)) => state = Some(urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default()),
-            (Some("error"), Some(v)) => error = Some(urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default()),
+            (Some("code"), Some(v)) => {
+                code = Some(urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default())
+            }
+            (Some("state"), Some(v)) => {
+                state = Some(urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default())
+            }
+            (Some("error"), Some(v)) => {
+                error = Some(urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default())
+            }
             _ => {}
         }
     }
@@ -207,7 +211,7 @@ fn parse_callback(url: &str, expected_state: &str) -> Result<CallbackOutcome, OA
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_callback, CallbackOutcome, OAuthError};
+    use super::{CallbackOutcome, OAuthError, parse_callback};
 
     #[test]
     fn callback_denial_is_cancelled() {
@@ -227,9 +231,6 @@ mod tests {
 
     #[test]
     fn callback_without_authorization_fields_is_ignored() {
-        assert!(matches!(
-            parse_callback("/favicon.ico", "expected"),
-            Ok(CallbackOutcome::Ignore)
-        ));
+        assert!(matches!(parse_callback("/favicon.ico", "expected"), Ok(CallbackOutcome::Ignore)));
     }
 }

@@ -1,8 +1,5 @@
 // Normalizes native provider failures without exposing raw OAuth or transport data.
-import type {
-  MailConnectionError,
-  MailConnectionErrorCode,
-} from "@/types";
+import type { MailConnectionError, MailConnectionErrorCode } from "@/types";
 
 const ERROR_CODES: ReadonlySet<MailConnectionErrorCode> = new Set([
   "not_configured",
@@ -27,18 +24,19 @@ export function toMailConnectionError(error: unknown): MailConnectionError {
   if (!error || typeof error !== "object") return FALLBACK;
   const candidate = error as Partial<MailConnectionError>;
   if (
-    typeof candidate.code !== "string"
-    || !ERROR_CODES.has(candidate.code as MailConnectionErrorCode)
-    || typeof candidate.message !== "string"
-    || typeof candidate.retryable !== "boolean"
+    typeof candidate.code !== "string" ||
+    !ERROR_CODES.has(candidate.code as MailConnectionErrorCode) ||
+    typeof candidate.message !== "string" ||
+    typeof candidate.retryable !== "boolean"
   ) {
     return FALLBACK;
   }
-  const accountId = candidate.code === "initial_sync_failed"
-    && typeof candidate.accountId === "string"
-    && candidate.accountId.trim().length > 0
-    ? candidate.accountId
-    : undefined;
+  const accountId =
+    candidate.code === "initial_sync_failed" &&
+    typeof candidate.accountId === "string" &&
+    candidate.accountId.trim().length > 0
+      ? candidate.accountId
+      : undefined;
   return {
     code: candidate.code as MailConnectionErrorCode,
     message: candidate.message,

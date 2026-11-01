@@ -4,8 +4,8 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InvitationCard } from "@/calendar/InvitationCard";
-import type { InvitationInspection } from "@/types";
 import { renderTest } from "@/test/render";
+import type { InvitationInspection } from "@/types";
 
 let cleanup: (() => void) | undefined;
 afterEach(() => cleanup?.());
@@ -48,23 +48,35 @@ const inspection: InvitationInspection = {
 describe("InvitationCard", () => {
   it("shows provenance, normalized time, and all RSVP actions", () => {
     const onRespond = vi.fn();
-    const rendered = renderTest(<InvitationCard inspection={inspection} timezone="Europe/Berlin" onRespond={onRespond} />);
+    const rendered = renderTest(
+      <InvitationCard inspection={inspection} timezone="Europe/Berlin" onRespond={onRespond} />,
+    );
     cleanup = rendered.unmount;
 
     expect(document.body.textContent).toContain("Planning review");
     expect(document.body.textContent).toContain("Marco");
     expect(document.body.textContent).toContain("Europe/Berlin");
     expect(document.body.textContent).toContain("Email calendar attachment");
-    const accept = [...document.querySelectorAll("button")].find((button) => button.textContent === "Accept");
+    const accept = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent === "Accept",
+    );
     act(() => accept?.click());
     expect(onRespond).toHaveBeenCalledWith("accepted");
   });
 
   it("does not offer RSVP actions for a stale invitation", () => {
-    const rendered = renderTest(<InvitationCard inspection={{ ...inspection, state: "stale" }} timezone="UTC" onRespond={() => {}} />);
+    const rendered = renderTest(
+      <InvitationCard
+        inspection={{ ...inspection, state: "stale" }}
+        timezone="UTC"
+        onRespond={() => {}}
+      />,
+    );
     cleanup = rendered.unmount;
     expect(document.body.textContent).toMatch(/newer version/i);
-    expect([...document.querySelectorAll("button")].some((button) => button.textContent === "Accept")).toBe(false);
+    expect(
+      [...document.querySelectorAll("button")].some((button) => button.textContent === "Accept"),
+    ).toBe(false);
   });
 
   it("shows the calendar command message and leaves RSVP actions available for retry", async () => {
@@ -73,15 +85,21 @@ describe("InvitationCard", () => {
       message: "This invitation was sent to a different email address.",
       retryable: false,
     });
-    const rendered = renderTest(<InvitationCard inspection={inspection} timezone="Europe/Berlin" onRespond={onRespond} />);
+    const rendered = renderTest(
+      <InvitationCard inspection={inspection} timezone="Europe/Berlin" onRespond={onRespond} />,
+    );
     cleanup = rendered.unmount;
 
-    const accept = [...document.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent === "Accept")!;
-    await act(async () => { accept.click(); });
+    const accept = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "Accept",
+    )!;
+    await act(async () => {
+      accept.click();
+    });
 
-    expect(document.querySelector('[role="alert"]')?.textContent)
-      .toBe("This invitation was sent to a different email address.");
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(
+      "This invitation was sent to a different email address.",
+    );
     expect(accept.disabled).toBe(false);
   });
 });

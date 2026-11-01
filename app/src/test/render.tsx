@@ -2,7 +2,9 @@
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 export function renderTest(node: ReactNode) {
   const host = document.createElement("div");
@@ -12,10 +14,11 @@ export function renderTest(node: ReactNode) {
   return {
     host,
     rerender: (next: ReactNode) => act(() => root.render(next)),
-    unmount: () => act(() => {
-      root.unmount();
-      host.remove();
-    }),
+    unmount: () =>
+      act(() => {
+        root.unmount();
+        host.remove();
+      }),
   };
 }
 

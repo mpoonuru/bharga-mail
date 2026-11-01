@@ -16,14 +16,23 @@ export function AboutSettings({ version, runtime }: AboutSettingsProps) {
       </div>
       <div className="settings-group">
         <div className="settings-row">
-          <div><b>Bharga Mail</b><p>Your mail, your model, your machine.</p></div>
+          <div>
+            <b>Bharga Mail</b>
+            <p>Your mail, your model, your machine.</p>
+          </div>
           <span className="about-version">Version {version}</span>
         </div>
         <div className="settings-row">
-          <div><b>Created by</b><p>Arjun P</p></div>
+          <div>
+            <b>Created by</b>
+            <p>Arjun P</p>
+          </div>
         </div>
         <div className="settings-row">
-          <div><b>Maintained with</b><p>Bharga Mail contributors</p></div>
+          <div>
+            <b>Maintained with</b>
+            <p>Bharga Mail contributors</p>
+          </div>
         </div>
       </div>
     </div>

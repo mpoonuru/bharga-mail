@@ -14,7 +14,13 @@ interface AccountRemovalDialogProps {
   fallbackFocus?: HTMLElement | null;
 }
 
-export function AccountRemovalDialog({ account, onClose, onRemoved, returnFocus, fallbackFocus }: AccountRemovalDialogProps) {
+export function AccountRemovalDialog({
+  account,
+  onClose,
+  onRemoved,
+  returnFocus,
+  fallbackFocus,
+}: AccountRemovalDialogProps) {
   const removeAccount = useApp((state) => state.removeAccount);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -40,19 +46,37 @@ export function AccountRemovalDialog({ account, onClose, onRemoved, returnFocus,
   return (
     <Modal
       open
-      onClose={() => { if (!busy) onClose(); }}
+      onClose={() => {
+        if (!busy) onClose();
+      }}
       title="Remove mail account"
       maxWidth={520}
       returnFocus={returnFocus}
       fallbackFocus={fallbackFocus}
     >
       <div className="remove-account-dialog">
-        <p>Remove <b>{account.displayName?.trim() || account.email}</b> from Bharga Mail?</p>
-        <p className="sub">Locally synced mail and saved credentials will be removed from this device. Mail on the server remains unchanged.</p>
-        {error && <div className="settings-alert error" role="alert">{error}</div>}
+        <p>
+          Remove <b>{account.displayName?.trim() || account.email}</b> from Bharga Mail?
+        </p>
+        <p className="sub">
+          Locally synced mail and saved credentials will be removed from this device. Mail on the
+          server remains unchanged.
+        </p>
+        {error && (
+          <div className="settings-alert error" role="alert">
+            {error}
+          </div>
+        )}
         <div className="dialog-actions">
-          <button type="button" className="af-btn ghost" disabled={busy} onClick={onClose}>Cancel</button>
-          <button type="button" className="af-btn danger" disabled={busy} onClick={() => void remove()}>
+          <button type="button" className="af-btn ghost" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="af-btn danger"
+            disabled={busy}
+            onClick={() => void remove()}
+          >
             <Icon name="trash" size={14} /> {busy ? "Removing…" : "Remove account"}
           </button>
         </div>

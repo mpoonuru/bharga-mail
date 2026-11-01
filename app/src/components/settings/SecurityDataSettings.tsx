@@ -28,16 +28,26 @@ export function SecurityDataSettings() {
   return (
     <div className="settings-section">
       <h2>Security and data</h2>
-      <p className="sub">Understand what is protected, what remains local, and where current boundaries are.</p>
+      <p className="sub">
+        Understand what is protected, what remains local, and where current boundaries are.
+      </p>
       <div className="settings-group security-facts">
         {SECURITY_FACTS.map((fact) => (
           <div className="settings-row" key={fact.title}>
-            <span className="security-fact-icon"><Icon name={fact.icon} size={17} /></span>
-            <div><b>{fact.title}</b><p>{fact.text}</p></div>
+            <span className="security-fact-icon">
+              <Icon name={fact.icon} size={17} />
+            </span>
+            <div>
+              <b>{fact.title}</b>
+              <p>{fact.text}</p>
+            </div>
           </div>
         ))}
       </div>
-      <div className="settings-callout">Removing an account deletes its locally synced mail and encrypted credentials from this device; it does not delete server mail.</div>
+      <div className="settings-callout">
+        Removing an account deletes its locally synced mail and encrypted credentials from this
+        device; it does not delete server mail.
+      </div>
     </div>
   );
 }

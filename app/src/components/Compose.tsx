@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { motion } from "motion/react";
-import { useApp } from "@/store";
-import { api } from "@/lib/bridge";
-import { IconButton } from "@/components/ui/IconButton";
+import { type DragEvent as ReactDragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
+import { type Attach, Attachments, filesToAttachments } from "@/components/ui/Attachments";
 import { Button } from "@/components/ui/Button";
+import { IconButton } from "@/components/ui/IconButton";
+import { type Contact, RecipientChips } from "@/components/ui/RecipientChips";
 import { RichText, type RichTextHandle } from "@/components/ui/RichText";
-import { Attachments, filesToAttachments, type Attach } from "@/components/ui/Attachments";
-import { SendLater } from "@/components/ui/SendLater";
-import { RecipientChips, type Contact } from "@/components/ui/RecipientChips";
 import { Select } from "@/components/ui/Select";
+import { SendLater } from "@/components/ui/SendLater";
+import { api } from "@/lib/bridge";
 import { THREAD_CROSSFADE, useMotionTransition } from "@/lib/motion";
+import { useApp } from "@/store";
 
 // Full-screen new-message composer (opened from the sidebar or the "C" hotkey).
 export function Compose() {
@@ -113,7 +113,9 @@ export function Compose() {
   }
 
   function countDraggedFiles(event: ReactDragEvent<HTMLElement>) {
-    const itemCount = Array.from(event.dataTransfer.items).filter((item) => item.kind === "file").length;
+    const itemCount = Array.from(event.dataTransfer.items).filter(
+      (item) => item.kind === "file",
+    ).length;
     return itemCount || event.dataTransfer.files.length;
   }
 
@@ -164,11 +166,22 @@ export function Compose() {
 
   return (
     <section className="stage">
-      <motion.div className="stage-inner" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={crossfadeTransition}>
+      <motion.div
+        className="stage-inner"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={crossfadeTransition}
+      >
         <div className="stage-bar">
           <IconButton icon="close" title="Close" onClick={() => setCompose(false)} />
           <div className="spacer" />
-          <IconButton icon="ai" weight="duotone" title="Draft with AI" onClick={help} label={drafting ? "Drafting…" : "Draft for me"} />
+          <IconButton
+            icon="ai"
+            weight="duotone"
+            title="Draft with AI"
+            onClick={help}
+            label={drafting ? "Drafting…" : "Draft for me"}
+          />
         </div>
         <h1 className="subject">New message</h1>
         <div
@@ -209,16 +222,58 @@ export function Compose() {
           )}
           <div className="recip-row">
             <span className="recip-lbl">To</span>
-            <RecipientChips value={to} onChange={setTo} placeholder="Add people…" suggestions={contacts} />
+            <RecipientChips
+              value={to}
+              onChange={setTo}
+              placeholder="Add people…"
+              suggestions={contacts}
+            />
             {!showCc && (
-              <button type="button" className="recip-toggle" onClick={() => setShowCc(true)} title="Add Cc / Bcc">Cc / Bcc</button>
+              <button
+                type="button"
+                className="recip-toggle"
+                onClick={() => setShowCc(true)}
+                title="Add Cc / Bcc"
+              >
+                Cc / Bcc
+              </button>
             )}
           </div>
-          {showCc && <div className="recip-row"><span className="recip-lbl">Cc</span><RecipientChips value={cc} onChange={setCc} placeholder="Add Cc…" suggestions={contacts} /></div>}
-          {showCc && <div className="recip-row"><span className="recip-lbl">Bcc</span><RecipientChips value={bcc} onChange={setBcc} placeholder="Add Bcc…" suggestions={contacts} /></div>}
-          <input placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} style={{ ...inp, borderTop: "1px solid var(--border)" }} />
+          {showCc && (
+            <div className="recip-row">
+              <span className="recip-lbl">Cc</span>
+              <RecipientChips
+                value={cc}
+                onChange={setCc}
+                placeholder="Add Cc…"
+                suggestions={contacts}
+              />
+            </div>
+          )}
+          {showCc && (
+            <div className="recip-row">
+              <span className="recip-lbl">Bcc</span>
+              <RecipientChips
+                value={bcc}
+                onChange={setBcc}
+                placeholder="Add Bcc…"
+                suggestions={contacts}
+              />
+            </div>
+          )}
+          <input
+            placeholder="Subject"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            style={{ ...inp, borderTop: "1px solid var(--border)" }}
+          />
           <div style={{ marginTop: 10 }}>
-            <RichText ref={editorRef} initialHtml={initialHtml} placeholder="Write your message… (or let AI draft it)" minHeight={200} />
+            <RichText
+              ref={editorRef}
+              initialHtml={initialHtml}
+              placeholder="Write your message… (or let AI draft it)"
+              minHeight={200}
+            />
           </div>
           {(error || accounts.length === 0) && (
             <div className="stream-status err" role="alert">
@@ -226,9 +281,15 @@ export function Compose() {
             </div>
           )}
           <div className="cfoot">
-            <Button onClick={() => send()} icon="send" loading={sending} disabled={!validFrom}>Send</Button>
+            <Button onClick={() => send()} icon="send" loading={sending} disabled={!validFrom}>
+              Send
+            </Button>
             <SendLater onSchedule={(ts) => send(ts)} disabled={!validFrom || sending} />
-            <Attachments files={files} onAdd={(f) => setFiles((p) => [...p, ...f])} onRemove={(n) => setFiles((p) => p.filter((x) => x.name !== n))} />
+            <Attachments
+              files={files}
+              onAdd={(f) => setFiles((p) => [...p, ...f])}
+              onRemove={(n) => setFiles((p) => p.filter((x) => x.name !== n))}
+            />
           </div>
         </div>
       </motion.div>

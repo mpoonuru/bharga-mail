@@ -2,7 +2,7 @@
 //! Config and encrypted credentials come from the store; the OS keychain holds
 //! only the credential-database master key.
 
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use lettre::message::header::ContentType;
 use lettre::message::{Attachment as LettreAttachment, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::Credentials;
@@ -11,20 +11,33 @@ use lettre::{Message, SmtpTransport, Transport};
 use imap::types::Flag;
 use imap::{ClientBuilder, ConnectionMode, TlsKind};
 
-use super::{tokens, SyncError};
+use super::{SyncError, tokens};
 use crate::store::{Attachment, FolderInfo, ImapAccount, Security, Store};
 
 /// Send one message through the account's SMTP relay, honoring its security mode.
 /// When `sent_folder` is set, a copy of the sent message is saved to that IMAP
 /// folder afterwards (SMTP itself never does this).
-pub fn send(account: &ImapAccount, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[Attachment], sent_folder: Option<&str>) -> Result<SendOutcome, SyncError> {
-    let password = tokens::secret(&account.account_id, "smtp-pass").ok_or(SyncError::AuthRequired)?;
+#[allow(clippy::too_many_arguments)] // cohesive send envelope: to/cc/bcc/subject/body/attachments
+pub fn send(
+    account: &ImapAccount,
+    to: &str,
+    cc: &str,
+    bcc: &str,
+    subject: &str,
+    body_html: &str,
+    attachments: &[Attachment],
+    sent_folder: Option<&str>,
+) -> Result<SendOutcome, SyncError> {
+    let password =
+        tokens::secret(&account.account_id, "smtp-pass").ok_or(SyncError::AuthRequired)?;
     let email = build_message(&account.email, to, cc, bcc, subject, body_html, attachments)?;
 
     let creds = Credentials::new(account.smtp_username.clone(), password);
     let builder = match account.smtp_security {
-        Security::Ssl => SmtpTransport::relay(&account.smtp_host).map_err(|e| SyncError::Transient(e.to_string()))?,
-        Security::Starttls => SmtpTransport::starttls_relay(&account.smtp_host).map_err(|e| SyncError::Transient(e.to_string()))?,
+        Security::Ssl => SmtpTransport::relay(&account.smtp_host)
+            .map_err(|e| SyncError::Transient(e.to_string()))?,
+        Security::Starttls => SmtpTransport::starttls_relay(&account.smtp_host)
+            .map_err(|e| SyncError::Transient(e.to_string()))?,
         Security::None => SmtpTransport::builder_dangerous(&account.smtp_host),
     };
     let mailer = builder.port(account.smtp_port).credentials(creds).build();
@@ -63,7 +76,15 @@ fn is_gmail(account: &ImapAccount) -> bool {
 }
 
 /// Build the exact message shared by SMTP delivery and the IMAP Sent copy.
-fn build_message(from: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[Attachment]) -> Result<Message, SyncError> {
+fn build_message(
+    from: &str,
+    to: &str,
+    cc: &str,
+    bcc: &str,
+    subject: &str,
+    body_html: &str,
+    attachments: &[Attachment],
+) -> Result<Message, SyncError> {
     let mut builder = Message::builder()
         .from(from.parse().map_err(|_| SyncError::Permanent("bad from address".into()))?)
         .subject(subject)
@@ -72,9 +93,8 @@ fn build_message(from: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_
     // `To` is a comma-separated list ("a@x, Name <b@y>") exactly like Cc/Bcc.
     // It used to be parsed as ONE mailbox, which silently lost every email
     // addressed to two or more people.
-    let to_list: lettre::message::Mailboxes = to
-        .parse()
-        .map_err(|_| SyncError::Permanent(format!("bad to address: {to}")))?;
+    let to_list: lettre::message::Mailboxes =
+        to.parse().map_err(|_| SyncError::Permanent(format!("bad to address: {to}")))?;
     let mut any_to = false;
     for mb in to_list.into_iter() {
         builder = builder.to(mb);
@@ -85,10 +105,14 @@ fn build_message(from: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_
     }
     // Cc/Bcc may each be a comma-separated list; add every valid mailbox.
     for addr in cc.split(',').map(str::trim).filter(|a| !a.is_empty()) {
-        builder = builder.cc(addr.parse().map_err(|_| SyncError::Permanent(format!("bad cc address: {addr}")))?);
+        builder = builder.cc(addr
+            .parse()
+            .map_err(|_| SyncError::Permanent(format!("bad cc address: {addr}")))?);
     }
     for addr in bcc.split(',').map(str::trim).filter(|a| !a.is_empty()) {
-        builder = builder.bcc(addr.parse().map_err(|_| SyncError::Permanent(format!("bad bcc address: {addr}")))?);
+        builder = builder.bcc(
+            addr.parse().map_err(|_| SyncError::Permanent(format!("bad bcc address: {addr}")))?,
+        );
     }
 
     if attachments.is_empty() {
@@ -99,8 +123,10 @@ fn build_message(from: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_
     } else {
         let mut mp = MultiPart::mixed().singlepart(SinglePart::html(body_html.to_string()));
         for a in attachments {
-            let bytes = STANDARD.decode(&a.data_b64).map_err(|e| SyncError::Transient(e.to_string()))?;
-            let ct = ContentType::parse(&a.mime).unwrap_or(ContentType::parse("application/octet-stream").unwrap());
+            let bytes =
+                STANDARD.decode(&a.data_b64).map_err(|e| SyncError::Transient(e.to_string()))?;
+            let ct = ContentType::parse(&a.mime)
+                .unwrap_or(ContentType::parse("application/octet-stream").unwrap());
             mp = mp.singlepart(LettreAttachment::new(a.name.clone()).body(bytes, ct));
         }
         builder.multipart(mp).map_err(|e| SyncError::Transient(e.to_string()))
@@ -127,12 +153,10 @@ fn append_to_sent(account: &ImapAccount, sent_folder: &str, raw: &[u8]) -> Resul
     let mut session = client
         .login(&account.imap_username, &password)
         .map_err(|(e, _)| SyncError::Transient(format!("imap login for Sent copy failed — {e}")))?;
-    let result = session
-        .append(sent_folder, raw)
-        .flag(Flag::Seen)
-        .finish()
-        .map(|_| ())
-        .map_err(|e| SyncError::Transient(format!("IMAP APPEND to '{sent_folder}' failed — {e}")));
+    let result =
+        session.append(sent_folder, raw).flag(Flag::Seen).finish().map(|_| ()).map_err(|e| {
+            SyncError::Transient(format!("IMAP APPEND to '{sent_folder}' failed — {e}"))
+        });
     let _ = session.logout();
     result
 }
@@ -140,8 +164,12 @@ fn append_to_sent(account: &ImapAccount, sent_folder: &str, raw: &[u8]) -> Resul
 /// Test SMTP connectivity (handshake + greeting) without sending a message.
 pub fn test_conn(host: &str, port: u16, security: Security) -> Result<(), SyncError> {
     let builder = match security {
-        Security::Ssl => SmtpTransport::relay(host).map_err(|e| SyncError::Transient(e.to_string()))?,
-        Security::Starttls => SmtpTransport::starttls_relay(host).map_err(|e| SyncError::Transient(e.to_string()))?,
+        Security::Ssl => {
+            SmtpTransport::relay(host).map_err(|e| SyncError::Transient(e.to_string()))?
+        }
+        Security::Starttls => {
+            SmtpTransport::starttls_relay(host).map_err(|e| SyncError::Transient(e.to_string()))?
+        }
         Security::None => SmtpTransport::builder_dangerous(host),
     };
     let mailer = builder.port(port).build();
@@ -163,10 +191,22 @@ pub fn test_conn(host: &str, port: u16, security: Security) -> Result<(), SyncEr
 }
 
 /// Async wrapper: lettre's `SmtpTransport` is blocking, so run it off the async runtime.
-pub async fn send_async(account: ImapAccount, to: String, cc: String, bcc: String, subject: String, body_html: String, attachments: Vec<Attachment>, sent_folder: Option<String>) -> Result<SendOutcome, SyncError> {
-    tokio::task::spawn_blocking(move || send(&account, &to, &cc, &bcc, &subject, &body_html, &attachments, sent_folder.as_deref()))
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?
+#[allow(clippy::too_many_arguments)]
+pub async fn send_async(
+    account: ImapAccount,
+    to: String,
+    cc: String,
+    bcc: String,
+    subject: String,
+    body_html: String,
+    attachments: Vec<Attachment>,
+    sent_folder: Option<String>,
+) -> Result<SendOutcome, SyncError> {
+    tokio::task::spawn_blocking(move || {
+        send(&account, &to, &cc, &bcc, &subject, &body_html, &attachments, sent_folder.as_deref())
+    })
+    .await
+    .map_err(|e| SyncError::Transient(e.to_string()))?
 }
 
 /// Where the sent copy goes, most authoritative first:
@@ -177,6 +217,7 @@ pub async fn send_async(account: ImapAccount, to: String, cc: String, bcc: Strin
 ///     the latter created by Apple Mail); the one holding the newest message is
 ///     where the user's other clients file sent mail, so it wins,
 ///  4. any folder whose name contains "sent".
+///
 /// None means the folders are not listed yet: the copy is skipped and the UI warns.
 pub(crate) fn pick_sent_folder(
     override_folder: Option<&str>,
@@ -207,14 +248,34 @@ pub(crate) fn pick_sent_folder(
 }
 
 /// Resolve the account config from the store and send.
-pub async fn send_for(store: &Store, account_id: &str, to: &str, cc: &str, bcc: &str, subject: &str, body_html: &str, attachments: &[Attachment]) -> Result<(), SyncError> {
+#[allow(clippy::too_many_arguments)]
+pub async fn send_for(
+    store: &Store,
+    account_id: &str,
+    to: &str,
+    cc: &str,
+    bcc: &str,
+    subject: &str,
+    body_html: &str,
+    attachments: &[Attachment],
+) -> Result<(), SyncError> {
     let account = store.imap_account(account_id).ok_or(SyncError::AuthRequired)?;
     let folders = store.folders(account_id);
     let sent_folder = pick_sent_folder(account.sent_folder.as_deref(), &folders, |name| {
         store.folder_latest_ts(account_id, name)
     });
     let group = store.setting("group").ok().flatten().map(|v| v != "0").unwrap_or(true);
-    let outcome = send_async(account, to.to_string(), cc.to_string(), bcc.to_string(), subject.to_string(), body_html.to_string(), attachments.to_vec(), sent_folder.clone()).await?;
+    let outcome = send_async(
+        account,
+        to.to_string(),
+        cc.to_string(),
+        bcc.to_string(),
+        subject.to_string(),
+        body_html.to_string(),
+        attachments.to_vec(),
+        sent_folder.clone(),
+    )
+    .await?;
     // Per-account send warning the UI shows (cleared on a clean send).
     let warn_key = format!("send_warning:{account_id}");
     match (&sent_folder, &outcome.sent_copy_error) {
@@ -226,12 +287,15 @@ pub async fn send_for(store: &Store, account_id: &str, to: &str, cc: &str, bcc: 
                         log::warn!("sent copy saved on the server but not locally: {e}");
                     }
                 }
-                Err(e) => log::warn!("could not parse our own sent message for the local copy: {e}"),
+                Err(e) => {
+                    log::warn!("could not parse our own sent message for the local copy: {e}")
+                }
             }
             let _ = store.set_setting(&warn_key, "");
         }
         (Some(folder), Some(err)) => {
-            let _ = store.set_setting(&warn_key, &format!("Sent, but the copy to “{folder}” failed: {err}"));
+            let _ = store
+                .set_setting(&warn_key, &format!("Sent, but the copy to “{folder}” failed: {err}"));
         }
         (None, _) => {
             let _ = store.set_setting(&warn_key, "Sent, but no Sent folder is known for this account — pick one under Settings → Accounts.");
@@ -248,23 +312,42 @@ mod tests {
     const HTML: &str = "<p>Grüße — message body</p>";
 
     fn folder(name: &str, role: Option<&str>, special_use: bool) -> FolderInfo {
-        FolderInfo { name: name.into(), role: role.map(Into::into), special_use, unread: 0, total: 0 }
+        FolderInfo {
+            name: name.into(),
+            role: role.map(Into::into),
+            special_use,
+            unread: 0,
+            total: 0,
+        }
     }
 
     #[test]
     fn sent_folder_override_and_server_flag_win() {
-        let folders = vec![folder("INBOX.Sent", Some("sent"), false), folder("INBOX.Gesendet", Some("sent"), true)];
+        let folders = vec![
+            folder("INBOX.Sent", Some("sent"), false),
+            folder("INBOX.Gesendet", Some("sent"), true),
+        ];
         assert_eq!(pick_sent_folder(Some(" Custom "), &folders, |_| 0).as_deref(), Some("Custom"));
-        assert_eq!(pick_sent_folder(Some("  "), &folders, |_| 0).as_deref(), Some("INBOX.Gesendet"));
+        assert_eq!(
+            pick_sent_folder(Some("  "), &folders, |_| 0).as_deref(),
+            Some("INBOX.Gesendet")
+        );
     }
 
     #[test]
     fn unflagged_sent_folders_pick_the_one_in_use() {
         // The real pjtelesoft layout: no SPECIAL-USE, two sent folders, history
         // in "Sent Messages". Alphabetical order used to pick "INBOX.Sent".
-        let folders = vec![folder("INBOX.Sent", Some("sent"), false), folder("INBOX.Sent Messages", Some("sent"), false)];
-        let latest = |name: &str| if name == "INBOX.Sent Messages" { 1_751_520_480 } else { 1_702_296_218 };
-        assert_eq!(pick_sent_folder(None, &folders, latest).as_deref(), Some("INBOX.Sent Messages"));
+        let folders = vec![
+            folder("INBOX.Sent", Some("sent"), false),
+            folder("INBOX.Sent Messages", Some("sent"), false),
+        ];
+        let latest =
+            |name: &str| if name == "INBOX.Sent Messages" { 1_751_520_480 } else { 1_702_296_218 };
+        assert_eq!(
+            pick_sent_folder(None, &folders, latest).as_deref(),
+            Some("INBOX.Sent Messages")
+        );
         // Ties (both empty) keep list order.
         assert_eq!(pick_sent_folder(None, &folders, |_| 0).as_deref(), Some("INBOX.Sent"));
         // No folders listed yet: no target, the send still goes out.
@@ -281,9 +364,15 @@ mod tests {
 
     fn message(attachments: &[Attachment]) -> Message {
         build_message(
-            "sender@example.com", "recipient@example.net", "", "",
-            "Header regression", HTML, attachments,
-        ).expect("valid message")
+            "sender@example.com",
+            "recipient@example.net",
+            "",
+            "",
+            "Header regression",
+            HTML,
+            attachments,
+        )
+        .expect("valid message")
     }
 
     fn header(message: &Message, name: &str) -> Option<String> {
@@ -292,7 +381,10 @@ mod tests {
 
     fn assert_message_id(message: &Message) {
         let id = header(message, "Message-ID").expect("outgoing message needs Message-ID");
-        assert!(id.starts_with('<') && id.ends_with('>') && id.contains('@'), "invalid Message-ID: {id}");
+        assert!(
+            id.starts_with('<') && id.ends_with('>') && id.contains('@'),
+            "invalid Message-ID: {id}"
+        );
     }
 
     #[test]
@@ -349,15 +441,26 @@ mod tests {
         assert_eq!(parsed.subparts[0].ctype.mimetype, "text/html");
         assert_eq!(parsed.subparts[0].get_body().unwrap().trim_end(), HTML);
         assert_eq!(parsed.subparts[1].get_body_raw().unwrap(), [0, 1, 2, 128, 255]);
-        assert_eq!(parsed.subparts[1].get_content_disposition().params.get("filename").map(String::as_str), Some("report.bin"));
+        assert_eq!(
+            parsed.subparts[1].get_content_disposition().params.get("filename").map(String::as_str),
+            Some("report.bin")
+        );
     }
 
     #[test]
     fn to_accepts_a_comma_separated_recipient_list() {
         // Regression: real emails were dead-lettered with "bad to address" because a
         // multi-recipient To was parsed as a single mailbox.
-        let msg = build_message("me@example.de", "a@example.de, Name <b@example.org>", "", "", "s", "<p>hi</p>", &[])
-            .expect("two recipients must build");
+        let msg = build_message(
+            "me@example.de",
+            "a@example.de, Name <b@example.org>",
+            "",
+            "",
+            "s",
+            "<p>hi</p>",
+            &[],
+        )
+        .expect("two recipients must build");
         let to = header(&msg, "To").expect("To header");
         assert!(to.contains("a@example.de"), "To was: {to}");
         assert!(to.contains("b@example.org"), "To was: {to}");
@@ -366,20 +469,33 @@ mod tests {
     #[test]
     fn malformed_to_is_a_permanent_error() {
         let err = build_message("me@example.de", "not an address", "", "", "s", "<p>hi</p>", &[])
-            .err()
-            .expect("malformed To must fail");
+            .expect_err("malformed To must fail");
         assert!(err.is_permanent(), "got {err}");
     }
 
     #[test]
     fn cc_and_bcc_recipients_stay_in_envelope_bcc_stays_private() {
         let email = build_message(
-            "sender@example.com", "recipient@example.net",
-            "copy@example.net, copy2@example.net", "hidden@example.org, hidden2@example.org",
-            "Recipients", HTML, &[],
-        ).unwrap();
+            "sender@example.com",
+            "recipient@example.net",
+            "copy@example.net, copy2@example.net",
+            "hidden@example.org, hidden2@example.org",
+            "Recipients",
+            HTML,
+            &[],
+        )
+        .unwrap();
         let recipients: Vec<_> = email.envelope().to().iter().map(ToString::to_string).collect();
-        assert_eq!(recipients, ["recipient@example.net", "copy@example.net", "copy2@example.net", "hidden@example.org", "hidden2@example.org"]);
+        assert_eq!(
+            recipients,
+            [
+                "recipient@example.net",
+                "copy@example.net",
+                "copy2@example.net",
+                "hidden@example.org",
+                "hidden2@example.org"
+            ]
+        );
         assert!(header(&email, "Cc").unwrap().contains("copy2@example.net"));
         assert_eq!(header(&email, "Bcc"), None);
         assert!(!String::from_utf8(email.formatted()).unwrap().contains("hidden@example.org"));

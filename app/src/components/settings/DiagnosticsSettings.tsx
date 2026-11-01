@@ -2,9 +2,9 @@
 import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/icons";
+import { api } from "@/lib/bridge";
 import { buildRedactedDiagnostics, serializeDiagnostics } from "@/lib/diagnostics";
 import { useApp } from "@/store";
-import { api } from "@/lib/bridge";
 import type { CalendarSource, CalendarSyncHealth } from "@/types";
 
 interface DiagnosticsSettingsProps {
@@ -14,18 +14,28 @@ interface DiagnosticsSettingsProps {
 
 export function DiagnosticsSettings({ version, runtime }: DiagnosticsSettingsProps) {
   const { accounts, ai, theme, density, font, locale, threads, tasks } = useApp();
-  const [feedback, setFeedback] = useState<{ tone: "success" | "error"; text: string } | null>(null);
-  const [calendar, setCalendar] = useState<{ sources: CalendarSource[]; selectedCalendarCount: number; health: CalendarSyncHealth[] }>({ sources: [], selectedCalendarCount: 0, health: [] });
+  const [feedback, setFeedback] = useState<{ tone: "success" | "error"; text: string } | null>(
+    null,
+  );
+  const [calendar, setCalendar] = useState<{
+    sources: CalendarSource[];
+    selectedCalendarCount: number;
+    health: CalendarSyncHealth[];
+  }>({ sources: [], selectedCalendarCount: 0, health: [] });
   useEffect(() => {
     let active = true;
     void Promise.all([
       api.calendar.listSources(),
       api.calendar.listCalendars(),
       api.calendar.listSyncHealth?.() ?? Promise.resolve([]),
-    ]).then(([sources, calendars, health]) => {
-      if (active) setCalendar({ sources, selectedCalendarCount: calendars.length, health });
-    }).catch(() => {});
-    return () => { active = false; };
+    ])
+      .then(([sources, calendars, health]) => {
+        if (active) setCalendar({ sources, selectedCalendarCount: calendars.length, health });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, []);
   const snapshot = buildRedactedDiagnostics({
     version,
@@ -44,7 +54,10 @@ export function DiagnosticsSettings({ version, runtime }: DiagnosticsSettingsPro
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable.");
       await navigator.clipboard.writeText(serialized);
-      setFeedback({ tone: "success", text: "Copied redacted diagnostics. No account identities or message content were included." });
+      setFeedback({
+        tone: "success",
+        text: "Copied redacted diagnostics. No account identities or message content were included.",
+      });
     } catch (cause) {
       setFeedback({ tone: "error", text: cause instanceof Error ? cause.message : String(cause) });
     }
@@ -70,23 +83,60 @@ export function DiagnosticsSettings({ version, runtime }: DiagnosticsSettingsPro
       <div className="settings-section-head">
         <div>
           <h2>Diagnostics</h2>
-          <p className="sub">Share app health without exposing addresses, names, provider labels, endpoints, credentials, or message content.</p>
+          <p className="sub">
+            Share app health without exposing addresses, names, provider labels, endpoints,
+            credentials, or message content.
+          </p>
         </div>
         {runtime === "preview" && <span className="tag">Preview runtime</span>}
       </div>
       <div className="diagnostics-summary" aria-label="Diagnostics summary">
-        <div><span>Accounts</span><b>{snapshot.accounts.total}</b><small>{snapshot.accounts.synced} synced</small></div>
-        <div><span>AI providers</span><b>{snapshot.ai.providers}</b><small>{snapshot.ai.ready} ready</small></div>
-        <div><span>Local threads</span><b>{snapshot.localData.threads}</b><small>{snapshot.localData.tasks} tasks</small></div>
-        <div><span>Runtime</span><b>{runtime === "desktop" ? "Desktop" : "Preview"}</b><small>Version {version}</small></div>
-        <div><span>Calendars</span><b>{snapshot.calendar.selectedCalendars}</b><small>{snapshot.calendar.conflicts} conflicts</small></div>
+        <div>
+          <span>Accounts</span>
+          <b>{snapshot.accounts.total}</b>
+          <small>{snapshot.accounts.synced} synced</small>
+        </div>
+        <div>
+          <span>AI providers</span>
+          <b>{snapshot.ai.providers}</b>
+          <small>{snapshot.ai.ready} ready</small>
+        </div>
+        <div>
+          <span>Local threads</span>
+          <b>{snapshot.localData.threads}</b>
+          <small>{snapshot.localData.tasks} tasks</small>
+        </div>
+        <div>
+          <span>Runtime</span>
+          <b>{runtime === "desktop" ? "Desktop" : "Preview"}</b>
+          <small>Version {version}</small>
+        </div>
+        <div>
+          <span>Calendars</span>
+          <b>{snapshot.calendar.selectedCalendars}</b>
+          <small>{snapshot.calendar.conflicts} conflicts</small>
+        </div>
       </div>
-      <div className="settings-callout">The export is generated on demand and contains aggregate counts and non-identifying preference values only.</div>
+      <div className="settings-callout">
+        The export is generated on demand and contains aggregate counts and non-identifying
+        preference values only.
+      </div>
       <div className="diagnostics-actions">
-        <button type="button" className="af-btn primary" onClick={() => void copy()}><Icon name="copy" size={14} /> Copy redacted diagnostics</button>
-        <button type="button" className="af-btn ghost" onClick={download}><Icon name="tasks" size={14} /> Download JSON</button>
+        <button type="button" className="af-btn primary" onClick={() => void copy()}>
+          <Icon name="copy" size={14} /> Copy redacted diagnostics
+        </button>
+        <button type="button" className="af-btn ghost" onClick={download}>
+          <Icon name="tasks" size={14} /> Download JSON
+        </button>
       </div>
-      {feedback && <div className={`settings-alert ${feedback.tone === "error" ? "error" : ""}`} role={feedback.tone === "error" ? "alert" : "status"}>{feedback.text}</div>}
+      {feedback && (
+        <div
+          className={`settings-alert ${feedback.tone === "error" ? "error" : ""}`}
+          role={feedback.tone === "error" ? "alert" : "status"}
+        >
+          {feedback.text}
+        </div>
+      )}
     </div>
   );
 }

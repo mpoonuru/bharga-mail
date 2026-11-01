@@ -5,7 +5,7 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
-use tokio::sync::{watch, Mutex as AsyncMutex};
+use tokio::sync::{Mutex as AsyncMutex, watch};
 
 use super::connectors::caldav::{CalDavConnector, Credentials};
 use super::connectors::google::GoogleConnector;
@@ -33,10 +33,7 @@ struct SourceGate {
 impl Default for SourceGate {
     fn default() -> Self {
         let (changes, _) = watch::channel(0);
-        Self {
-            state: AsyncMutex::new(GateState::default()),
-            changes,
-        }
+        Self { state: AsyncMutex::new(GateState::default()), changes }
     }
 }
 
@@ -48,10 +45,7 @@ pub struct CalendarSyncCoordinator {
 
 impl CalendarSyncCoordinator {
     pub fn new(store: Arc<Store>) -> Self {
-        Self {
-            store,
-            gates: Arc::new(Mutex::new(HashMap::new())),
-        }
+        Self { store, gates: Arc::new(Mutex::new(HashMap::new())) }
     }
 
     fn gate(&self, source_id: &str) -> Arc<SourceGate> {
@@ -112,7 +106,7 @@ impl CalendarSyncCoordinator {
             state.generation = state.generation.wrapping_add(1);
             state.result = Some(result.clone());
         }
-        let _ = gate.changes.send_modify(|generation| {
+        gate.changes.send_modify(|generation| {
             *generation = generation.wrapping_add(1);
         });
         result
@@ -120,9 +114,10 @@ impl CalendarSyncCoordinator {
 
     pub async fn sync_source(&self, source_id: &str) -> Result<CalendarSyncHealth, ConnectorError> {
         let source_id = source_id.to_string();
-        self.serialized(&source_id.clone(), || async move {
-            self.sync_source_inner(&source_id).await
-        })
+        self.serialized(
+            &source_id.clone(),
+            || async move { self.sync_source_inner(&source_id).await },
+        )
         .await
     }
 
@@ -199,10 +194,7 @@ impl CalendarSyncCoordinator {
         intervals
             .sort_by(|left, right| left.start.cmp(&right.start).then(left.end.cmp(&right.end)));
         intervals.dedup();
-        Ok(FreeBusyResult {
-            intervals,
-            complete,
-        })
+        Ok(FreeBusyResult { intervals, complete })
     }
 
     async fn sync_source_inner(
@@ -223,15 +215,9 @@ impl CalendarSyncCoordinator {
                 )
             })?;
         if source.disabled || source.provider == CalendarProvider::Local {
-            return self
-                .store
-                .calendar_sync_health(source_id)
-                .map_err(storage_error);
+            return self.store.calendar_sync_health(source_id).map_err(storage_error);
         }
-        let targets = self
-            .store
-            .calendar_sync_targets(source_id)
-            .map_err(storage_error)?;
+        let targets = self.store.calendar_sync_targets(source_id).map_err(storage_error)?;
         if targets.is_empty() {
             return Err(error(
                 ConnectorErrorKind::Permanent,
@@ -253,9 +239,7 @@ impl CalendarSyncCoordinator {
                     self.record_failure(source_id, &failure, None)?;
                     return Err(failure);
                 }
-                self.store
-                    .reset_calendar_operation_retries(source_id)
-                    .map_err(storage_error)?;
+                self.store.reset_calendar_operation_retries(source_id).map_err(storage_error)?;
                 self.sync_target(&source, &target).await
             } else {
                 first
@@ -265,9 +249,7 @@ impl CalendarSyncCoordinator {
                 return Err(failure);
             }
         }
-        self.store
-            .calendar_sync_health(source_id)
-            .map_err(storage_error)
+        self.store.calendar_sync_health(source_id).map_err(storage_error)
     }
 
     async fn sync_target(
@@ -282,9 +264,7 @@ impl CalendarSyncCoordinator {
             }
         }
         let batch = connector.pull(target.cursor.as_deref()).await?;
-        self.store
-            .commit_calendar_sync_batch(&target.calendar.id, &batch)
-            .map_err(storage_error)
+        self.store.commit_calendar_sync_batch(&target.calendar.id, &batch).map_err(storage_error)
     }
 
     async fn refresh_authorization(&self, source: &CalendarSource) -> Result<(), ConnectorError> {
@@ -295,15 +275,13 @@ impl CalendarSyncCoordinator {
             CalendarProvider::Microsoft => super::connectors::microsoft::oauth_config(),
             _ => return Err(auth_error()),
         };
-        let tokens = crate::sync::oauth::refresh(&config, &refresh)
-            .await
-            .map_err(|_| {
-                error(
-                    ConnectorErrorKind::AuthRequired,
-                    "token-refresh-failed",
-                    "Calendar authorization expired; reconnect this source",
-                )
-            })?;
+        let tokens = crate::sync::oauth::refresh(&config, &refresh).await.map_err(|_| {
+            error(
+                ConnectorErrorKind::AuthRequired,
+                "token-refresh-failed",
+                "Calendar authorization expired; reconnect this source",
+            )
+        })?;
         crate::sync::tokens::save_calendar_tokens(
             &source.id,
             &tokens.access_token,
@@ -380,13 +358,10 @@ impl CalendarSyncCoordinator {
         connector: &dyn CalendarConnector,
     ) -> Result<(), ConnectorError> {
         let now = Utc::now().timestamp();
-        let operations = self
-            .store
-            .due_calendar_operations(&source.id, now)
-            .map_err(storage_error)?;
-        for operation in operations
-            .into_iter()
-            .filter(|operation| operation.calendar_id == target.calendar.id)
+        let operations =
+            self.store.due_calendar_operations(&source.id, now).map_err(storage_error)?;
+        for operation in
+            operations.into_iter().filter(|operation| operation.calendar_id == target.calendar.id)
         {
             match connector.push(&operation).await {
                 Ok(outcome) => self
@@ -436,12 +411,8 @@ impl CalendarSyncCoordinator {
         let calendar_id = calendar_id.to_string();
         self.serialized(&source_id.clone(), || async move {
             let batch = connector.pull(None).await?;
-            self.store
-                .commit_calendar_sync_batch(&calendar_id, &batch)
-                .map_err(storage_error)?;
-            self.store
-                .calendar_sync_health(&source_id)
-                .map_err(storage_error)
+            self.store.commit_calendar_sync_batch(&calendar_id, &batch).map_err(storage_error)?;
+            self.store.calendar_sync_health(&source_id).map_err(storage_error)
         })
         .await
     }
@@ -478,10 +449,8 @@ fn retry_at(operation_id: &str, attempts: i64, failure: &ConnectorError) -> i64 
         return i64::MAX / 4;
     }
     let exponential = 5_i64.saturating_mul(2_i64.saturating_pow(attempts.clamp(0, 8) as u32));
-    let jitter = operation_id
-        .bytes()
-        .fold(0_u64, |value, byte| value.wrapping_add(byte as u64))
-        % 6;
+    let jitter =
+        operation_id.bytes().fold(0_u64, |value, byte| value.wrapping_add(byte as u64)) % 6;
     let provider_delay = failure.retry_after_seconds.unwrap_or(0).min(3_600) as i64;
     Utc::now().timestamp() + exponential.min(900).max(provider_delay) + jitter as i64
 }
@@ -513,11 +482,7 @@ mod tests {
         async fn pull(&self, _cursor: Option<&str>) -> Result<SyncBatch, ConnectorError> {
             self.pulls.fetch_add(1, Ordering::SeqCst);
             tokio::task::yield_now().await;
-            Ok(SyncBatch {
-                changes: Vec::new(),
-                next_cursor: Some("cursor".into()),
-                ctag: None,
-            })
+            Ok(SyncBatch { changes: Vec::new(), next_cursor: Some("cursor".into()), ctag: None })
         }
 
         async fn push(
@@ -559,12 +524,8 @@ mod tests {
             location: String::new(),
             conference_url: None,
             source_thread_id: None,
-            start: EventMoment::Timed {
-                utc: "2026-09-25T10:00:00Z".into(),
-            },
-            end: EventMoment::Timed {
-                utc: "2026-09-25T11:00:00Z".into(),
-            },
+            start: EventMoment::Timed { utc: "2026-09-25T10:00:00Z".into() },
+            end: EventMoment::Timed { utc: "2026-09-25T11:00:00Z".into() },
             timezone: "UTC".into(),
             recurrence: None,
             status: EventStatus::Confirmed,
@@ -591,9 +552,7 @@ mod tests {
             .unwrap();
         let calendar_id = store.calendars().unwrap()[0].id.clone();
         let coordinator = CalendarSyncCoordinator::new(store);
-        let connector = Arc::new(CountingConnector {
-            pulls: AtomicUsize::new(0),
-        });
+        let connector = Arc::new(CountingConnector { pulls: AtomicUsize::new(0) });
         let (a, b) = tokio::join!(
             coordinator.sync_test_connector("s1", &calendar_id, connector.clone()),
             coordinator.sync_test_connector("s1", &calendar_id, connector.clone()),
@@ -616,9 +575,7 @@ mod tests {
             )
             .unwrap();
         let calendar_id = store.calendars().unwrap()[0].id.clone();
-        let local = store
-            .create_calendar_event(event_input(&calendar_id, "Local"))
-            .unwrap();
+        let local = store.create_calendar_event(event_input(&calendar_id, "Local")).unwrap();
         let mut remote = local.clone();
         remote.title = "Remote".into();
         remote.provider_id = Some("remote-event".into());
@@ -631,9 +588,7 @@ mod tests {
             next_cursor: Some("cursor".into()),
             ctag: None,
         };
-        store
-            .commit_calendar_sync_batch(&calendar_id, &batch)
-            .unwrap();
+        store.commit_calendar_sync_batch(&calendar_id, &batch).unwrap();
         let conflict = store.calendar_conflicts().unwrap().remove(0);
         assert_eq!(conflict.local.title, "Local");
         assert_eq!(conflict.remote.title, "Remote");
@@ -653,20 +608,14 @@ mod tests {
             )
             .unwrap();
         let calendar_id = store.calendars().unwrap()[0].id.clone();
-        let event = store
-            .create_calendar_event(event_input(&calendar_id, "Local copy"))
-            .unwrap();
+        let event = store.create_calendar_event(event_input(&calendar_id, "Local copy")).unwrap();
         store
             .remove_calendar_source(
                 "s1",
                 crate::calendar::domain::CalendarSourceRemovalPolicy::KeepLocalCopy,
             )
             .unwrap();
-        assert!(store
-            .calendar_sources()
-            .unwrap()
-            .iter()
-            .all(|source| source.id != "s1"));
+        assert!(store.calendar_sources().unwrap().iter().all(|source| source.id != "s1"));
         assert_eq!(
             store.calendar_event(&event.id).unwrap().unwrap().sync_state,
             crate::calendar::domain::EventSyncState::Local

@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, runtimeMode } from "@/lib/bridge";
 
 afterEach(() => vi.restoreAllMocks());
@@ -37,7 +37,13 @@ describe("bridge fallbacks (non-Tauri)", () => {
   });
 
   it("queueSend returns an id and cancelSend resolves", async () => {
-    const id = await api.queueSend({ accountId: "gmail:me", to: "x@y.z", subject: "s", body: "b", delaySeconds: 10 });
+    const id = await api.queueSend({
+      accountId: "gmail:me",
+      to: "x@y.z",
+      subject: "s",
+      body: "b",
+      delaySeconds: 10,
+    });
     expect(typeof id).toBe("string");
     expect(await api.cancelSend(id)).toBe(true);
   });
@@ -48,6 +54,8 @@ describe("bridge fallbacks (non-Tauri)", () => {
     await api.openExternalUrl("https://example.test/path");
 
     expect(open).toHaveBeenCalledWith("https://example.test/path", "_blank", "noopener,noreferrer");
-    await expect(api.openExternalUrl("javascript:alert(1)")).rejects.toThrow("Blocked external link");
+    await expect(api.openExternalUrl("javascript:alert(1)")).rejects.toThrow(
+      "Blocked external link",
+    );
   });
 });

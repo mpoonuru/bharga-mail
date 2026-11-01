@@ -38,7 +38,12 @@ export function RecurrenceEditor({ value, onChange, disabled = false }: Recurren
     <div className="calendar-recurrence-editor">
       <label className="calendar-field">
         <span>Repeat</span>
-        <select aria-label="Repeat" value={preset} onChange={(event) => choose(event.currentTarget.value as Preset)} disabled={disabled}>
+        <select
+          aria-label="Repeat"
+          value={preset}
+          onChange={(event) => choose(event.currentTarget.value as Preset)}
+          disabled={disabled}
+        >
           <option value="none">Does not repeat</option>
           <option value="daily">Daily</option>
           <option value="weekly">Weekly</option>
@@ -55,13 +60,18 @@ export function RecurrenceEditor({ value, onChange, disabled = false }: Recurren
             value={value?.rules[0] ?? ""}
             disabled={disabled}
             spellCheck={false}
-            onChange={(event) => onChange({
-              rules: [event.currentTarget.value.toUpperCase()],
-              dates: value?.dates ?? [],
-              excludedDates: value?.excludedDates ?? [],
-            })}
+            onChange={(event) =>
+              onChange({
+                rules: [event.currentTarget.value.toUpperCase()],
+                dates: value?.dates ?? [],
+                excludedDates: value?.excludedDates ?? [],
+              })
+            }
           />
-          <small>RFC 5545 rule without the RRULE prefix. Complex rules are validated by the calendar core.</small>
+          <small>
+            RFC 5545 rule without the RRULE prefix. Complex rules are validated by the calendar
+            core.
+          </small>
         </label>
       )}
     </div>

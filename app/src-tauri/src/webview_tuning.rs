@@ -10,7 +10,7 @@
 
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, Bool};
-use objc2::{msg_send, sel, MainThreadMarker};
+use objc2::{MainThreadMarker, msg_send, sel};
 use objc2_foundation::NSString;
 use objc2_web_kit::WKWebViewConfiguration;
 
@@ -20,7 +20,9 @@ const FRAME_CAP_FEATURE: &str = "PreferPageRenderingUpdatesNear60FPSEnabled";
 pub fn configuration(mtm: MainThreadMarker) -> Retained<WKWebViewConfiguration> {
     let config = unsafe { WKWebViewConfiguration::new(mtm) };
     match disable_frame_cap(&config) {
-        Ok(()) => log::info!("webview: 60 fps rendering cap disabled (renders at display refresh rate)"),
+        Ok(()) => {
+            log::info!("webview: 60 fps rendering cap disabled (renders at display refresh rate)")
+        }
         // Private WebKit API: if Apple renames it, keep the default and say so.
         Err(reason) => log::warn!("webview: could not disable 60 fps rendering cap: {reason}"),
     }

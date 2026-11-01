@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@/components/icons";
 import { containTabKey, focusableElements } from "@/lib/focus";
 import { registerOpenModal } from "@/lib/modalStack";
@@ -15,14 +15,21 @@ interface CommonProps {
   fallbackFocus?: HTMLElement | null;
 }
 
-type AccessibleName =
-  | { title: string; ariaLabel?: never }
-  | { title?: never; ariaLabel: string };
+type AccessibleName = { title: string; ariaLabel?: never } | { title?: never; ariaLabel: string };
 
 type Props = CommonProps & AccessibleName;
 
 // Centered modal dialog with backdrop, scroll-lock, and Esc-to-close.
-export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 640, returnFocus, fallbackFocus }: Props) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  ariaLabel,
+  children,
+  maxWidth = 640,
+  returnFocus,
+  fallbackFocus,
+}: Props) {
   const overlayTransition = useMotionTransition(OVERLAY_FADE);
   const panelRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -32,11 +39,13 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
-    openerRef.current = returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    openerRef.current =
+      returnFocus ??
+      (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     document.body.style.overflow = "hidden";
     const unregisterModal = registerOpenModal();
     const panel = panelRef.current;
-    const initialFocus = panel ? focusableElements(panel)[0] ?? panel : null;
+    const initialFocus = panel ? (focusableElements(panel)[0] ?? panel) : null;
     initialFocus?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -84,7 +93,9 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={overlayTransition}
-          onClick={(e) => { if (e.target === e.currentTarget) close(); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) close();
+          }}
         >
           <motion.div
             ref={panelRef}
@@ -103,7 +114,15 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
             {title && (
               <div className="modal-head">
                 <b id={titleId}>{title}</b>
-                <button className="iconbtn" type="button" aria-label="Close dialog" onClick={close} title="Close"><Icon name="close" /></button>
+                <button
+                  className="iconbtn"
+                  type="button"
+                  aria-label="Close dialog"
+                  onClick={close}
+                  title="Close"
+                >
+                  <Icon name="close" />
+                </button>
               </div>
             )}
             <div className="modal-body">{children}</div>
@@ -111,6 +130,6 @@ export function Modal({ open, onClose, title, ariaLabel, children, maxWidth = 64
         </motion.div>
       )}
     </AnimatePresence>,
-    document.body
+    document.body,
   );
 }

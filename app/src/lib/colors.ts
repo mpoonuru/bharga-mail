@@ -1,4 +1,4 @@
-import { AVATAR_TINTS, AVATAR_GRADIENT_ANGLE } from "@/constants/avatarTints";
+import { AVATAR_GRADIENT_ANGLE, AVATAR_TINTS } from "@/constants/avatarTints";
 
 // Per-account colors in OKLCH. All swatches share the same lightness/chroma and
 // differ only in hue, so they're perceptually even and harmonious — exactly what

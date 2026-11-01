@@ -67,7 +67,9 @@ async fn run_idle(app: AppHandle, store: Arc<Store>, account_id: String) {
     loop {
         let s = store.clone();
         let aid = account_id.clone();
-        match tokio::task::spawn_blocking(move || crate::sync::imap::idle_wait_inbox(&s, &aid)).await {
+        match tokio::task::spawn_blocking(move || crate::sync::imap::idle_wait_inbox(&s, &aid))
+            .await
+        {
             Ok(Ok(changed)) => {
                 failures = 0;
                 if changed {
@@ -104,14 +106,24 @@ pub async fn poll_once(app: &AppHandle, store: &Arc<Store>) {
         let result = if id.starts_with("ms:") {
             crate::sync::microsoft::incremental(store, &id).await.map(|_| 0usize)
         } else if id.starts_with("imap:") {
-            crate::sync::imap::fetch_folder_async(store.clone(), id.clone(), "INBOX".into(), INBOX_LIMIT, true, false).await
+            crate::sync::imap::fetch_folder_async(
+                store.clone(),
+                id.clone(),
+                "INBOX".into(),
+                INBOX_LIMIT,
+                true,
+                false,
+            )
+            .await
         } else {
             crate::sync::gmail::incremental(store, &id).await.map(|_| 0usize)
         };
         match result {
             Ok(_) => {
                 observed_status = true;
-                if let Err(error) = store.record_sync_success(&id, "INBOX", chrono::Utc::now().timestamp()) {
+                if let Err(error) =
+                    store.record_sync_success(&id, "INBOX", chrono::Utc::now().timestamp())
+                {
                     log::warn!("live-sync: {id} success timestamp could not be stored: {error}");
                 }
                 synced = true;

@@ -1,24 +1,31 @@
-import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { useApp } from "@/store";
-import { Sidebar } from "@/components/Sidebar";
-import { Stream } from "@/components/Stream";
-import { Stage } from "@/components/Stage";
-import { Compose } from "@/components/Compose";
-import { CalendarView } from "@/components/CalendarView";
-import { TasksView } from "@/components/TasksView";
-import { Settings } from "@/components/Settings";
-import { CommandBar } from "@/components/CommandBar";
-import { ModelPicker } from "@/components/ModelPicker";
-import { UndoToast } from "@/components/UndoToast";
+import { useEffect, useState } from "react";
+import logo from "@/assets/logo.png";
 import { AccountConnectorDialog } from "@/components/accounts/AccountConnectorDialog";
+import { CalendarView } from "@/components/CalendarView";
+import { CommandBar } from "@/components/CommandBar";
+import { Compose } from "@/components/Compose";
 import { Icon } from "@/components/icons";
+import { ModelPicker } from "@/components/ModelPicker";
+import { Settings } from "@/components/Settings";
+import { Sidebar } from "@/components/Sidebar";
+import { Stage } from "@/components/Stage";
+import { Stream } from "@/components/Stream";
+import { TasksView } from "@/components/TasksView";
+import { UndoToast } from "@/components/UndoToast";
+import {
+  checkForUpdate,
+  expectedBuildId,
+  installUpdateAndRestart,
+  setDockBadge,
+  startWindowDrag,
+  titlebarDoubleClick,
+} from "@/lib/bridge";
+import { OVERLAY_FADE, STRUCTURAL_TRANSITION, useMotionTransition } from "@/lib/motion";
+import { applyFont, applyLocale } from "@/lib/prefs";
 import { useHotkeys } from "@/lib/useHotkeys";
 import { useViewport } from "@/lib/useViewport";
-import { applyFont, applyLocale } from "@/lib/prefs";
-import { startWindowDrag, titlebarDoubleClick, expectedBuildId, setDockBadge, checkForUpdate, installUpdateAndRestart } from "@/lib/bridge";
-import logo from "@/assets/logo.png";
-import { OVERLAY_FADE, STRUCTURAL_TRANSITION, useMotionTransition } from "@/lib/motion";
+import { useApp } from "@/store";
 
 export function App() {
   const { view, load, focusMode, composeOpen, theme, density } = useApp();
@@ -26,15 +33,21 @@ export function App() {
   useHotkeys();
 
   // Dock/taskbar unread badge (like Apple Mail) — total unread across all inboxes.
-  const inboxUnread = useApp((s) => s.threads.reduce((n, t) => n + (t.unread && t.view.includes("inbox") ? 1 : 0), 0));
-  useEffect(() => { void setDockBadge(inboxUnread); }, [inboxUnread]);
+  const inboxUnread = useApp((s) =>
+    s.threads.reduce((n, t) => n + (t.unread && t.view.includes("inbox") ? 1 : 0), 0),
+  );
+  useEffect(() => {
+    void setDockBadge(inboxUnread);
+  }, [inboxUnread]);
 
   // Auto-update: check GitHub Releases on launch (and every 6h). When a newer
   // signed build exists, surface a banner; the user clicks to install + relaunch.
   const [updateVer, setUpdateVer] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   useEffect(() => {
-    const run = () => { void checkForUpdate().then((v) => v && setUpdateVer(v)); };
+    const run = () => {
+      void checkForUpdate().then((v) => v && setUpdateVer(v));
+    };
     run();
     const timer = setInterval(run, 6 * 60 * 60 * 1000);
     return () => clearInterval(timer);
@@ -56,7 +69,9 @@ export function App() {
       url.searchParams.set("b", expected); // new URL key → bypasses the cached shell
       window.location.replace(url.toString());
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -77,7 +92,8 @@ export function App() {
   //    except editable fields, where the native copy/paste menu is wanted.
   useEffect(() => {
     // Anything interactive that must keep its own click/drag must be excluded here.
-    const NO_DRAG = "button, input, textarea, select, a, [role='button'], [contenteditable='true'], .ProseMirror, .recip-chip, .splitter";
+    const NO_DRAG =
+      "button, input, textarea, select, a, [role='button'], [contenteditable='true'], .ProseMirror, .recip-chip, .splitter";
     const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
       const t = e.target as HTMLElement | null;
@@ -107,7 +123,16 @@ export function App() {
 
   return (
     <>
-      {layout === "narrow" ? <NarrowLayout /> : <WideLayout rail={layout === "medium"} focusMode={focusMode} composeOpen={composeOpen} view={view} />}
+      {layout === "narrow" ? (
+        <NarrowLayout />
+      ) : (
+        <WideLayout
+          rail={layout === "medium"}
+          focusMode={focusMode}
+          composeOpen={composeOpen}
+          view={view}
+        />
+      )}
       <CommandBar />
       <ModelPicker />
       <AccountConnectorDialog />
@@ -116,12 +141,25 @@ export function App() {
       {updateVer && (
         <div className="update-banner" role="status">
           <Icon name="cloud" size={15} weight="duotone" />
-          <span>Bharga Mail <b>{updateVer}</b> is available.</span>
-          <button className="update-btn" disabled={updating}
-            onClick={() => { setUpdating(true); void installUpdateAndRestart().catch(() => setUpdating(false)); }}>
+          <span>
+            Bharga Mail <b>{updateVer}</b> is available.
+          </span>
+          <button
+            className="update-btn"
+            disabled={updating}
+            onClick={() => {
+              setUpdating(true);
+              void installUpdateAndRestart().catch(() => setUpdating(false));
+            }}
+          >
             {updating ? "Updating…" : "Restart to update"}
           </button>
-          <button className="update-x" title="Later" onClick={() => setUpdateVer(null)} disabled={updating}>
+          <button
+            className="update-x"
+            title="Later"
+            onClick={() => setUpdateVer(null)}
+            disabled={updating}
+          >
             <Icon name="close" size={13} />
           </button>
         </div>
@@ -135,9 +173,20 @@ function isFull(view: string) {
 }
 
 // A thin draggable column divider. Reports the new width (clamped) as you drag.
-function Splitter({ left, value, min, max, onChange, onCommit }: {
-  left: number; value: number; min: number; max: number;
-  onChange: (v: number) => void; onCommit: (v: number) => void;
+function Splitter({
+  left,
+  value,
+  min,
+  max,
+  onChange,
+  onCommit,
+}: {
+  left: number;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+  onCommit: (v: number) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const onPointerDown = (e: React.PointerEvent) => {
@@ -156,11 +205,29 @@ function Splitter({ left, value, min, max, onChange, onCommit }: {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
-  return <div className={`splitter${dragging ? " dragging" : ""}`} style={{ left }} onPointerDown={onPointerDown} role="separator" aria-orientation="vertical" />;
+  return (
+    <div
+      className={`splitter${dragging ? " dragging" : ""}`}
+      style={{ left }}
+      onPointerDown={onPointerDown}
+      role="separator"
+      aria-orientation="vertical"
+    />
+  );
 }
 
 // ---- Wide (desktop) & Medium (rail) : grid layout ----
-function WideLayout({ rail, focusMode, composeOpen, view }: { rail: boolean; focusMode: boolean; composeOpen: boolean; view: string }) {
+function WideLayout({
+  rail,
+  focusMode,
+  composeOpen,
+  view,
+}: {
+  rail: boolean;
+  focusMode: boolean;
+  composeOpen: boolean;
+  view: string;
+}) {
   const { panelSidebarW, panelStreamW, setPanelWidths, sidebarCollapsed } = useApp();
   const [resizing, setResizing] = useState(false);
   // Effective rail = viewport-driven medium rail OR the user's manual collapse.
@@ -173,26 +240,55 @@ function WideLayout({ rail, focusMode, composeOpen, view }: { rail: boolean; foc
   return (
     <div className="shell">
       <TopBar />
-      <div className="app" style={{ gridTemplateColumns: cols, position: "relative", transition: resizing ? "none" : undefined }}>
-      <Sidebar rail={railEffective} />
-      {isFull(view) ? (
-        <FullPage />
-      ) : (
-        <>
-          <Stream />
-          {composeOpen ? <Compose /> : <Stage />}
-        </>
-      )}
-      {!railEffective && (
-        <Splitter left={sidebarW} value={sidebarW} min={180} max={380}
-          onChange={(v) => { setResizing(true); setPanelWidths(v, panelStreamW); }}
-          onCommit={(v) => { setPanelWidths(v, panelStreamW, true); setResizing(false); }} />
-      )}
-      {showStreamSplitter && (
-        <Splitter left={sidebarW + streamW} value={streamW} min={280} max={640}
-          onChange={(v) => { setResizing(true); setPanelWidths(panelSidebarW, v); }}
-          onCommit={(v) => { setPanelWidths(panelSidebarW, v, true); setResizing(false); }} />
-      )}
+      <div
+        className="app"
+        style={{
+          gridTemplateColumns: cols,
+          position: "relative",
+          transition: resizing ? "none" : undefined,
+        }}
+      >
+        <Sidebar rail={railEffective} />
+        {isFull(view) ? (
+          <FullPage />
+        ) : (
+          <>
+            <Stream />
+            {composeOpen ? <Compose /> : <Stage />}
+          </>
+        )}
+        {!railEffective && (
+          <Splitter
+            left={sidebarW}
+            value={sidebarW}
+            min={180}
+            max={380}
+            onChange={(v) => {
+              setResizing(true);
+              setPanelWidths(v, panelStreamW);
+            }}
+            onCommit={(v) => {
+              setPanelWidths(v, panelStreamW, true);
+              setResizing(false);
+            }}
+          />
+        )}
+        {showStreamSplitter && (
+          <Splitter
+            left={sidebarW + streamW}
+            value={streamW}
+            min={280}
+            max={640}
+            onChange={(v) => {
+              setResizing(true);
+              setPanelWidths(panelSidebarW, v);
+            }}
+            onCommit={(v) => {
+              setPanelWidths(panelSidebarW, v, true);
+              setResizing(false);
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -206,7 +302,9 @@ function TopBar() {
   const [msg, setMsg] = useState("");
   const acctLabel = selectedAccountId
     ? accounts.find((a) => a.id === selectedAccountId)?.email
-    : accounts.length > 1 ? "All accounts" : accounts[0]?.email;
+    : accounts.length > 1
+      ? "All accounts"
+      : accounts[0]?.email;
   const doSync = async () => {
     setMsg("");
     const { total, errors } = await syncAll();
@@ -218,11 +316,20 @@ function TopBar() {
       <div className="topbar-brand">
         <img src={logo} className="topbar-logo" alt="" aria-hidden />
         <b>Bharga Mail</b>
-        {acctLabel && <span className="topbar-ctx" title={acctLabel}>{acctLabel}</span>}
+        {acctLabel && (
+          <span className="topbar-ctx" title={acctLabel}>
+            {acctLabel}
+          </span>
+        )}
       </div>
       <div className="topbar-right">
         {msg && <span className="topbar-msg">{msg}</span>}
-        <button className="topbar-btn" onClick={doSync} disabled={syncing} title="Sync all accounts">
+        <button
+          className="topbar-btn"
+          onClick={doSync}
+          disabled={syncing}
+          title="Sync all accounts"
+        >
           <Icon name="cloud" size={13} weight="duotone" /> {syncing ? "Syncing…" : "Sync"}
         </button>
         <ThemeButton />
@@ -244,9 +351,13 @@ function NarrowLayout() {
     <div className="flex h-screen flex-col">
       <header className="flex items-center gap-2 border-b border-border px-3 py-2.5">
         {showStage ? (
-          <button className="iconbtn" title="Back" onClick={backToStream}><Icon name="awaiting" /></button>
+          <button className="iconbtn" title="Back" onClick={backToStream}>
+            <Icon name="awaiting" />
+          </button>
         ) : (
-          <button className="iconbtn" title="Menu" onClick={() => setDrawer(true)}><Icon name="more" /></button>
+          <button className="iconbtn" title="Menu" onClick={() => setDrawer(true)}>
+            <Icon name="more" />
+          </button>
         )}
         <b className="text-[14px] capitalize">{full ? view : showStage ? "Conversation" : view}</b>
         <div className="ml-auto flex gap-2">
@@ -265,13 +376,17 @@ function NarrowLayout() {
           <>
             <motion.div
               className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={overlayTransition}
               onClick={() => setDrawer(false)}
             />
             <motion.div
               className="fixed inset-y-0 left-0 z-50 w-[264px]"
-              initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
               transition={structuralTransition}
             >
               <Sidebar />
@@ -296,18 +411,33 @@ function FullPage() {
 
 function ThemeButton() {
   const { toggleTheme, theme } = useApp();
-  return <button className="iconbtn" title="Toggle theme" onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={14} /></button>;
+  return (
+    <button className="iconbtn" title="Toggle theme" onClick={toggleTheme}>
+      <Icon name={theme === "dark" ? "sun" : "moon"} size={14} />
+    </button>
+  );
 }
 function CommandButton() {
   const setCmd = useApp((s) => s.setCmd);
-  return <button className="iconbtn" title="Command (⌘K)" onClick={() => setCmd(true)}><Icon name="command" size={14} /></button>;
+  return (
+    <button className="iconbtn" title="Command (⌘K)" onClick={() => setCmd(true)}>
+      <Icon name="command" size={14} />
+    </button>
+  );
 }
 
 /** Permanently failed sends ("Not sent") and "sent, but the copy to Sent failed"
  *  warnings. These were logged and forgotten before; now the user sees them and
  *  can retry, discard or dismiss. */
 function SendFailures() {
-  const { deadLetters, sendWarnings, retryDeadLetter, discardDeadLetter, dismissSendWarning, accounts } = useApp();
+  const {
+    deadLetters,
+    sendWarnings,
+    retryDeadLetter,
+    discardDeadLetter,
+    dismissSendWarning,
+    accounts,
+  } = useApp();
   const warnings = Object.entries(sendWarnings);
   if (deadLetters.length === 0 && warnings.length === 0) return null;
   const label = (accountId: string) => accounts.find((a) => a.id === accountId)?.email ?? accountId;
@@ -317,15 +447,35 @@ function SendFailures() {
       <div className="send-failures-body">
         {deadLetters.map((d) => (
           <div className="send-failure" key={d.id}>
-            <span><b>Not sent</b> to {d.to}{d.subject ? ` — “${d.subject}”` : ""}{d.error ? ` (${d.error})` : ""}</span>
-            <button className="update-btn" onClick={() => void retryDeadLetter(d.id)}>Retry</button>
-            <button className="update-x" title="Discard" onClick={() => void discardDeadLetter(d.id)}><Icon name="close" size={13} /></button>
+            <span>
+              <b>Not sent</b> to {d.to}
+              {d.subject ? ` — “${d.subject}”` : ""}
+              {d.error ? ` (${d.error})` : ""}
+            </span>
+            <button className="update-btn" onClick={() => void retryDeadLetter(d.id)}>
+              Retry
+            </button>
+            <button
+              className="update-x"
+              title="Discard"
+              onClick={() => void discardDeadLetter(d.id)}
+            >
+              <Icon name="close" size={13} />
+            </button>
           </div>
         ))}
         {warnings.map(([accountId, msg]) => (
           <div className="send-failure" key={accountId}>
-            <span>{label(accountId)}: {msg}</span>
-            <button className="update-x" title="Dismiss" onClick={() => void dismissSendWarning(accountId)}><Icon name="close" size={13} /></button>
+            <span>
+              {label(accountId)}: {msg}
+            </span>
+            <button
+              className="update-x"
+              title="Dismiss"
+              onClick={() => void dismissSendWarning(accountId)}
+            >
+              <Icon name="close" size={13} />
+            </button>
           </div>
         ))}
       </div>

@@ -1,10 +1,9 @@
 /** Secure two-step CalDAV discovery and collection selection dialog. */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-
-import type { CalendarSource, RemoteCalendar } from "@/types";
-import { api } from "@/lib/bridge";
 import { Modal } from "@/components/ui/Modal";
+import { api } from "@/lib/bridge";
+import type { CalendarSource, RemoteCalendar } from "@/types";
 
 interface SourceApi {
   discoverCalDav: NonNullable<typeof api.calendar.discoverCalDav>;
@@ -30,7 +29,13 @@ function validUrl(value: string): boolean {
   }
 }
 
-export function SourceDialog({ open, onClose, onSaved, returnFocus, sourceApi = api.calendar as SourceApi }: SourceDialogProps) {
+export function SourceDialog({
+  open,
+  onClose,
+  onSaved,
+  returnFocus,
+  sourceApi = api.calendar as SourceApi,
+}: SourceDialogProps) {
   const [label, setLabel] = useState("CalDAV");
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
@@ -50,7 +55,11 @@ export function SourceDialog({ open, onClose, onSaved, returnFocus, sourceApi = 
   }, [open]);
 
   const host = useMemo(() => {
-    try { return new URL(url).host; } catch { return ""; }
+    try {
+      return new URL(url).host;
+    } catch {
+      return "";
+    }
   }, [url]);
 
   const discover = async () => {
@@ -66,12 +75,20 @@ export function SourceDialog({ open, onClose, onSaved, returnFocus, sourceApi = 
     setStatus("discovering");
     setError(null);
     try {
-      const discovered = await sourceApi.discoverCalDav({ url: url.trim(), username: username.trim(), password });
+      const discovered = await sourceApi.discoverCalDav({
+        url: url.trim(),
+        username: username.trim(),
+        password,
+      });
       setCalendars(discovered);
       setSelected(discovered.map((calendar) => calendar.id));
       if (discovered.length === 0) setError("No calendar collections were found.");
     } catch (reason) {
-      setError(reason && typeof reason === "object" && "message" in reason ? String(reason.message) : "CalDAV discovery failed.");
+      setError(
+        reason && typeof reason === "object" && "message" in reason
+          ? String(reason.message)
+          : "CalDAV discovery failed.",
+      );
     } finally {
       setStatus("idle");
     }
@@ -96,7 +113,11 @@ export function SourceDialog({ open, onClose, onSaved, returnFocus, sourceApi = 
       onSaved(source);
       onClose();
     } catch (reason) {
-      setError(reason && typeof reason === "object" && "message" in reason ? String(reason.message) : "Connection could not be saved.");
+      setError(
+        reason && typeof reason === "object" && "message" in reason
+          ? String(reason.message)
+          : "Connection could not be saved.",
+      );
     } finally {
       setStatus("idle");
     }
@@ -111,7 +132,11 @@ export function SourceDialog({ open, onClose, onSaved, returnFocus, sourceApi = 
       onSaved(source);
       onClose();
     } catch (reason) {
-      setError(reason && typeof reason === "object" && "message" in reason ? String(reason.message) : "Google Calendar authorization did not complete.");
+      setError(
+        reason && typeof reason === "object" && "message" in reason
+          ? String(reason.message)
+          : "Google Calendar authorization did not complete.",
+      );
     } finally {
       setStatus("idle");
     }
@@ -126,56 +151,166 @@ export function SourceDialog({ open, onClose, onSaved, returnFocus, sourceApi = 
       onSaved(source);
       onClose();
     } catch (reason) {
-      setError(reason && typeof reason === "object" && "message" in reason ? String(reason.message) : "Microsoft Calendar authorization did not complete.");
+      setError(
+        reason && typeof reason === "object" && "message" in reason
+          ? String(reason.message)
+          : "Microsoft Calendar authorization did not complete.",
+      );
     } finally {
       setStatus("idle");
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Add calendar connection" maxWidth={620} returnFocus={returnFocus}>
-      <form className="calendar-source-form" onSubmit={(event) => { event.preventDefault(); void (calendars.length ? save() : discover()); }}>
-        <p className="calendar-source-intro">Connect any standards-based CalDAV server. Credentials are encrypted on this device.</p>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add calendar connection"
+      maxWidth={620}
+      returnFocus={returnFocus}
+    >
+      <form
+        className="calendar-source-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void (calendars.length ? save() : discover());
+        }}
+      >
+        <p className="calendar-source-intro">
+          Connect any standards-based CalDAV server. Credentials are encrypted on this device.
+        </p>
         {(sourceApi.connectGoogleCalendar || sourceApi.connectMicrosoftCalendar) && (
           <>
             <div className="calendar-provider-choices">
               {sourceApi.connectGoogleCalendar && (
-                <button type="button" className="calendar-provider-choice" disabled={status !== "idle"} onClick={() => { void connectGoogle(); }}>
-                  <b>Google Calendar</b><span>Authorize calendar access separately from Gmail</span>
+                <button
+                  type="button"
+                  className="calendar-provider-choice"
+                  disabled={status !== "idle"}
+                  onClick={() => {
+                    void connectGoogle();
+                  }}
+                >
+                  <b>Google Calendar</b>
+                  <span>Authorize calendar access separately from Gmail</span>
                 </button>
               )}
               {sourceApi.connectMicrosoftCalendar && (
-                <button type="button" className="calendar-provider-choice" disabled={status !== "idle"} onClick={() => { void connectMicrosoft(); }}>
-                  <b>Microsoft 365</b><span>Authorize calendar access separately from Outlook mail</span>
+                <button
+                  type="button"
+                  className="calendar-provider-choice"
+                  disabled={status !== "idle"}
+                  onClick={() => {
+                    void connectMicrosoft();
+                  }}
+                >
+                  <b>Microsoft 365</b>
+                  <span>Authorize calendar access separately from Outlook mail</span>
                 </button>
               )}
             </div>
-            <div className="calendar-source-separator"><span>or connect CalDAV</span></div>
+            <div className="calendar-source-separator">
+              <span>or connect CalDAV</span>
+            </div>
           </>
         )}
-        <label><span>Connection name</span><input value={label} onChange={(event) => setLabel(event.currentTarget.value)} autoComplete="off" /></label>
-        <label><span>Server URL</span><input ref={urlRef} aria-label="CalDAV URL" type="url" value={url} onChange={(event) => { setUrl(event.currentTarget.value); setCalendars([]); }} placeholder="https://calendar.example.com" autoComplete="url" /></label>
+        <label>
+          <span>Connection name</span>
+          <input
+            value={label}
+            onChange={(event) => setLabel(event.currentTarget.value)}
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          <span>Server URL</span>
+          <input
+            ref={urlRef}
+            aria-label="CalDAV URL"
+            type="url"
+            value={url}
+            onChange={(event) => {
+              setUrl(event.currentTarget.value);
+              setCalendars([]);
+            }}
+            placeholder="https://calendar.example.com"
+            autoComplete="url"
+          />
+        </label>
         <div className="calendar-source-credentials">
-          <label><span>Username</span><input aria-label="Username" value={username} onChange={(event) => setUsername(event.currentTarget.value)} autoComplete="username" /></label>
-          <label><span>Password or app password</span><input aria-label="Password" type="password" value={password} onChange={(event) => setPassword(event.currentTarget.value)} autoComplete="current-password" /></label>
+          <label>
+            <span>Username</span>
+            <input
+              aria-label="Username"
+              value={username}
+              onChange={(event) => setUsername(event.currentTarget.value)}
+              autoComplete="username"
+            />
+          </label>
+          <label>
+            <span>Password or app password</span>
+            <input
+              aria-label="Password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.currentTarget.value)}
+              autoComplete="current-password"
+            />
+          </label>
         </div>
         {calendars.length > 0 && (
           <fieldset className="calendar-source-collections">
             <legend>Calendars on {host}</legend>
             {calendars.map((calendar) => (
               <label key={calendar.id}>
-                <input type="checkbox" checked={selected.includes(calendar.id)} onChange={(event) => setSelected((current) => event.currentTarget.checked ? [...current, calendar.id] : current.filter((id) => id !== calendar.id))} />
-                <span className="calendar-color" style={{ backgroundColor: calendar.color }} aria-hidden="true" />
-                <span><b>{calendar.name}</b><small>{calendar.writable ? "Can edit" : "Read only"}{calendar.supportsSyncCollection ? " · Fast sync" : ""}</small></span>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(calendar.id)}
+                  onChange={(event) =>
+                    setSelected((current) =>
+                      event.currentTarget.checked
+                        ? [...current, calendar.id]
+                        : current.filter((id) => id !== calendar.id),
+                    )
+                  }
+                />
+                <span
+                  className="calendar-color"
+                  style={{ backgroundColor: calendar.color }}
+                  aria-hidden="true"
+                />
+                <span>
+                  <b>{calendar.name}</b>
+                  <small>
+                    {calendar.writable ? "Can edit" : "Read only"}
+                    {calendar.supportsSyncCollection ? " · Fast sync" : ""}
+                  </small>
+                </span>
               </label>
             ))}
           </fieldset>
         )}
-        {error && <p className="calendar-source-error" role="alert">{error}</p>}
+        {error && (
+          <p className="calendar-source-error" role="alert">
+            {error}
+          </p>
+        )}
         <div className="calendar-source-actions">
-          <button type="button" className="calendar-button calendar-button-quiet" onClick={onClose}>Cancel</button>
-          <button type="submit" className="calendar-button calendar-button-primary" disabled={status !== "idle"}>
-            {status === "discovering" ? "Discovering…" : status === "saving" ? "Saving…" : calendars.length ? "Add connection" : "Discover calendars"}
+          <button type="button" className="calendar-button calendar-button-quiet" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="calendar-button calendar-button-primary"
+            disabled={status !== "idle"}
+          >
+            {status === "discovering"
+              ? "Discovering…"
+              : status === "saving"
+                ? "Saving…"
+                : calendars.length
+                  ? "Add connection"
+                  : "Discover calendars"}
           </button>
         </div>
       </form>

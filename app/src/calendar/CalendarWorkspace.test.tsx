@@ -1,5 +1,5 @@
-import { act } from "react";
 import dayjs from "dayjs";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CalendarWorkspace } from "@/calendar/CalendarWorkspace";
@@ -48,43 +48,61 @@ function calendarFixtureApi(): CalendarApi {
   const event = fixtureEvent();
   return {
     async listSources() {
-      return [{
-        id: "source-1",
-        linkedAccountId: null,
-        provider: "calDav",
-        label: "Operations",
-        address: "calendar.example.test",
-        authState: "ready",
-        capabilities: ["events"],
-        lastSyncAt: 1_795_000_000,
-        syncError: null,
-        disabled: false,
-      }];
+      return [
+        {
+          id: "source-1",
+          linkedAccountId: null,
+          provider: "calDav",
+          label: "Operations",
+          address: "calendar.example.test",
+          authState: "ready",
+          capabilities: ["events"],
+          lastSyncAt: 1_795_000_000,
+          syncError: null,
+          disabled: false,
+        },
+      ];
     },
     async listCalendars() {
-      return [{
-        id: "calendar-1",
-        sourceId: "source-1",
-        providerId: "work",
-        name: "Operations",
-        description: "",
-        color: "#6f8df6",
-        timezone: "Europe/Berlin",
-        accessRole: "owner",
-        writable: true,
-        visible: true,
-        isDefault: true,
-        sortOrder: 0,
-      }];
+      return [
+        {
+          id: "calendar-1",
+          sourceId: "source-1",
+          providerId: "work",
+          name: "Operations",
+          description: "",
+          color: "#6f8df6",
+          timezone: "Europe/Berlin",
+          accessRole: "owner",
+          writable: true,
+          visible: true,
+          isDefault: true,
+          sortOrder: 0,
+        },
+      ];
     },
-    async listEvents() { return [event]; },
-    async getEvent() { return event; },
-    async createEvent() { return event; },
-    async updateEvent() { return event; },
-    async deleteEvent() { return { ...event, deleted: true }; },
-    async createLocalCalendar() { throw new Error("not used"); },
+    async listEvents() {
+      return [event];
+    },
+    async getEvent() {
+      return event;
+    },
+    async createEvent() {
+      return event;
+    },
+    async updateEvent() {
+      return event;
+    },
+    async deleteEvent() {
+      return { ...event, deleted: true };
+    },
+    async createLocalCalendar() {
+      throw new Error("not used");
+    },
     async setVisibility() {},
-    async syncSource() {},
+    async syncSource() {
+      return undefined;
+    },
   };
 }
 
@@ -96,7 +114,12 @@ describe("CalendarWorkspace", () => {
     const rendered = renderTest(
       <CalendarWorkspace
         calendarApi={calendarFixtureApi()}
-        settingsApi={{ async getSettings() { return {}; }, setSetting }}
+        settingsApi={{
+          async getSettings() {
+            return {};
+          },
+          setSetting,
+        }}
       />,
     );
     cleanup = rendered.unmount;

@@ -14,7 +14,12 @@ function readAsBase64(file: File): Promise<Attach> {
     r.onload = () => {
       const result = String(r.result);
       const b64 = result.includes(",") ? result.slice(result.indexOf(",") + 1) : result;
-      resolve({ name: file.name, size: file.size, mime: file.type || "application/octet-stream", dataB64: b64 });
+      resolve({
+        name: file.name,
+        size: file.size,
+        mime: file.type || "application/octet-stream",
+        dataB64: b64,
+      });
     };
     r.onerror = () => reject(r.error);
     r.readAsDataURL(file);
@@ -23,7 +28,9 @@ function readAsBase64(file: File): Promise<Attach> {
 
 // Keep picker and drag-and-drop attachment ingestion on the same conversion
 // path so both produce the exact payload expected by the send queue.
-export async function filesToAttachments(files: Iterable<File> | ArrayLike<File>): Promise<Attach[]> {
+export async function filesToAttachments(
+  files: Iterable<File> | ArrayLike<File>,
+): Promise<Attach[]> {
   return Promise.all(Array.from(files).map(readAsBase64));
 }
 
@@ -70,7 +77,9 @@ export function Attachments({ files, onAdd, onRemove }: Props) {
           {files.map((f) => (
             <span className="attach-chip" key={f.name}>
               <Icon name="attach" size={14} />
-              <span className="attach-name" title={f.name}>{f.name}</span>
+              <span className="attach-name" title={f.name}>
+                {f.name}
+              </span>
               <span className="attach-size">{human(f.size)}</span>
               <button
                 type="button"

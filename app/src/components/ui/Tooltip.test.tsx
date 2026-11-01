@@ -11,7 +11,9 @@ describe("Tooltip", () => {
   it("gives an unlabeled icon button the tooltip label as its accessible name", () => {
     const rendered = renderTest(
       <Tooltip label="Compose">
-        <button type="button"><span aria-hidden="true">+</span></button>
+        <button type="button">
+          <span aria-hidden="true">+</span>
+        </button>
       </Tooltip>,
     );
 
@@ -21,10 +23,14 @@ describe("Tooltip", () => {
   it("preserves an explicit accessible name supplied by the control", () => {
     const rendered = renderTest(
       <Tooltip label="Open actions">
-        <button type="button" aria-label="Account actions">…</button>
+        <button type="button" aria-label="Account actions">
+          …
+        </button>
       </Tooltip>,
     );
 
-    expect(rendered.host.querySelector("button")?.getAttribute("aria-label")).toBe("Account actions");
+    expect(rendered.host.querySelector("button")?.getAttribute("aria-label")).toBe(
+      "Account actions",
+    );
   });
 });

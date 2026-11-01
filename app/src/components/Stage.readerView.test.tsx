@@ -2,18 +2,31 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Stage } from "@/components/Stage";
 import { account, threads } from "@/data/mock";
-import { renderTest } from "@/test/render";
 import { useApp } from "@/store";
+import { renderTest } from "@/test/render";
 
 const mounted: ReturnType<typeof renderTest>[] = [];
-afterEach(() => { for (const item of mounted.splice(0)) item.unmount(); });
+afterEach(() => {
+  for (const item of mounted.splice(0)) item.unmount();
+});
 
 function renderReader() {
   const thread = {
     ...threads[0],
-    messages: [{ ...threads[0].messages[0], bodyHtml: '<table width="1200"><tr><td style="white-space:nowrap">Invoice columns</td></tr></table><img src="https://example.test/tracker.png">' }],
+    messages: [
+      {
+        ...threads[0].messages[0],
+        bodyHtml:
+          '<table width="1200"><tr><td style="white-space:nowrap">Invoice columns</td></tr></table><img src="https://example.test/tracker.png">',
+      },
+    ],
   };
-  useApp.setState({ accounts: [account], threads: [thread, threads[1]], selectedThreadId: thread.id, selectedMessageId: null });
+  useApp.setState({
+    accounts: [account],
+    threads: [thread, threads[1]],
+    selectedThreadId: thread.id,
+    selectedMessageId: null,
+  });
   const rendered = renderTest(<Stage />);
   mounted.push(rendered);
   return rendered.host;
@@ -27,7 +40,9 @@ function button(host: HTMLElement, name: string) {
 
 function choose(host: HTMLElement, label: string, option: string) {
   act(() => button(host, label).click());
-  const target = [...host.querySelectorAll<HTMLButtonElement>('[role="option"]')].find((node) => node.textContent === option);
+  const target = [...host.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(
+    (node) => node.textContent === option,
+  );
   expect(target, option).toBeDefined();
   act(() => target!.click());
 }
@@ -69,7 +84,9 @@ describe("message display controls", () => {
     choose(host, "Message layout", "Original layout");
     choose(host, "Message zoom", "150%");
     act(() => useApp.setState({ selectedThreadId: threads[1].id }));
-    await vi.waitFor(() => expect(host.querySelectorAll('button[aria-label="Message layout"]')).toHaveLength(1));
+    await vi.waitFor(() =>
+      expect(host.querySelectorAll('button[aria-label="Message layout"]')).toHaveLength(1),
+    );
     expect(button(host, "Message layout").textContent).toBe("Fit width");
     expect(button(host, "Message zoom").textContent).toBe("100%");
   });

@@ -38,12 +38,7 @@ impl ConnectorError {
         code: impl Into<String>,
         message: impl Into<String>,
     ) -> Self {
-        Self {
-            kind,
-            code: code.into(),
-            message: message.into(),
-            retry_after_seconds: None,
-        }
+        Self { kind, code: code.into(), message: message.into(), retry_after_seconds: None }
     }
 
     pub fn code(&self) -> &str {
@@ -69,15 +64,10 @@ pub struct RemoteCalendar {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[allow(clippy::large_enum_variant)] // short-lived; Box-ing adds an allocation for no real gain
 pub enum RemoteChange {
-    Upsert {
-        href: String,
-        etag: Option<String>,
-        event: CalendarEvent,
-    },
-    Delete {
-        href: String,
-    },
+    Upsert { href: String, etag: Option<String>, event: CalendarEvent },
+    Delete { href: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -138,9 +128,7 @@ mod tests {
         }
         async fn pull(&self, cursor: Option<&str>) -> Result<SyncBatch, ConnectorError> {
             Ok(SyncBatch {
-                changes: vec![RemoteChange::Delete {
-                    href: "/calendar/deleted.ics".into(),
-                }],
+                changes: vec![RemoteChange::Delete { href: "/calendar/deleted.ics".into() }],
                 next_cursor: cursor.map(str::to_string),
                 ctag: None,
             })
@@ -153,20 +141,13 @@ mod tests {
                     "Remote event changed",
                 ));
             }
-            Ok(PushOutcome {
-                href: None,
-                provider_version: None,
-            })
+            Ok(PushOutcome { href: None, provider_version: None })
         }
         async fn free_busy(
             &self,
             _request: &FreeBusyRequest,
         ) -> Result<FreeBusyResult, ConnectorError> {
-            Err(ConnectorError::new(
-                ConnectorErrorKind::AuthRequired,
-                "auth-required",
-                "Reconnect",
-            ))
+            Err(ConnectorError::new(ConnectorErrorKind::AuthRequired, "auth-required", "Reconnect"))
         }
     }
 

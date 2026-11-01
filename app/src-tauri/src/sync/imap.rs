@@ -4,7 +4,7 @@
 use imap::{ClientBuilder, ConnectionMode, TlsKind};
 use mailparse::MailHeaderMap;
 
-use super::{tokens, SyncError};
+use super::{SyncError, tokens};
 use crate::store::{Message, MessageMeta, Party, Security, Store, Thread};
 
 fn finish_imap_persistence<F>(errors: usize, persist_cursor: F) -> Result<(), SyncError>
@@ -21,20 +21,39 @@ where
 
 /// Connect, select a folder, fetch the most recent messages, persist them.
 /// Runs blocking IMAP I/O; call via [`fetch_folder_async`] from async code.
-pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, group: bool, force_full: bool) -> Result<usize, SyncError> {
-    let acct = store
-        .imap_account(account_id)
-        .ok_or_else(|| SyncError::Transient(format!("no saved IMAP settings for {account_id} — re-add the account")))?;
-    let password = tokens::secret(account_id, "imap-pass")
-        .filter(|p| !p.is_empty())
-        .ok_or_else(|| SyncError::Transient(format!("no saved password for {} — re-add the account", acct.email)))?;
+pub fn fetch_folder(
+    store: &Store,
+    account_id: &str,
+    folder: &str,
+    limit: u32,
+    group: bool,
+    force_full: bool,
+) -> Result<usize, SyncError> {
+    let acct = store.imap_account(account_id).ok_or_else(|| {
+        SyncError::Transient(format!(
+            "no saved IMAP settings for {account_id} — re-add the account"
+        ))
+    })?;
+    let password =
+        tokens::secret(account_id, "imap-pass").filter(|p| !p.is_empty()).ok_or_else(|| {
+            SyncError::Transient(format!(
+                "no saved password for {} — re-add the account",
+                acct.email
+            ))
+        })?;
     let mode = match acct.imap_security {
         Security::Ssl => ConnectionMode::Tls,
         Security::Starttls => ConnectionMode::StartTls,
         Security::None => ConnectionMode::Plaintext,
     };
 
-    log::info!("imap: syncing {} [{folder}] via {}:{} ({:?})", acct.email, acct.imap_host, acct.imap_port, acct.imap_security);
+    log::info!(
+        "imap: syncing {} [{folder}] via {}:{} ({:?})",
+        acct.email,
+        acct.imap_host,
+        acct.imap_port,
+        acct.imap_security
+    );
     let client = ClientBuilder::new(acct.imap_host.clone(), acct.imap_port)
         .tls_kind(TlsKind::Rust)
         .mode(mode)
@@ -43,16 +62,17 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
             log::error!("imap connect to {}:{} failed: {e}", acct.imap_host, acct.imap_port);
             SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port))
         })?;
-    let mut session = client
-        .login(&acct.imap_username, &password)
-        .map_err(|(e, _)| {
-            log::error!("imap login for {} (user {}) failed: {e}", acct.email, acct.imap_username);
-            SyncError::Transient(format!("login failed for {} — check the username/password — {e}", acct.imap_username))
-        })?;
+    let mut session = client.login(&acct.imap_username, &password).map_err(|(e, _)| {
+        log::error!("imap login for {} (user {}) failed: {e}", acct.email, acct.imap_username);
+        SyncError::Transient(format!(
+            "login failed for {} — check the username/password — {e}",
+            acct.imap_username
+        ))
+    })?;
 
-    let mailbox = session
-        .select(folder)
-        .map_err(|e| SyncError::Transient(format!("couldn't open {folder} for {} — {e}", acct.email)))?;
+    let mailbox = session.select(folder).map_err(|e| {
+        SyncError::Transient(format!("couldn't open {folder} for {} — {e}", acct.email))
+    })?;
 
     // Incremental sync (like Gmail historyId / Graph delta): if the mailbox hasn't
     // been renumbered (UIDVALIDITY matches the stored cursor), fetch only the UIDs
@@ -63,7 +83,8 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
     let cursor = store.imap_folder_cursor(account_id, folder);
     // `force_full` (backfill / "load older") bypasses the incremental cursor so a
     // growing `limit` re-seeds the most-recent N and pulls in older messages.
-    let incremental = !force_full && matches!((uid_validity, cursor), (Some(uv), Some((cv, _))) if uv == cv);
+    let incremental =
+        !force_full && matches!((uid_validity, cursor), (Some(uv), Some((cv, _))) if uv == cv);
 
     let fetches = if incremental {
         let prev_uid_next = cursor.expect("incremental implies a stored cursor").1;
@@ -79,7 +100,9 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
         let total = mailbox.exists;
         if total == 0 {
             finish_imap_persistence(0, || match (uid_validity, uid_next) {
-                (Some(uv), Some(next)) => store.set_imap_folder_cursor(account_id, folder, uv, next),
+                (Some(uv), Some(next)) => {
+                    store.set_imap_folder_cursor(account_id, folder, uv, next)
+                }
                 _ => Ok(()),
             })?;
             let _ = session.logout();
@@ -95,7 +118,9 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
             if have >= total {
                 // Already cached the whole mailbox — nothing older to fetch.
                 finish_imap_persistence(0, || match (uid_validity, uid_next) {
-                    (Some(uv), Some(next)) => store.set_imap_folder_cursor(account_id, folder, uv, next),
+                    (Some(uv), Some(next)) => {
+                        store.set_imap_folder_cursor(account_id, folder, uv, next)
+                    }
                     _ => Ok(()),
                 })?;
                 let _ = session.logout();
@@ -159,7 +184,10 @@ pub fn fetch_folder(store: &Store, account_id: &str, folder: &str, limit: u32, g
         _ => Ok(()),
     })?;
     store.prune_empty_threads(); // drop any thread rows left empty by id-scheme moves
-    log::info!("imap: stored {n} messages ({errors} failed) from {folder} ({})", if incremental { "delta" } else { "initial" });
+    log::info!(
+        "imap: stored {n} messages ({errors} failed) from {folder} ({})",
+        if incremental { "delta" } else { "initial" }
+    );
     Ok(n)
 }
 
@@ -183,7 +211,9 @@ pub fn idle_wait_inbox(store: &Store, account_id: &str) -> Result<bool, SyncErro
         .tls_kind(TlsKind::Rust)
         .mode(mode)
         .connect()
-        .map_err(|e| SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port)))?;
+        .map_err(|e| {
+            SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port))
+        })?;
     let mut session = client
         .login(&acct.imap_username, &password)
         .map_err(|(e, _)| SyncError::Transient(format!("login failed — {e}")))?;
@@ -219,7 +249,9 @@ pub fn list_folders(store: &Store, account_id: &str) -> Result<Vec<String>, Sync
         .tls_kind(TlsKind::Rust)
         .mode(mode)
         .connect()
-        .map_err(|e| SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port)))?;
+        .map_err(|e| {
+            SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port))
+        })?;
     let mut session = client
         .login(&acct.imap_username, &password)
         .map_err(|(e, _)| SyncError::Transient(format!("login failed — {e}")))?;
@@ -233,7 +265,8 @@ pub fn list_folders(store: &Store, account_id: &str) -> Result<Vec<String>, Sync
         // A \\Noselect mailbox is a pure hierarchy node (e.g. "INBOX" on some
         // servers, or a namespace prefix): it can never hold mail, so never
         // treat it as Sent/Drafts/… or offer it as an APPEND target.
-        let noselect = nm.attributes().iter().any(|a| matches!(a, imap_proto::NameAttribute::NoSelect));
+        let noselect =
+            nm.attributes().iter().any(|a| matches!(a, imap_proto::NameAttribute::NoSelect));
         // Prefer what the SERVER says (RFC 6154 SPECIAL-USE \\Sent etc.); only
         // guess from the name when the server sent no attribute.
         let from_server = if noselect { None } else { special_use_role(nm.attributes()) };
@@ -256,14 +289,17 @@ pub fn list_folders(store: &Store, account_id: &str) -> Result<Vec<String>, Sync
 /// all flag their real Sent folder with `\\Sent`, whatever it is called.
 fn special_use_role(attrs: &[imap_proto::NameAttribute<'_>]) -> Option<String> {
     use imap_proto::NameAttribute as A;
-    attrs.iter().find_map(|a| match a {
-        A::Sent => Some("sent"),
-        A::Drafts => Some("drafts"),
-        A::Trash => Some("trash"),
-        A::Junk => Some("junk"),
-        A::Archive | A::All => Some("archive"),
-        _ => None,
-    }).map(str::to_string)
+    attrs
+        .iter()
+        .find_map(|a| match a {
+            A::Sent => Some("sent"),
+            A::Drafts => Some("drafts"),
+            A::Trash => Some("trash"),
+            A::Junk => Some("junk"),
+            A::Archive | A::All => Some("archive"),
+            _ => None,
+        })
+        .map(str::to_string)
 }
 
 /// Infer a folder's special-use role from its name (covers the common
@@ -278,16 +314,41 @@ fn folder_role(name: &str) -> Option<String> {
     // the localisations European providers actually use: DE gesendet(e)
     // (Elemente|Objekte), FR envoy(é|e)s, IT (posta )inviata, ES enviados,
     // NL verzonden, PT enviados — not just English "sent".
-    if leaf.contains("sent") || leaf.contains("gesendet") || leaf.contains("envoy") || leaf.contains("inviat") || leaf.contains("enviad") || leaf.contains("verzonden") {
+    if leaf.contains("sent")
+        || leaf.contains("gesendet")
+        || leaf.contains("envoy")
+        || leaf.contains("inviat")
+        || leaf.contains("enviad")
+        || leaf.contains("verzonden")
+    {
         return Some("sent".into());
     }
-    if leaf.contains("draft") || leaf.contains("entw") || leaf.contains("brouillon") || leaf.contains("bozz") || leaf.contains("borrador") || leaf.contains("concept") {
+    if leaf.contains("draft")
+        || leaf.contains("entw")
+        || leaf.contains("brouillon")
+        || leaf.contains("bozz")
+        || leaf.contains("borrador")
+        || leaf.contains("concept")
+    {
         return Some("drafts".into());
     }
-    if leaf.contains("trash") || leaf.contains("deleted") || leaf.contains("papierkorb") || leaf.contains("gelöscht") || leaf.contains("corbeille") || leaf.contains("cestino") || leaf.contains("papelera") || leaf.contains("prullenbak") {
+    if leaf.contains("trash")
+        || leaf.contains("deleted")
+        || leaf.contains("papierkorb")
+        || leaf.contains("gelöscht")
+        || leaf.contains("corbeille")
+        || leaf.contains("cestino")
+        || leaf.contains("papelera")
+        || leaf.contains("prullenbak")
+    {
         return Some("trash".into());
     }
-    if leaf.contains("junk") || leaf.contains("spam") || leaf.contains("unerwünscht") || leaf.contains("indésirable") || leaf.contains("indesiderat") {
+    if leaf.contains("junk")
+        || leaf.contains("spam")
+        || leaf.contains("unerwünscht")
+        || leaf.contains("indésirable")
+        || leaf.contains("indesiderat")
+    {
         return Some("junk".into());
     }
     if leaf.contains("archive") {
@@ -304,7 +365,11 @@ pub enum FolderAction {
     Delete(String),
 }
 
-pub fn manage_folder(store: &Store, account_id: &str, action: FolderAction) -> Result<(), SyncError> {
+pub fn manage_folder(
+    store: &Store,
+    account_id: &str,
+    action: FolderAction,
+) -> Result<(), SyncError> {
     let acct = store
         .imap_account(account_id)
         .ok_or_else(|| SyncError::Transient(format!("no saved IMAP settings for {account_id}")))?;
@@ -320,7 +385,9 @@ pub fn manage_folder(store: &Store, account_id: &str, action: FolderAction) -> R
         .tls_kind(TlsKind::Rust)
         .mode(mode)
         .connect()
-        .map_err(|e| SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port)))?;
+        .map_err(|e| {
+            SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port))
+        })?;
     let mut session = client
         .login(&acct.imap_username, &password)
         .map_err(|(e, _)| SyncError::Transient(format!("login failed — {e}")))?;
@@ -347,13 +414,20 @@ pub fn manage_folder(store: &Store, account_id: &str, action: FolderAction) -> R
     Ok(())
 }
 
-pub async fn manage_folder_async(store: std::sync::Arc<Store>, account_id: String, action: FolderAction) -> Result<(), SyncError> {
+pub async fn manage_folder_async(
+    store: std::sync::Arc<Store>,
+    account_id: String,
+    action: FolderAction,
+) -> Result<(), SyncError> {
     tokio::task::spawn_blocking(move || manage_folder(&store, &account_id, action))
         .await
         .map_err(|e| SyncError::Transient(e.to_string()))?
 }
 
-pub async fn list_folders_async(store: std::sync::Arc<Store>, account_id: String) -> Result<Vec<String>, SyncError> {
+pub async fn list_folders_async(
+    store: std::sync::Arc<Store>,
+    account_id: String,
+) -> Result<Vec<String>, SyncError> {
     tokio::task::spawn_blocking(move || list_folders(&store, &account_id))
         .await
         .map_err(|e| SyncError::Transient(e.to_string()))?
@@ -364,7 +438,12 @@ pub async fn list_folders_async(store: std::sync::Arc<Store>, account_id: String
 /// (RFC 6851) command. The local move has already happened; this is best-effort
 /// server reconciliation, so a server that lacks MOVE simply surfaces an error
 /// (we never EXPUNGE blindly — that could delete unrelated \Deleted messages).
-pub fn move_thread(store: &Store, account_id: &str, thread_id: &str, to_folder: &str) -> Result<(), SyncError> {
+pub fn move_thread(
+    store: &Store,
+    account_id: &str,
+    thread_id: &str,
+    to_folder: &str,
+) -> Result<(), SyncError> {
     let (source, msg_ids) = store
         .thread_move_refs(thread_id)
         .ok_or_else(|| SyncError::Transient("thread not found locally".into()))?;
@@ -386,7 +465,9 @@ pub fn move_thread(store: &Store, account_id: &str, thread_id: &str, to_folder: 
         .tls_kind(TlsKind::Rust)
         .mode(mode)
         .connect()
-        .map_err(|e| SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port)))?;
+        .map_err(|e| {
+            SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port))
+        })?;
     let mut session = client
         .login(&acct.imap_username, &password)
         .map_err(|(e, _)| SyncError::Transient(format!("login failed — {e}")))?;
@@ -403,9 +484,9 @@ pub fn move_thread(store: &Store, account_id: &str, thread_id: &str, to_folder: 
             continue;
         }
         let set = uids.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
-        session
-            .uid_mv(&set, to_folder)
-            .map_err(|e| SyncError::Transient(format!("server move to {to_folder} failed — {e}")))?;
+        session.uid_mv(&set, to_folder).map_err(|e| {
+            SyncError::Transient(format!("server move to {to_folder} failed — {e}"))
+        })?;
         moved += uids.len();
     }
     let _ = session.logout();
@@ -413,7 +494,12 @@ pub fn move_thread(store: &Store, account_id: &str, thread_id: &str, to_folder: 
     Ok(())
 }
 
-pub async fn move_thread_async(store: std::sync::Arc<Store>, account_id: String, thread_id: String, to_folder: String) -> Result<(), SyncError> {
+pub async fn move_thread_async(
+    store: std::sync::Arc<Store>,
+    account_id: String,
+    thread_id: String,
+    to_folder: String,
+) -> Result<(), SyncError> {
     tokio::task::spawn_blocking(move || move_thread(&store, &account_id, &thread_id, &to_folder))
         .await
         .map_err(|e| SyncError::Transient(e.to_string()))?
@@ -424,7 +510,12 @@ pub async fn move_thread_async(store: std::sync::Arc<Store>, account_id: String,
 /// resolve the thread's source folder + Message-IDs, SEARCH each to its UID(s),
 /// and UID STORE the flag. Best-effort — the local flag is updated regardless so
 /// the star works offline; a server failure surfaces as a transient error.
-pub fn flag_thread(store: &Store, account_id: &str, thread_id: &str, flagged: bool) -> Result<(), SyncError> {
+pub fn flag_thread(
+    store: &Store,
+    account_id: &str,
+    thread_id: &str,
+    flagged: bool,
+) -> Result<(), SyncError> {
     // Local mirror first so the UI is correct even if the server is unreachable.
     let _ = store.set_thread_flag(thread_id, flagged);
 
@@ -450,7 +541,9 @@ pub fn flag_thread(store: &Store, account_id: &str, thread_id: &str, flagged: bo
         .tls_kind(TlsKind::Rust)
         .mode(mode)
         .connect()
-        .map_err(|e| SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port)))?;
+        .map_err(|e| {
+            SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port))
+        })?;
     let mut session = client
         .login(&acct.imap_username, &password)
         .map_err(|(e, _)| SyncError::Transient(format!("login failed — {e}")))?;
@@ -471,20 +564,116 @@ pub fn flag_thread(store: &Store, account_id: &str, thread_id: &str, flagged: bo
             .map_err(|e| SyncError::Transient(format!("server flag update failed — {e}")))?;
     }
     let _ = session.logout();
-    log::info!("imap: {} thread {thread_id} for {}", if flagged { "flagged" } else { "unflagged" }, acct.email);
+    log::info!(
+        "imap: {} thread {thread_id} for {}",
+        if flagged { "flagged" } else { "unflagged" },
+        acct.email
+    );
     Ok(())
 }
 
-pub async fn flag_thread_async(store: std::sync::Arc<Store>, account_id: String, thread_id: String, flagged: bool) -> Result<(), SyncError> {
+pub async fn flag_thread_async(
+    store: std::sync::Arc<Store>,
+    account_id: String,
+    thread_id: String,
+    flagged: bool,
+) -> Result<(), SyncError> {
     tokio::task::spawn_blocking(move || flag_thread(&store, &account_id, &thread_id, flagged))
         .await
         .map_err(|e| SyncError::Transient(e.to_string()))?
 }
 
+/// Mark a thread read/unread on the IMAP server via the `\Seen` flag. Mirrors
+/// `flag_thread`: resolve the thread's source folder + Message-IDs, SEARCH each
+/// to its UID(s), then UID STORE the flag. Best-effort — the caller has already
+/// persisted the local read state, and a server failure surfaces as a transient
+/// error without failing the action.
+pub fn set_read(
+    store: &Store,
+    account_id: &str,
+    thread_id: &str,
+    unread: bool,
+) -> Result<(), SyncError> {
+    let (source, msg_ids) = match store.thread_move_refs(thread_id) {
+        Some(v) => v,
+        None => return Ok(()),
+    };
+    if msg_ids.is_empty() {
+        return Ok(());
+    }
+    let acct = store
+        .imap_account(account_id)
+        .ok_or_else(|| SyncError::Transient(format!("no saved IMAP settings for {account_id}")))?;
+    let password = tokens::secret(account_id, "imap-pass")
+        .filter(|p| !p.is_empty())
+        .ok_or_else(|| SyncError::Transient(format!("no saved password for {}", acct.email)))?;
+    let mode = match acct.imap_security {
+        Security::Ssl => ConnectionMode::Tls,
+        Security::Starttls => ConnectionMode::StartTls,
+        Security::None => ConnectionMode::Plaintext,
+    };
+    let client = ClientBuilder::new(acct.imap_host.clone(), acct.imap_port)
+        .tls_kind(TlsKind::Rust)
+        .mode(mode)
+        .connect()
+        .map_err(|e| {
+            SyncError::Transient(format!("can't reach {}:{} — {e}", acct.imap_host, acct.imap_port))
+        })?;
+    let mut session = client
+        .login(&acct.imap_username, &password)
+        .map_err(|(e, _)| SyncError::Transient(format!("login failed — {e}")))?;
+    session
+        .select(&source)
+        .map_err(|e| SyncError::Transient(format!("couldn't open {source} — {e}")))?;
+
+    let query = seen_flag_query(unread);
+    for mid in &msg_ids {
+        let search = format!("HEADER MESSAGE-ID \"{}\"", mid.replace('"', ""));
+        let uids = session.uid_search(&search).unwrap_or_default();
+        if uids.is_empty() {
+            continue;
+        }
+        let set = uids.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
+        session
+            .uid_store(&set, query)
+            .map_err(|e| SyncError::Transient(format!("server read update failed — {e}")))?;
+    }
+    let _ = session.logout();
+    log::info!(
+        "imap: {} thread {thread_id} for {}",
+        if unread { "marked unread" } else { "marked read" },
+        acct.email,
+    );
+    Ok(())
+}
+
+pub async fn set_read_async(
+    store: std::sync::Arc<Store>,
+    account_id: String,
+    thread_id: String,
+    unread: bool,
+) -> Result<(), SyncError> {
+    tokio::task::spawn_blocking(move || set_read(&store, &account_id, &thread_id, unread))
+        .await
+        .map_err(|e| SyncError::Transient(e.to_string()))?
+}
+
+/// IMAP flag mutation for a read/unread action. Marking a thread read adds the
+/// `\Seen` flag on the server; marking it unread removes it. Extracted so the
+/// direction mapping is unit-testable without a live IMAP connection.
+fn seen_flag_query(unread: bool) -> &'static str {
+    if unread { r"-FLAGS (\Seen)" } else { r"+FLAGS (\Seen)" }
+}
+
 /// Fetch a single attachment's decoded bytes by Message-ID + filename. IMAP has
 /// no stored UID yet, so we SEARCH the INBOX by the Message-ID header, re-fetch
 /// the full message, and extract the named part.
-pub fn fetch_attachment(store: &Store, account_id: &str, message_id: &str, filename: &str) -> Result<Vec<u8>, SyncError> {
+pub fn fetch_attachment(
+    store: &Store,
+    account_id: &str,
+    message_id: &str,
+    filename: &str,
+) -> Result<Vec<u8>, SyncError> {
     // Inline attachments (data: URIs embedded in the body — iOS photos, scans)
     // are served straight from the stored HTML: no network, works offline, and
     // works for ANY folder (the IMAP path below only searches INBOX).
@@ -524,10 +713,15 @@ pub fn fetch_attachment(store: &Store, account_id: &str, message_id: &str, filen
     let real_id = message_id.rsplit('\u{1}').next().unwrap_or(message_id);
     let query = format!("HEADER Message-ID \"{real_id}\"");
     let seqs = session.search(query).map_err(|e| SyncError::Transient(e.to_string()))?;
-    let seq = seqs.into_iter().next().ok_or_else(|| SyncError::Transient("message not found on server".into()))?;
+    let seq = seqs
+        .into_iter()
+        .next()
+        .ok_or_else(|| SyncError::Transient("message not found on server".into()))?;
 
     let raw = {
-        let fetches = session.fetch(seq.to_string(), "BODY.PEEK[]").map_err(|e| SyncError::Transient(e.to_string()))?;
+        let fetches = session
+            .fetch(seq.to_string(), "BODY.PEEK[]")
+            .map_err(|e| SyncError::Transient(e.to_string()))?;
         fetches
             .iter()
             .next()
@@ -538,7 +732,8 @@ pub fn fetch_attachment(store: &Store, account_id: &str, message_id: &str, filen
     let _ = session.logout();
 
     let mail = mailparse::parse_mail(&raw).map_err(|e| SyncError::Transient(e.to_string()))?;
-    extract_attachment_bytes(&mail, filename).ok_or_else(|| SyncError::Transient(format!("attachment '{filename}' not found")))
+    extract_attachment_bytes(&mail, filename)
+        .ok_or_else(|| SyncError::Transient(format!("attachment '{filename}' not found")))
 }
 
 /// Find a named attachment in the MIME tree and return its transfer-decoded bytes.
@@ -556,14 +751,27 @@ fn extract_attachment_bytes(mail: &mailparse::ParsedMail, filename: &str) -> Opt
     None
 }
 
-pub async fn fetch_attachment_async(store: std::sync::Arc<Store>, account_id: String, message_id: String, filename: String) -> Result<Vec<u8>, SyncError> {
-    tokio::task::spawn_blocking(move || fetch_attachment(&store, &account_id, &message_id, &filename))
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?
+pub async fn fetch_attachment_async(
+    store: std::sync::Arc<Store>,
+    account_id: String,
+    message_id: String,
+    filename: String,
+) -> Result<Vec<u8>, SyncError> {
+    tokio::task::spawn_blocking(move || {
+        fetch_attachment(&store, &account_id, &message_id, &filename)
+    })
+    .await
+    .map_err(|e| SyncError::Transient(e.to_string()))?
 }
 
 /// Test IMAP credentials without saving: connect, login, logout.
-pub fn test_login(host: &str, port: u16, security: Security, user: &str, pass: &str) -> Result<(), SyncError> {
+pub fn test_login(
+    host: &str,
+    port: u16,
+    security: Security,
+    user: &str,
+    pass: &str,
+) -> Result<(), SyncError> {
     let mode = match security {
         Security::Ssl => ConnectionMode::Tls,
         Security::Starttls => ConnectionMode::StartTls,
@@ -588,15 +796,30 @@ pub fn test_login(host: &str, port: u16, security: Security, user: &str, pass: &
     Ok(())
 }
 
-pub async fn fetch_folder_async(store: std::sync::Arc<Store>, account_id: String, folder: String, limit: u32, group: bool, force_full: bool) -> Result<usize, SyncError> {
-    tokio::task::spawn_blocking(move || fetch_folder(&store, &account_id, &folder, limit, group, force_full))
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?
+pub async fn fetch_folder_async(
+    store: std::sync::Arc<Store>,
+    account_id: String,
+    folder: String,
+    limit: u32,
+    group: bool,
+    force_full: bool,
+) -> Result<usize, SyncError> {
+    tokio::task::spawn_blocking(move || {
+        fetch_folder(&store, &account_id, &folder, limit, group, force_full)
+    })
+    .await
+    .map_err(|e| SyncError::Transient(e.to_string()))?
 }
 
 /// Parse a raw RFC822 message into a store Thread (one message per thread,
 /// keyed by Message-ID). Pure + unit-tested.
-pub(crate) fn parse_rfc822(account_id: &str, raw: &[u8], unread: bool, group: bool, folder: &str) -> Result<Thread, SyncError> {
+pub(crate) fn parse_rfc822(
+    account_id: &str,
+    raw: &[u8],
+    unread: bool,
+    group: bool,
+    folder: &str,
+) -> Result<Thread, SyncError> {
     let mail = mailparse::parse_mail(raw)
         .map_err(|error| SyncError::Transient(format!("invalid RFC822 message: {error}")))?;
     let h = |name: &str| mail.headers.get_first_value(name);
@@ -605,7 +828,9 @@ pub(crate) fn parse_rfc822(account_id: &str, raw: &[u8], unread: bool, group: bo
     let from_raw = h("From").unwrap_or_default();
     let (from_name, from_addr) = split_addr(&from_raw);
     let when = h("Date").unwrap_or_default();
-    let msg_id = h("Message-ID").filter(|s| !s.is_empty()).unwrap_or_else(|| format!("imapmsg-{}", subject.len()));
+    let msg_id = h("Message-ID")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("imapmsg-{}", subject.len()));
 
     // When grouping is on, the conversation root is the first id in References,
     // else In-Reply-To, else this message itself. The thread id is scoped to the
@@ -614,7 +839,9 @@ pub(crate) fn parse_rfc822(account_id: &str, raw: &[u8], unread: bool, group: bo
     let base = if group {
         h("References")
             .and_then(|r| r.split_whitespace().next().map(str::to_string))
-            .or_else(|| h("In-Reply-To").and_then(|r| r.split_whitespace().next().map(str::to_string)))
+            .or_else(|| {
+                h("In-Reply-To").and_then(|r| r.split_whitespace().next().map(str::to_string))
+            })
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| msg_id.clone())
     } else {
@@ -656,7 +883,11 @@ pub(crate) fn parse_rfc822(account_id: &str, raw: &[u8], unread: bool, group: bo
         account_id: account_id.to_string(),
         subject,
         preview,
-        participants: vec![if from_name.is_empty() { from_addr.clone() } else { from_name.clone() }],
+        participants: vec![if from_name.is_empty() {
+            from_addr.clone()
+        } else {
+            from_name.clone()
+        }],
         last_time: when.clone(),
         unread,
         labels: vec![],
@@ -743,7 +974,7 @@ fn parse_auth(s: &str) -> String {
 /// Replace `cid:` references to embedded images with self-contained data: URIs,
 /// so inline images render without any network access.
 fn inline_cid_images(mail: &mailparse::ParsedMail, html: String) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     fn collect(part: &mailparse::ParsedMail, out: &mut Vec<(String, String, Vec<u8>)>) {
         if part.ctype.mimetype.starts_with("image/") {
             if let Some(cid) = part.headers.get_first_value("Content-ID") {
@@ -844,11 +1075,14 @@ fn is_real_attachment(part: &mailparse::ParsedMail) -> bool {
     let mime = part.ctype.mimetype.to_lowercase();
     if matches!(
         mime.as_str(),
-        "application/pkcs7-signature" | "application/x-pkcs7-signature" | "application/pgp-signature"
+        "application/pkcs7-signature"
+            | "application/x-pkcs7-signature"
+            | "application/pgp-signature"
     ) {
         return false; // S/MIME or PGP signature — not a user attachment
     }
-    if matches!(part.get_content_disposition().disposition, mailparse::DispositionType::Attachment) {
+    if matches!(part.get_content_disposition().disposition, mailparse::DispositionType::Attachment)
+    {
         return true;
     }
     if part_filename(part).is_some() {
@@ -899,6 +1133,12 @@ mod tests {
     use std::cell::Cell;
 
     #[test]
+    fn seen_flag_query_maps_read_and_unread() {
+        assert_eq!(seen_flag_query(false), r"+FLAGS (\Seen)");
+        assert_eq!(seen_flag_query(true), r"-FLAGS (\Seen)");
+    }
+
+    #[test]
     fn partial_local_failure_blocks_cursor_advance() {
         let cursor_called = Cell::new(false);
         let result = finish_imap_persistence(1, || {
@@ -912,7 +1152,9 @@ mod tests {
     #[test]
     fn cursor_write_failure_fails_the_sync() {
         let result = finish_imap_persistence(0, || Err(rusqlite::Error::InvalidQuery));
-        assert!(matches!(result, Err(SyncError::Transient(message)) if message.contains("IMAP sync cursor")));
+        assert!(
+            matches!(result, Err(SyncError::Transient(message)) if message.contains("IMAP sync cursor"))
+        );
     }
 
     #[test]

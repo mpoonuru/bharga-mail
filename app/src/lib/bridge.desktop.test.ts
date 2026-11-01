@@ -39,10 +39,12 @@ describe("bridge desktop failures", () => {
     vi.doMock("@tauri-apps/api/core", () => ({ invoke }));
     const { api } = await import("@/lib/bridge");
 
-    await expect(api.calendar.listEvents({
-      start: "2026-09-01T00:00:00Z",
-      end: "2026-10-01T00:00:00Z",
-    })).rejects.toThrow("database unavailable");
+    await expect(
+      api.calendar.listEvents({
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-10-01T00:00:00Z",
+      }),
+    ).rejects.toThrow("database unavailable");
   });
 
   it("propagates account and send IPC failures", async () => {
@@ -57,13 +59,15 @@ describe("bridge desktop failures", () => {
 
     expect(runtimeMode()).toBe("desktop");
     await expect(api.listAccounts()).rejects.toThrow("desktop IPC unavailable");
-    await expect(api.queueSend({
-      accountId: "account-1",
-      to: "recipient@example.test",
-      subject: "Subject",
-      body: "Body",
-      delaySeconds: 10,
-    })).rejects.toThrow("desktop IPC unavailable");
+    await expect(
+      api.queueSend({
+        accountId: "account-1",
+        to: "recipient@example.test",
+        subject: "Subject",
+        body: "Body",
+        delaySeconds: 10,
+      }),
+    ).rejects.toThrow("desktop IPC unavailable");
   });
 
   it("propagates read-state IPC failures so bulk updates can report partial success", async () => {
@@ -75,8 +79,9 @@ describe("bridge desktop failures", () => {
     vi.doMock("@tauri-apps/api/core", () => ({ invoke }));
     const { api } = await import("@/lib/bridge");
 
-    await expect(api.setThreadRead("thread-1", "account-1", false))
-      .rejects.toThrow("mail provider unavailable");
+    await expect(api.setThreadRead("thread-1", "account-1", false)).rejects.toThrow(
+      "mail provider unavailable",
+    );
   });
 
   it("reads provider capabilities without substituting preview readiness", async () => {

@@ -40,3 +40,9 @@ secrets.json
 
 # Large local source assets (optional — remove if you want them tracked)
 logo-source-OLD.png
+
+# TypeScript incremental build info (regenerated on every tsc -b run)
+*.tsbuildinfo
+
+# Sandbox-local cargo registry cache (CARGO_HOME override)
+.cargo-home/

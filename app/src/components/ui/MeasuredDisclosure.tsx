@@ -1,12 +1,12 @@
 // Provides engine-consistent disclosure motion without animating CSS grid tracks.
 import {
+  type CSSProperties,
+  type ReactNode,
+  type TransitionEvent,
   useCallback,
   useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
-  type ReactNode,
-  type TransitionEvent,
 } from "react";
 
 type DisclosureStyle = CSSProperties & Record<`--${string}`, string>;

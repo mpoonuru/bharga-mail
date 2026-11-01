@@ -4,7 +4,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { Modal } from "@/components/ui/Modal";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const roots: Root[] = [];
 const hosts: HTMLDivElement[] = [];
@@ -22,7 +24,9 @@ function DialogHarness({ labelOnly = false }: { labelOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}>Open dialog</button>
+      <button type="button" onClick={() => setOpen(true)}>
+        Open dialog
+      </button>
       {labelOnly ? (
         <Modal open={open} onClose={() => setOpen(false)} ariaLabel="Attachment preview">
           <button type="button">Only action</button>
@@ -42,7 +46,9 @@ function ControlledDialogHarness() {
   const [value, setValue] = useState("");
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}>Open editor</button>
+      <button type="button" onClick={() => setOpen(true)}>
+        Open editor
+      </button>
       <Modal open={open} onClose={() => setOpen(false)} title="Edit signature">
         <label>
           Name
@@ -91,7 +97,9 @@ describe("Modal accessibility", () => {
 
     act(() => {
       first.focus();
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true }));
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true }),
+      );
     });
     expect(document.activeElement).toBe(last);
   });
@@ -139,7 +147,7 @@ describe("Modal accessibility", () => {
     const { host, root } = hostRoot();
     act(() => root.render(<ControlledDialogHarness />));
     act(() => host.querySelector<HTMLButtonElement>("button")?.click());
-    const input = document.querySelector<HTMLInputElement>('.modal-panel input')!;
+    const input = document.querySelector<HTMLInputElement>(".modal-panel input")!;
 
     act(() => {
       input.focus();

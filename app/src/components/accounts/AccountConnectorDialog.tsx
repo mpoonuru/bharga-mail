@@ -7,11 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { api } from "@/lib/bridge";
 import { toMailConnectionError } from "@/lib/mailProviders";
 import { useApp } from "@/store";
-import type {
-  MailConnectionError,
-  MailProviderCapability,
-  MailProviderKind,
-} from "@/types";
+import type { MailConnectionError, MailProviderCapability, MailProviderKind } from "@/types";
 
 const PROVIDER_ORDER: MailProviderKind[] = ["gmail", "microsoft", "imap"];
 const PROVIDER_COPY = {
@@ -70,7 +66,8 @@ export function AccountConnectorDialog() {
     setCapabilities(null);
     setError(null);
     setCapabilityError(false);
-    void api.listMailProviderCapabilities()
+    void api
+      .listMailProviderCapabilities()
       .then((next) => {
         if (active) setCapabilities(next);
       })
@@ -92,9 +89,7 @@ export function AccountConnectorDialog() {
     setPending(provider);
     setError(null);
     try {
-      const accountId = provider === "gmail"
-        ? await connectGmail()
-        : await connectMicrosoft();
+      const accountId = provider === "gmail" ? await connectGmail() : await connectMicrosoft();
       await load();
       setAccount(accountId);
       setStatus("Account connected.");
@@ -119,10 +114,11 @@ export function AccountConnectorDialog() {
     }
   }
 
-  const fallbackFocus = typeof document === "undefined"
-    ? null
-    : document.querySelector<HTMLElement>("[data-account-connector-fallback='true']")
-      ?? document.querySelector<HTMLElement>(".compose-btn");
+  const fallbackFocus =
+    typeof document === "undefined"
+      ? null
+      : (document.querySelector<HTMLElement>("[data-account-connector-fallback='true']") ??
+        document.querySelector<HTMLElement>(".compose-btn"));
 
   return (
     <>
@@ -138,8 +134,9 @@ export function AccountConnectorDialog() {
           <>
             <div className="account-connector-list">
               {PROVIDER_ORDER.map((provider) => {
-                const capability = capabilities?.find((candidate) => candidate.provider === provider)
-                  ?? unavailableCapability(provider);
+                const capability =
+                  capabilities?.find((candidate) => candidate.provider === provider) ??
+                  unavailableCapability(provider);
                 const copy = PROVIDER_COPY[provider];
                 const isPending = pending === provider;
                 return (
@@ -173,7 +170,11 @@ export function AccountConnectorDialog() {
                 Update Bharga Mail to configure account providers.
               </div>
             )}
-            {error && <div className="settings-alert error" role="alert">{error.message}</div>}
+            {error && (
+              <div className="settings-alert error" role="alert">
+                {error.message}
+              </div>
+            )}
           </>
         ) : (
           <AccountForm
@@ -185,7 +186,9 @@ export function AccountConnectorDialog() {
           />
         )}
       </Modal>
-      <span className="sr-only" role="status" aria-live="polite">{status}</span>
+      <span className="sr-only" role="status" aria-live="polite">
+        {status}
+      </span>
     </>
   );
 }

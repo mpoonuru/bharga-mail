@@ -36,11 +36,7 @@ impl TestServer {
                 let _ = request.respond(response);
             }
         });
-        Self {
-            url,
-            authorization,
-            handle: Some(handle),
-        }
+        Self { url, authorization, handle: Some(handle) }
     }
 
     pub fn url(&self) -> &str {
@@ -92,11 +88,7 @@ impl ScriptedServer {
                 let _ = request.respond(response);
             }
         });
-        Self {
-            url,
-            paths,
-            handle: Some(handle),
-        }
+        Self { url, paths, handle: Some(handle) }
     }
 
     pub fn url(&self) -> &str {

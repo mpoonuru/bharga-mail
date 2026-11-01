@@ -1,7 +1,7 @@
 import { useEffect } from "react";
+import { hasOpenModal } from "@/lib/modalStack";
 import { useApp } from "@/store";
 import type { View } from "@/types";
-import { hasOpenModal } from "@/lib/modalStack";
 
 // Global keyboard control — the "Calm Command" gesture plus Superhuman-style
 // list navigation (j/k move, Enter open, e archive, s snooze, c compose, f focus).
@@ -24,7 +24,8 @@ export function useHotkeys() {
 
     function onKey(e: KeyboardEvent) {
       if (hasOpenModal()) return;
-      const typing = ["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName) ||
+      const typing =
+        ["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName) ||
         (e.target as HTMLElement)?.isContentEditable;
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -45,15 +46,33 @@ export function useHotkeys() {
 
       const s = useApp.getState();
       switch (e.key.toLowerCase()) {
-        case "j": move(1); break;
-        case "k": move(-1); break;
-        case "f": toggleFocus(); break;
-        case "c": setCompose(true); break;
-        case "/": e.preventDefault(); setCmd(true); break;
-        case "e": if (s.selectedThreadId) s.archiveThread(s.selectedThreadId); break;
-        case "s": if (s.selectedThreadId) s.snoozeThread(s.selectedThreadId); break;
-        case "u": if (s.selectedThreadId) s.toggleRead(s.selectedThreadId); break;
-        default: break;
+        case "j":
+          move(1);
+          break;
+        case "k":
+          move(-1);
+          break;
+        case "f":
+          toggleFocus();
+          break;
+        case "c":
+          setCompose(true);
+          break;
+        case "/":
+          e.preventDefault();
+          setCmd(true);
+          break;
+        case "e":
+          if (s.selectedThreadId) s.archiveThread(s.selectedThreadId);
+          break;
+        case "s":
+          if (s.selectedThreadId) s.snoozeThread(s.selectedThreadId);
+          break;
+        case "u":
+          if (s.selectedThreadId) s.toggleRead(s.selectedThreadId);
+          break;
+        default:
+          break;
       }
     }
     window.addEventListener("keydown", onKey);

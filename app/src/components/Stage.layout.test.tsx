@@ -1,9 +1,9 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EmailBody, Stage } from "@/components/Stage";
-import { renderTest } from "@/test/render";
 import { account, threads } from "@/data/mock";
 import { useApp } from "@/store";
+import { renderTest } from "@/test/render";
 
 const mounted: ReturnType<typeof renderTest>[] = [];
 afterEach(() => {
@@ -30,7 +30,13 @@ function measuredMessage(contentHeight: number) {
     });
   }
   const measure = () => act(() => frame.dispatchEvent(new Event("load")));
-  return { frame, measure, setHeight: (next: number) => { height = next; } };
+  return {
+    frame,
+    measure,
+    setHeight: (next: number) => {
+      height = next;
+    },
+  };
 }
 
 describe("reader layout", () => {
@@ -57,15 +63,25 @@ describe("reader layout", () => {
     class TestResizeObserver implements ResizeObserver {
       readonly targets = new Set<Element>();
       disconnect = vi.fn();
-      constructor(private callback: ResizeObserverCallback) { observers.push(this); }
-      observe(target: Element) { this.targets.add(target); }
-      unobserve(target: Element) { this.targets.delete(target); }
-      notify() { this.callback([], this); }
+      constructor(private callback: ResizeObserverCallback) {
+        observers.push(this);
+      }
+      observe(target: Element) {
+        this.targets.add(target);
+      }
+      unobserve(target: Element) {
+        this.targets.delete(target);
+      }
+      notify() {
+        this.callback([], this);
+      }
     }
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
     const { frame, measure, setHeight } = measuredMessage(80);
     measure();
-    const bodyObserver = observers.find((observer) => observer.targets.has(frame.contentDocument!.body));
+    const bodyObserver = observers.find((observer) =>
+      observer.targets.has(frame.contentDocument!.body),
+    );
     expect(bodyObserver).toBeDefined();
     setHeight(740);
     await act(async () => {
@@ -78,7 +94,12 @@ describe("reader layout", () => {
   });
 
   it("keeps the toolbar and subject outside the conversation scroll region", () => {
-    useApp.setState({ accounts: [account], threads: [threads[0]], selectedThreadId: threads[0].id, selectedMessageId: null });
+    useApp.setState({
+      accounts: [account],
+      threads: [threads[0]],
+      selectedThreadId: threads[0].id,
+      selectedMessageId: null,
+    });
     const rendered = renderTest(<Stage />);
     mounted.push(rendered);
     const content = rendered.host.querySelector(".reader-scroll");

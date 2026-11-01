@@ -12,8 +12,8 @@ mod webview_tuning;
 use std::sync::{Arc, Mutex};
 
 use ai::{
-    build_provider, default_profile, prompts, router::Router, AiProfile, ModelConfig, ProviderKind,
-    Role, SaveProviderInput,
+    AiProfile, ModelConfig, ProviderKind, Role, SaveProviderInput, build_provider, default_profile,
+    prompts, router::Router,
 };
 use store::{Attachment, ImapAccount, OutboxItem, Security, Store, Task, Thread};
 use tauri::{Manager, State};
@@ -50,18 +50,13 @@ fn set_ai_privacy(privacy: ai::Privacy, state: State<'_, AppState>) -> Result<()
 
 fn persist_ai_profile(store: &Store, profile: &AiProfile) -> Result<(), String> {
     let json = serde_json::to_string(profile).map_err(|e| e.to_string())?;
-    store
-        .set_setting("ai_profile", &json)
-        .map_err(|e| e.to_string())
+    store.set_setting("ai_profile", &json).map_err(|e| e.to_string())
 }
 
 fn refresh_ai_readiness(profile: &mut AiProfile) {
     for model in &mut profile.models {
         model.ready = match model.kind {
-            ProviderKind::Local => model
-                .endpoint
-                .as_deref()
-                .is_some_and(|v| !v.trim().is_empty()),
+            ProviderKind::Local => model.endpoint.as_deref().is_some_and(|v| !v.trim().is_empty()),
             ProviderKind::OpenAiCompatible | ProviderKind::Custom => {
                 let endpoint = model.endpoint.as_deref().unwrap_or_default();
                 !endpoint.trim().is_empty()
@@ -80,10 +75,7 @@ fn validate_provider(input: &SaveProviderInput) -> Result<(), String> {
         return Err("Provider id and name are required".into());
     }
     if input.id.len() > 128
-        || !input
-            .id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        || !input.id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
     {
         return Err("Provider id is invalid".into());
     }
@@ -105,12 +97,7 @@ fn save_ai_provider(
     let mut current = state.ai.lock().unwrap();
     let previous_key = sync::tokens::ai_key(&input.id);
     let mut replaced_key = false;
-    if let Some(key) = input
-        .api_key
-        .as_deref()
-        .map(str::trim)
-        .filter(|key| !key.is_empty())
-    {
+    if let Some(key) = input.api_key.as_deref().map(str::trim).filter(|key| !key.is_empty()) {
         sync::tokens::save_ai_key(&input.id, key)?;
         replaced_key = true;
     }
@@ -125,17 +112,10 @@ fn save_ai_provider(
             .endpoint
             .map(|value| value.trim().trim_end_matches('/').to_string())
             .filter(|value| !value.is_empty()),
-        model: input
-            .model
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty()),
+        model: input.model.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
         caps: input.caps,
     };
-    if let Some(existing) = profile
-        .models
-        .iter_mut()
-        .find(|existing| existing.id == model.id)
-    {
+    if let Some(existing) = profile.models.iter_mut().find(|existing| existing.id == model.id) {
         *existing = model;
     } else {
         profile.models.push(model);
@@ -176,10 +156,7 @@ async fn test_ai_provider(input: SaveProviderInput) -> Result<String, String> {
         caps: input.caps,
     };
     build_provider(&model, api_key)
-        .chat(&[ai::ChatMessage {
-            role: "user".into(),
-            content: "Reply with OK.".into(),
-        }])
+        .chat(&[ai::ChatMessage { role: "user".into(), content: "Reply with OK.".into() }])
         .await
         .map_err(|error| error.to_string())?;
     Ok("Connection verified.".into())
@@ -214,12 +191,7 @@ fn model_for(state: &State<'_, AppState>, role: Role) -> Option<ai::ModelConfig>
 /// Embed text using the model assigned to the Embeddings role.
 async fn embed_one(model: &ai::ModelConfig, text: &str) -> Option<Vec<f32>> {
     let provider = build_provider(model, sync::tokens::ai_key(&model.id));
-    provider
-        .embed(&[text.to_string()])
-        .await
-        .ok()?
-        .into_iter()
-        .next()
+    provider.embed(&[text.to_string()]).await.ok()?.into_iter().next()
 }
 
 #[tauri::command]
@@ -232,20 +204,14 @@ async fn ai_draft_reply(
         .ok_or("No model assigned to the Draft role. Add one in Settings.")?;
     let provider = build_provider(&model, sync::tokens::ai_key(&model.id));
     let _ = thread_id;
-    provider
-        .chat(&prompts::draft_reply(&thread_text, None))
-        .await
-        .map_err(|e| e.to_string())
+    provider.chat(&prompts::draft_reply(&thread_text, None)).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn ai_summarize(thread_text: String, state: State<'_, AppState>) -> Result<String, String> {
     let model = model_for(&state, Role::Summarize).ok_or("No model assigned to Summarize.")?;
     let provider = build_provider(&model, sync::tokens::ai_key(&model.id));
-    provider
-        .chat(&prompts::summarize(&thread_text))
-        .await
-        .map_err(|e| e.to_string())
+    provider.chat(&prompts::summarize(&thread_text)).await.map_err(|e| e.to_string())
 }
 
 /// Phase-2 phishing verdict from the local Triage model (private, no API cost).
@@ -317,9 +283,8 @@ async fn ai_triage_inbox(state: State<'_, AppState>) -> Result<usize, String> {
             }
         }
         if let Some(m) = &triage_model {
-            if let Ok(out) = build_provider(m, sync::tokens::ai_key(&m.id))
-                .chat(&prompts::triage(&text))
-                .await
+            if let Ok(out) =
+                build_provider(m, sync::tokens::ai_key(&m.id)).chat(&prompts::triage(&text)).await
             {
                 let tri = prompts::parse_triage(&out);
                 let _ = state.store.set_triage(&t.id, &tri.labels, tri.priority);
@@ -358,10 +323,7 @@ async fn ai_ask_inbox(query: String, state: State<'_, AppState>) -> Result<Strin
         .or_else(|| model_for(&state, Role::Summarize))
         .ok_or("No model available. Configure your AI engine in Settings.")?;
     let provider = build_provider(&model, sync::tokens::ai_key(&model.id));
-    provider
-        .chat(&prompts::ask_inbox(&query, &context))
-        .await
-        .map_err(|e| e.to_string())
+    provider.chat(&prompts::ask_inbox(&query, &context)).await.map_err(|e| e.to_string())
 }
 
 // ---- Mail / data commands ----
@@ -396,10 +358,7 @@ fn get_settings(state: State<'_, AppState>) -> std::collections::HashMap<String,
 
 #[tauri::command]
 fn set_setting(key: String, value: String, state: State<'_, AppState>) -> Result<(), String> {
-    state
-        .store
-        .set_setting(&key, &value)
-        .map_err(|e| e.to_string())
+    state.store.set_setting(&key, &value).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -409,10 +368,7 @@ fn list_tasks(state: State<'_, AppState>) -> Vec<Task> {
 
 #[tauri::command]
 fn set_task_done(id: String, done: bool, state: State<'_, AppState>) -> Result<(), String> {
-    state
-        .store
-        .set_task_done(&id, done)
-        .map_err(|e| e.to_string())
+    state.store.set_task_done(&id, done).map_err(|e| e.to_string())
 }
 
 /// Create a task, optionally linked to the email thread it came from.
@@ -426,12 +382,7 @@ fn create_task(
     state
         .store
         .add_task(
-            &Task {
-                id: id.clone(),
-                title,
-                due: None,
-                done: false,
-            },
+            &Task { id: id.clone(), title, due: None, done: false },
             source_thread_id.as_deref(),
         )
         .map_err(|e| e.to_string())?;
@@ -441,6 +392,7 @@ fn create_task(
 /// Queue an outgoing message. `delay_seconds` is the Undo-Send window — the
 /// message isn't sent until then, and `cancel_send` before it removes the row.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // flat IPC payload mirrored 1:1 from the compose form
 fn queue_send(
     account_id: String,
     thread_id: Option<String>,
@@ -476,10 +428,7 @@ fn queue_send(
         scheduled_ts,
         status: "queued".into(),
     };
-    state
-        .store
-        .enqueue_outbox(&item)
-        .map_err(|e| e.to_string())?;
+    state.store.enqueue_outbox(&item).map_err(|e| e.to_string())?;
     Ok(id)
 }
 
@@ -554,14 +503,12 @@ fn mail_command_error(error: sync::SyncError) -> MailCommandError {
             retryable: false,
             account_id: None,
         },
-        sync::SyncError::ProviderUnavailable | sync::SyncError::Transient(_) => {
-            MailCommandError {
-                code: "provider_unavailable",
-                message: "The mail provider is temporarily unavailable. Try again.",
-                retryable: true,
-                account_id: None,
-            }
-        }
+        sync::SyncError::ProviderUnavailable | sync::SyncError::Transient(_) => MailCommandError {
+            code: "provider_unavailable",
+            message: "The mail provider is temporarily unavailable. Try again.",
+            retryable: true,
+            account_id: None,
+        },
     }
 }
 
@@ -572,16 +519,12 @@ fn list_mail_provider_capabilities() -> Vec<sync::provider_config::MailProviderC
 
 #[tauri::command]
 async fn connect_gmail(state: State<'_, AppState>) -> Result<String, MailCommandError> {
-    sync::gmail::connect(&state.store)
-        .await
-        .map_err(mail_command_error)
+    sync::gmail::connect(&state.store).await.map_err(mail_command_error)
 }
 
 #[tauri::command]
 async fn connect_microsoft(state: State<'_, AppState>) -> Result<String, MailCommandError> {
-    sync::microsoft::connect(&state.store)
-        .await
-        .map_err(mail_command_error)
+    sync::microsoft::connect(&state.store).await.map_err(mail_command_error)
 }
 
 /// Full IMAP/SMTP account setup with separate incoming/outgoing servers,
@@ -633,9 +576,9 @@ async fn test_imap_account(input: ImapAccountInput) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         sync::imap::test_login(&imap_host, imap_port, imap_sec, &imap_user, &imap_pass)
     })
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
 
     let smtp_host = input.smtp_host.clone();
     let smtp_port = input.smtp_port;
@@ -648,6 +591,7 @@ async fn test_imap_account(input: ImapAccountInput) -> Result<String, String> {
     Ok("IMAP login and SMTP connection OK".into())
 }
 
+#[allow(clippy::too_many_arguments)] // credential diff needs the before/after pairs together
 fn plan_imap_secret_updates(
     editing: bool,
     previous_same_credentials: bool,
@@ -674,7 +618,8 @@ fn plan_imap_secret_updates(
     if same_credentials {
         if !imap_password.is_empty() || !previous_same_credentials || !has_stored_smtp_password {
             let effective_imap = if imap_password.is_empty() {
-                stored_imap_password.ok_or("The saved IMAP credential is unavailable; enter it again")?
+                stored_imap_password
+                    .ok_or("The saved IMAP credential is unavailable; enter it again")?
             } else {
                 imap_password
             };
@@ -706,21 +651,24 @@ fn compare_legacy_imap_credentials(
 ) -> Result<bool, String> {
     match (imap_password, smtp_password) {
         (Some(imap), Some(smtp)) => Ok(imap == smtp),
-        _ => Err("Saved credentials could not be read safely; unlock the keychain and try again".into()),
+        _ => {
+            Err("Saved credentials could not be read safely; unlock the keychain and try again"
+                .into())
+        }
     }
 }
 
 fn resolve_imap_credential_mode(store: &Store, account: &mut ImapAccount) -> Result<(), String> {
-    if let Some(explicit) = store
-        .imap_same_credentials(&account.account_id)
-        .map_err(|error| error.to_string())?
+    if let Some(explicit) =
+        store.imap_same_credentials(&account.account_id).map_err(|error| error.to_string())?
     {
         account.same_credentials = explicit;
         return Ok(());
     }
     let imap_password = sync::tokens::secret(&account.account_id, "imap-pass");
     let smtp_password = sync::tokens::secret(&account.account_id, "smtp-pass");
-    let resolved = compare_legacy_imap_credentials(imap_password.as_deref(), smtp_password.as_deref())?;
+    let resolved =
+        compare_legacy_imap_credentials(imap_password.as_deref(), smtp_password.as_deref())?;
     store
         .set_setting(
             &format!("imap_same_credentials:{}", account.account_id),
@@ -769,9 +717,8 @@ fn save_imap_account(
             .ok_or_else(|| "A separate SMTP username is required".to_string())?
             .to_string()
     };
-    let previous_same_credentials = existing
-        .as_ref()
-        .map_or(true, |account| account.same_credentials);
+    let previous_same_credentials =
+        existing.as_ref().is_none_or(|account| account.same_credentials);
     let stored_imap_password = if existing.is_some() && input.imap_password.is_empty() {
         sync::tokens::secret(&account_id, "imap-pass")
     } else {
@@ -809,15 +756,10 @@ fn save_imap_account(
     };
     // Encrypt the complete credential transition before committing config and
     // ciphertext together, so the account can never retain a mismatched secret.
-    let update_refs = plain_updates
-        .iter()
-        .map(|(kind, value)| (*kind, value.as_str()))
-        .collect::<Vec<_>>();
+    let update_refs =
+        plain_updates.iter().map(|(kind, value)| (*kind, value.as_str())).collect::<Vec<_>>();
     let encrypted_updates = sync::tokens::prepare_secret_updates(&update_refs)?;
-    state
-        .store
-        .save_imap_account_atomic(&acct, &encrypted_updates)
-        .map_err(|e| e.to_string())?;
+    state.store.save_imap_account_atomic(&acct, &encrypted_updates).map_err(|e| e.to_string())?;
     for (kind, _) in &encrypted_updates {
         let _ = sync::tokens::delete_legacy_secret(&account_id, kind);
     }
@@ -827,7 +769,10 @@ fn save_imap_account(
 /// Saved IMAP/SMTP settings for an account (no password — used to pre-fill the
 /// edit form).
 #[tauri::command]
-fn get_imap_account(account_id: String, state: State<'_, AppState>) -> Result<Option<ImapAccount>, String> {
+fn get_imap_account(
+    account_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<ImapAccount>, String> {
     let Some(mut account) = state.store.imap_account(&account_id) else {
         return Ok(None);
     };
@@ -847,10 +792,7 @@ fn rename_account(
     if name.is_empty() {
         return Err("Account name can't be empty.".into());
     }
-    state
-        .store
-        .set_account_name(&account_id, &name)
-        .map_err(|e| e.to_string())
+    state.store.set_account_name(&account_id, &name).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -869,9 +811,7 @@ where
     // Credentials go first. If local-data cleanup later fails, the account row
     // remains visible and removal can be retried; no orphaned secret is hidden.
     clear_credentials(account_id)?;
-    store
-        .delete_account(&account_id)
-        .map_err(|e| e.to_string())?;
+    store.delete_account(account_id).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -896,9 +836,7 @@ async fn sync_now(
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
     let result = if account_id.starts_with("ms:") {
-        sync::microsoft::incremental(&state.store, &account_id)
-            .await
-            .map(|_| 0)
+        sync::microsoft::incremental(&state.store, &account_id).await.map(|_| 0)
     } else if account_id.starts_with("imap:") {
         sync::imap::fetch_folder_async(
             state.store.clone(),
@@ -908,19 +846,15 @@ async fn sync_now(
             group.unwrap_or(true),
             false,
         )
-            .await
+        .await
     } else {
-        sync::gmail::incremental(&state.store, &account_id)
-            .await
-            .map(|_| 0)
+        sync::gmail::incremental(&state.store, &account_id).await.map(|_| 0)
     };
 
     let result = match result {
         Ok(result) => result,
         Err(error) => {
-            let _ = state
-                .store
-                .record_sync_failure(&account_id, sync_failure_status(&error));
+            let _ = state.store.record_sync_failure(&account_id, sync_failure_status(&error));
             return Err(error.to_string());
         }
     };
@@ -951,8 +885,8 @@ async fn load_older(
             group.unwrap_or(true),
             true,
         )
-            .await
-            .map_err(|e| e.to_string())
+        .await
+        .map_err(|e| e.to_string())
     } else {
         Err("Loading older mail is currently available for IMAP accounts.".into())
     }
@@ -1059,13 +993,11 @@ async fn sync_folder(
             group.unwrap_or(true),
             false,
         )
-            .await;
+        .await;
         let result = match result {
             Ok(result) => result,
             Err(error) => {
-                let _ = state
-                    .store
-                    .record_sync_failure(&account_id, sync_failure_status(&error));
+                let _ = state.store.record_sync_failure(&account_id, sync_failure_status(&error));
                 return Err(error.to_string());
             }
         };
@@ -1095,14 +1027,26 @@ async fn set_thread_read(
     unread: bool,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state
-        .store
-        .set_thread_read(&thread_id, unread)
-        .map_err(|e| e.to_string())?;
+    state.store.set_thread_read(&thread_id, unread).map_err(|e| e.to_string())?;
     if account_id.starts_with("gmail:") {
-        let _ = sync::gmail::set_read(&account_id, &thread_id, unread).await;
+        if let Err(error) = sync::gmail::set_read(&account_id, &thread_id, unread).await {
+            log::warn!("gmail: read-sync failed for {account_id}: {error}");
+        }
     } else if account_id.starts_with("ms:") {
-        let _ = sync::microsoft::set_read(&account_id, &thread_id, unread).await;
+        if let Err(error) = sync::microsoft::set_read(&account_id, &thread_id, unread).await {
+            log::warn!("microsoft: read-sync failed for {account_id}: {error}");
+        }
+    } else if account_id.starts_with("imap:") {
+        if let Err(error) = sync::imap::set_read_async(
+            state.store.clone(),
+            account_id.clone(),
+            thread_id.clone(),
+            unread,
+        )
+        .await
+        {
+            log::warn!("imap: read-sync failed for {account_id}: {error}");
+        }
     }
     Ok(())
 }
@@ -1115,10 +1059,7 @@ async fn archive_thread(
     account_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state
-        .store
-        .set_thread_views(&thread_id, &[])
-        .map_err(|e| e.to_string())?;
+    state.store.set_thread_views(&thread_id, &[]).map_err(|e| e.to_string())?;
     if account_id.starts_with("gmail:") {
         let _ = sync::gmail::archive(&account_id, &thread_id).await;
     } else if account_id.starts_with("ms:") {
@@ -1130,10 +1071,7 @@ async fn archive_thread(
 /// Snooze: a client-side smart view (no provider concept), persisted locally.
 #[tauri::command]
 fn snooze_thread(thread_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    state
-        .store
-        .set_thread_views(&thread_id, &["snoozed".to_string()])
-        .map_err(|e| e.to_string())
+    state.store.set_thread_views(&thread_id, &["snoozed".to_string()]).map_err(|e| e.to_string())
 }
 
 /// Delete a thread: soft-delete tombstone locally (survives re-sync), then
@@ -1144,10 +1082,7 @@ async fn delete_thread(
     account_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state
-        .store
-        .tombstone_thread(&thread_id)
-        .map_err(|e| e.to_string())?;
+    state.store.tombstone_thread(&thread_id).map_err(|e| e.to_string())?;
     if account_id.starts_with("gmail:") {
         let _ = sync::gmail::trash(&account_id, &thread_id).await;
     } else if account_id.starts_with("ms:") {
@@ -1183,14 +1118,9 @@ async fn move_thread(
             server_err = Some(e.to_string());
         }
     }
-    state
-        .store
-        .tombstone_thread(&thread_id)
-        .map_err(|e| e.to_string())?;
+    state.store.tombstone_thread(&thread_id).map_err(|e| e.to_string())?;
     match server_err {
-        Some(e) => Err(format!(
-            "Removed from this folder, but the server move failed: {e}"
-        )),
+        Some(e) => Err(format!("Removed from this folder, but the server move failed: {e}")),
         None => Ok(()),
     }
 }
@@ -1203,10 +1133,7 @@ async fn mark_spam(
     account_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state
-        .store
-        .tombstone_thread(&thread_id)
-        .map_err(|e| e.to_string())?;
+    state.store.tombstone_thread(&thread_id).map_err(|e| e.to_string())?;
     if account_id.starts_with("gmail:") {
         let _ = sync::gmail::spam(&account_id, &thread_id).await;
     } else if account_id.starts_with("ms:") {
@@ -1241,10 +1168,7 @@ async fn flag_thread(
             .await
             .map_err(|e| e.to_string())?;
     } else {
-        state
-            .store
-            .set_thread_flag(&thread_id, flagged)
-            .map_err(|e| e.to_string())?;
+        state.store.set_thread_flag(&thread_id, flagged).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -1313,9 +1237,9 @@ async fn preview_attachment(
     }
     let bytes =
         sync::imap::fetch_attachment_async(state.store.clone(), account_id, message_id, name)
-        .await
-        .map_err(|e| e.to_string())?;
-    use base64::{engine::general_purpose::STANDARD, Engine};
+            .await
+            .map_err(|e| e.to_string())?;
+    use base64::{Engine, engine::general_purpose::STANDARD};
     Ok(format!("data:{};base64,{}", mime, STANDARD.encode(&bytes)))
 }
 
@@ -1336,8 +1260,8 @@ async fn download_attachment(
             message_id,
             name.clone(),
         )
-            .await
-            .map_err(|e| e.to_string())?
+        .await
+        .map_err(|e| e.to_string())?
     } else {
         return Err("Attachment download is currently available for IMAP accounts.".into());
     };
@@ -1399,10 +1323,7 @@ fn open_store_resilient(dir: &std::path::Path) -> Store {
     for suffix in ["", "-wal", "-shm"] {
         let from = dir.join(format!("bharga.db{suffix}"));
         if from.exists() {
-            let _ = std::fs::rename(
-                &from,
-                dir.join(format!("bharga.corrupt-{stamp}.db{suffix}")),
-            );
+            let _ = std::fs::rename(&from, dir.join(format!("bharga.corrupt-{stamp}.db{suffix}")));
         }
     }
     Store::open(db).expect("failed to create a fresh local database")
@@ -1421,10 +1342,7 @@ fn normalized_external_web_url(raw: &str) -> Result<String, String> {
     if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
         return Err("External link scheme is not allowed".into());
     }
-    let authority = authority_and_path
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or_default();
+    let authority = authority_and_path.split(['/', '?', '#']).next().unwrap_or_default();
     if authority.is_empty() || authority.chars().any(char::is_whitespace) {
         return Err("External link host is invalid".into());
     }
@@ -1477,7 +1395,9 @@ mod external_url_tests {
 
 #[cfg(test)]
 mod account_removal_tests {
-    use super::{compare_legacy_imap_credentials, plan_imap_secret_updates, remove_account_from_store};
+    use super::{
+        compare_legacy_imap_credentials, plan_imap_secret_updates, remove_account_from_store,
+    };
     use crate::store::Store;
 
     #[test]
@@ -1573,10 +1493,7 @@ mod mail_account_command_tests {
     fn missing_provider_configuration_is_safe_and_not_retryable() {
         let error = mail_command_error(SyncError::NotConfigured("internal field name"));
         assert_eq!(error.code, "not_configured");
-        assert_eq!(
-            error.message,
-            "This provider is not configured in this Bharga Mail build."
-        );
+        assert_eq!(error.message, "This provider is not configured in this Bharga Mail build.");
         assert!(!error.retryable);
         assert_eq!(error.account_id, None);
         assert!(!error.message.contains("internal field name"));
@@ -1588,10 +1505,7 @@ mod mail_account_command_tests {
             "https://provider.test/callback?code=private".into(),
         ));
         assert_eq!(error.code, "provider_unavailable");
-        assert_eq!(
-            error.message,
-            "The mail provider is temporarily unavailable. Try again."
-        );
+        assert_eq!(error.message, "The mail provider is temporarily unavailable. Try again.");
         assert!(error.retryable);
         assert_eq!(error.account_id, None);
         assert!(!error.message.contains("private"));
@@ -1630,10 +1544,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            let dir = app
-                .path()
-                .app_data_dir()
-                .unwrap_or_else(|_| std::env::temp_dir());
+            let dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir());
             std::fs::create_dir_all(&dir).ok();
             let store = Arc::new(open_store_resilient(&dir));
             // DB-backed secret fallback so credentials survive unsigned-app rebuilds.
@@ -1696,7 +1607,8 @@ pub fn run() {
             let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &window_config)?;
             #[cfg(target_os = "macos")]
             let builder = {
-                let mtm = objc2::MainThreadMarker::new().ok_or("setup must run on the main thread")?;
+                let mtm =
+                    objc2::MainThreadMarker::new().ok_or("setup must run on the main thread")?;
                 builder.with_webview_configuration(webview_tuning::configuration(mtm))
             };
             builder.build()?;

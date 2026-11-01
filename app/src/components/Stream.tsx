@@ -1,27 +1,27 @@
+import dayjs from "dayjs";
+import { motion } from "motion/react";
 import {
-  useState,
-  useRef,
-  useEffect,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  useEffect,
+  useRef,
+  useState,
 } from "react";
-import { motion } from "motion/react";
-import dayjs from "dayjs";
-import { useApp } from "@/store";
-import type { Thread, View, Message } from "@/types";
-import { Tag } from "@/components/ui/Tag";
 import { Icon } from "@/components/icons";
-import { shortTime, whenMs } from "@/lib/date";
-import { avatarColor } from "@/lib/colors";
-import { initials, senderLabel } from "@/lib/avatar";
-import { titlebarDoubleClick, api } from "@/lib/bridge";
-import { highlightInline } from "@/lib/highlightInline";
-import { deriveChips } from "@/lib/smartChips";
 import { SmartChips } from "@/components/ui/SmartChips";
-import { senderTrust } from "@/lib/senderTrust";
-import { threadThreat, messageThreat } from "@/lib/threat";
-import { mailDragPolicy, useCoarsePointer } from "@/lib/pointer";
+import { Tag } from "@/components/ui/Tag";
+import { initials, senderLabel } from "@/lib/avatar";
+import { api, titlebarDoubleClick } from "@/lib/bridge";
+import { avatarColor } from "@/lib/colors";
+import { shortTime, whenMs } from "@/lib/date";
+import { highlightInline } from "@/lib/highlightInline";
 import { isKeyboardContextMenu, isPrimaryActivationKey } from "@/lib/keyboard";
+import { mailDragPolicy, useCoarsePointer } from "@/lib/pointer";
+import { senderTrust } from "@/lib/senderTrust";
+import { deriveChips } from "@/lib/smartChips";
+import { messageThreat, threadThreat } from "@/lib/threat";
+import { useApp } from "@/store";
+import type { Message, Thread, View } from "@/types";
 
 const TITLES: Record<string, string> = {
   priority: "Priority",
@@ -34,7 +34,11 @@ const TITLES: Record<string, string> = {
 };
 
 type SortMode = "newest" | "sender" | "unread";
-const SORT_LABEL: Record<SortMode, string> = { newest: "Newest", sender: "Sender", unread: "Unread" };
+const SORT_LABEL: Record<SortMode, string> = {
+  newest: "Newest",
+  sender: "Sender",
+  unread: "Unread",
+};
 const NEXT: Record<SortMode, SortMode> = { newest: "sender", sender: "unread", unread: "newest" };
 
 // Date bucket for the grouped (accordion) view — Outlook-style sections.
@@ -104,7 +108,11 @@ const looksCss = (s: string) => /[{}]|mso-[a-z]|behavior:url|@media|#outlook|\/\
 function previewText(t: Thread, m?: Message, useThreadPreview = false): string {
   let p = (useThreadPreview ? (t.preview || "").trim() : "") || plainPreview(m?.bodyHtml ?? "");
   if (looksCss(p)) p = plainPreview(m?.bodyHtml ?? "");
-  if (looksCss(p)) p = p.replace(/[^{}]*\{[^}]*\}/g, " ").replace(/\s+/g, " ").trim();
+  if (looksCss(p))
+    p = p
+      .replace(/[^{}]*\{[^}]*\}/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   return p || (t.preview || "").trim();
 }
 // `when` arrives as the raw RFC 2822 email Date header (e.g. "Wed, 16 Oct 2024
@@ -114,7 +122,9 @@ function previewText(t: Thread, m?: Message, useThreadPreview = false): string {
 function sortRows(rows: Row[], mode: SortMode): Row[] {
   const arr = [...rows];
   if (mode === "sender") {
-    arr.sort((a, b) => (a.m.from.name || a.m.from.address).localeCompare(b.m.from.name || b.m.from.address));
+    arr.sort((a, b) =>
+      (a.m.from.name || a.m.from.address).localeCompare(b.m.from.name || b.m.from.address),
+    );
   } else if (mode === "unread") {
     arr.sort((a, b) => Number(b.t.unread) - Number(a.t.unread));
   } else {
@@ -148,10 +158,47 @@ function handleRowKeyDown(
 }
 
 export function Stream() {
-  const { view, threads, accounts, selectedThreadId, selectedMessageId, selectThread, triageInbox, setView, archiveThread, snoozeThread, toggleRead, setThreadsRead, deleteThread, moveThread, markSpam, flaggedIds, toggleFlag, requestCompose, requestAiReply, createTask, folders, selectedAccountId, selectedFolder, syncing, syncAll, loadOlder, loadingOlder, reachedEnd } = useApp();
+  const {
+    view,
+    threads,
+    accounts,
+    selectedThreadId,
+    selectedMessageId,
+    selectThread,
+    triageInbox,
+    setView,
+    archiveThread,
+    snoozeThread,
+    toggleRead,
+    setThreadsRead,
+    deleteThread,
+    moveThread,
+    markSpam,
+    flaggedIds,
+    toggleFlag,
+    requestCompose,
+    requestAiReply,
+    createTask,
+    folders,
+    selectedAccountId,
+    selectedFolder,
+    syncing,
+    syncAll,
+    loadOlder,
+    loadingOlder,
+    reachedEnd,
+  } = useApp();
   // When viewing all accounts together, show which mailbox each thread is from.
-  const acctEmail: Record<string, string> = Object.fromEntries(accounts.map((a) => [a.id, a.email]));
-  const copyText = (s: string) => { try { void navigator.clipboard.writeText(s); } catch { /* ignore */ } };
+  const acctEmail: Record<string, string> = Object.fromEntries(
+    accounts.map((a) => [a.id, a.email]),
+  );
+  const copyText = (s: string) => {
+    try {
+      void navigator.clipboard.writeText(s);
+    } catch {
+      /* ignore */
+    }
+  };
   const [sorting, setSorting] = useState(false);
   const coarsePointer = useCoarsePointer();
   const [sortMsg, setSortMsg] = useState("");
@@ -163,7 +210,13 @@ export function Stream() {
   const selectedCountRef = useRef(0);
   selectedCountRef.current = selectedThreadIds.size;
   const selectionAnchorId = useRef<string | null>(null);
-  const [ctx, setCtx] = useState<{ x: number; y: number; t: Thread; ids: string[]; opener: HTMLElement } | null>(null);
+  const [ctx, setCtx] = useState<{
+    x: number;
+    y: number;
+    t: Thread;
+    ids: string[];
+    opener: HTMLElement;
+  } | null>(null);
   const [ctxSub, setCtxSub] = useState<null | "move">(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
   // Reset the scroll to the top when the view/folder/account changes, so you
@@ -179,7 +232,13 @@ export function Stream() {
     setSelectedThreadIds(new Set());
     selectionAnchorId.current = null;
   };
-  const toggleConvo = (id: string) => setExpandedConvos((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleConvo = (id: string) =>
+    setExpandedConvos((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   // On any selection change (smart view, folder, or account) reset the per-list
   // UI state: scroll to top, clear chip filters, and — importantly — un-collapse
   // date groups. Date-bucket labels ("Last week"…) are shared across folders, so
@@ -191,7 +250,13 @@ export function Stream() {
     setExpandedConvos(new Set());
     clearThreadSelection();
   }, [view, selectedFolder, selectedAccountId]);
-  const toggleGroup = (label: string) => setCollapsedGroups((s) => { const n = new Set(s); if (n.has(label)) n.delete(label); else n.add(label); return n; });
+  const toggleGroup = (label: string) =>
+    setCollapsedGroups((s) => {
+      const n = new Set(s);
+      if (n.has(label)) n.delete(label);
+      else n.add(label);
+      return n;
+    });
 
   useEffect(() => {
     if (!ctx) return;
@@ -231,7 +296,11 @@ export function Stream() {
     if (syncing) return;
     setSyncMsg("");
     const { total, errors } = await syncAll();
-    setSyncMsg(errors.length ? `Sync failed: ${errors[0]}` : `Synced ${total} message${total === 1 ? "" : "s"}`);
+    setSyncMsg(
+      errors.length
+        ? `Sync failed: ${errors[0]}`
+        : `Synced ${total} message${total === 1 ? "" : "s"}`,
+    );
     setTimeout(() => setSyncMsg(""), 4000);
   };
   const [sortMode, setSortMode] = useState<SortMode>("newest");
@@ -242,10 +311,15 @@ export function Stream() {
   const searchSeq = useRef(0);
   useEffect(() => {
     const term = q.trim();
-    if (!term) { setSearchHits([]); return; }
+    if (!term) {
+      setSearchHits([]);
+      return;
+    }
     const seq = ++searchSeq.current;
     const id = setTimeout(() => {
-      void api.searchMail(term).then((r) => { if (seq === searchSeq.current) setSearchHits(r); });
+      void api.searchMail(term).then((r) => {
+        if (seq === searchSeq.current) setSearchHits(r);
+      });
     }, 160);
     return () => clearTimeout(id);
   }, [q]);
@@ -258,7 +332,8 @@ export function Stream() {
   // Priority has a fallback so it's never an empty dead-end: if AI triage hasn't
   // tagged anything yet, fall back to unread/urgent mail, then to recent.
   const aiPriority = scoped.filter((t) => t.view.includes("priority"));
-  const priorityFallback = view === "priority" && !selectedFolder && aiPriority.length === 0 && scoped.length > 0;
+  const priorityFallback =
+    view === "priority" && !selectedFolder && aiPriority.length === 0 && scoped.length > 0;
   let inView: Thread[];
   if (selectedFolder) {
     inView = scoped;
@@ -274,28 +349,41 @@ export function Stream() {
     inView = scoped.filter((t) => t.view.includes(view as View));
   }
   // Smart chips — emergent, multi-label filters derived from the threads in view.
-  const selfDomain = (selectedAccountId ? accounts.find((a) => a.id === selectedAccountId)?.email : accounts[0]?.email)?.split("@")[1];
+  const selfDomain = (
+    selectedAccountId ? accounts.find((a) => a.id === selectedAccountId)?.email : accounts[0]?.email
+  )?.split("@")[1];
   const chips = deriveChips(inView, selfDomain);
   // Drop any selection that no longer exists in the current chip set.
   const liveChips = new Set([...activeChips].filter((id) => chips.some((c) => c.id === id)));
   const chipScoped = liveChips.size
     ? inView.filter((t) => chips.some((c) => liveChips.has(c.id) && c.test(t)))
     : inView;
-  const toggleChip = (id: string) => setActiveChips((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleChip = (id: string) =>
+    setActiveChips((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   const query = q.trim().toLowerCase();
   // When searching, show the core's full-text results (whole body). While the
   // debounced query is in flight, fall back to a quick local subject/preview filter
   // so the list responds instantly to keystrokes.
   const filtered = query
-    ? (searchHits.length
-        ? searchHits
-        : scoped.filter((t) => [t.subject, t.preview, t.participants.join(" ")].join(" ").toLowerCase().includes(query)))
+    ? searchHits.length
+      ? searchHits
+      : scoped.filter((t) =>
+          [t.subject, t.preview, t.participants.join(" ")].join(" ").toLowerCase().includes(query),
+        )
     : chipScoped;
   // One row per CONVERSATION (Apple-Mail style): the thread, keyed/sorted/bucketed
   // by its NEWEST message. Multi-message threads carry a count badge + a disclosure
   // chevron and expand inline into their messages (newest→oldest).
-  const rows: Row[] = sortRows(filtered.map((t) => ({ t, m: latestMessage(t) })), sortMode);
+  const rows: Row[] = sortRows(
+    filtered.map((t) => ({ t, m: latestMessage(t) })),
+    sortMode,
+  );
   const visibleThreadIds = rows.map((row) => row.t.id);
   const visibleThreadKey = visibleThreadIds.join("\u0001");
   const selectedCount = selectedThreadIds.size;
@@ -311,7 +399,8 @@ export function Stream() {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       const el = e.target as HTMLElement | null;
-      if (el && (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable)) return;
+      if (el && (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable))
+        return;
       if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         if (selectedCountRef.current === 0) return;
         e.preventDefault();
@@ -367,7 +456,9 @@ export function Stream() {
       dragMode.current = null;
       document.body.classList.remove("drag-selecting");
       // A click (if any) is dispatched right after mouseup; forget the press after it.
-      window.setTimeout(() => { pressedRowId.current = null; }, 0);
+      window.setTimeout(() => {
+        pressedRowId.current = null;
+      }, 0);
     };
     window.addEventListener("mouseup", end);
     return () => window.removeEventListener("mouseup", end);
@@ -380,7 +471,8 @@ export function Stream() {
     setSelectedThreadIds((current) => {
       const next = new Set([...current].filter((id) => visible.has(id)));
       if (next.size === current.size && [...next].every((id) => current.has(id))) return current;
-      if (selectionAnchorId.current && !visible.has(selectionAnchorId.current)) selectionAnchorId.current = null;
+      if (selectionAnchorId.current && !visible.has(selectionAnchorId.current))
+        selectionAnchorId.current = null;
       return next;
     });
   }, [visibleThreadKey]);
@@ -409,7 +501,10 @@ export function Stream() {
     });
   };
 
-  const toggleThreadSelection = (id: string, event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => {
+  const toggleThreadSelection = (
+    id: string,
+    event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">,
+  ) => {
     if (event?.shiftKey) {
       selectThreadRange(id, event.metaKey || event.ctrlKey);
       return;
@@ -423,7 +518,11 @@ export function Stream() {
     selectionAnchorId.current = id;
   };
 
-  const activateThread = (id: string, open: () => void, event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => {
+  const activateThread = (
+    id: string,
+    open: () => void,
+    event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">,
+  ) => {
     if (event?.shiftKey) {
       selectThreadRange(id, event.metaKey || event.ctrlKey);
       return;
@@ -445,9 +544,11 @@ export function Stream() {
     const result = await setThreadsRead(ids, read);
     setBulkBusy(false);
     const verb = read ? "read" : "unread";
-    setSelectionMsg(result.failed > 0
-      ? `${result.updated} marked ${verb}; ${result.failed} could not be updated`
-      : `${result.updated} marked ${verb}`);
+    setSelectionMsg(
+      result.failed > 0
+        ? `${result.updated} marked ${verb}; ${result.failed} could not be updated`
+        : `${result.updated} marked ${verb}`,
+    );
   };
 
   const archiveSelected = (ids = selectedIdsInView()) => {
@@ -457,9 +558,8 @@ export function Stream() {
   };
 
   const openThreadContext = (t: Thread) => (x: number, y: number, opener: HTMLElement) => {
-    const ids = selectedThreadIds.has(t.id) && selectedThreadIds.size > 0
-      ? selectedIdsInView()
-      : [t.id];
+    const ids =
+      selectedThreadIds.has(t.id) && selectedThreadIds.size > 0 ? selectedIdsInView() : [t.id];
     if (!selectedThreadIds.has(t.id)) {
       setSelectedThreadIds(new Set([t.id]));
       selectionAnchorId.current = t.id;
@@ -486,7 +586,11 @@ export function Stream() {
     for (const r of rows) {
       const label = dateBucket(r.m.when, now);
       let bucket = byLabel.get(label);
-      if (!bucket) { bucket = []; byLabel.set(label, bucket); groups.push({ label, items: bucket }); }
+      if (!bucket) {
+        bucket = [];
+        byLabel.set(label, bucket);
+        groups.push({ label, items: bucket });
+      }
       bucket.push(r);
     }
   }
@@ -508,37 +612,95 @@ export function Stream() {
     <section className="stream">
       <div className="stream-head">
         {selectedCount > 0 ? (
-          <div className="selection-bar" role="toolbar" aria-label={`${selectedCount} conversations selected`}>
-            <span className="selection-count" data-tauri-drag-region onDoubleClick={titlebarDoubleClick}><b>{selectedCount}</b> selected</span>
+          <div
+            className="selection-bar"
+            role="toolbar"
+            aria-label={`${selectedCount} conversations selected`}
+          >
+            <span
+              className="selection-count"
+              data-tauri-drag-region
+              onDoubleClick={titlebarDoubleClick}
+            >
+              <b>{selectedCount}</b> selected
+            </span>
             <div className="selection-actions">
-              <button type="button" onClick={() => void applySelectedReadState(true)} disabled={bulkBusy} title="Mark selected as read">
+              <button
+                type="button"
+                onClick={() => void applySelectedReadState(true)}
+                disabled={bulkBusy}
+                title="Mark selected as read"
+              >
                 <Icon name="envelopeOpen" size={14} /> <span>Read</span>
               </button>
-              <button type="button" onClick={() => void applySelectedReadState(false)} disabled={bulkBusy} title="Mark selected as unread">
+              <button
+                type="button"
+                onClick={() => void applySelectedReadState(false)}
+                disabled={bulkBusy}
+                title="Mark selected as unread"
+              >
                 <Icon name="envelope" size={14} /> <span>Unread</span>
               </button>
-              <button type="button" onClick={() => archiveSelected()} disabled={bulkBusy} title="Archive selected">
+              <button
+                type="button"
+                onClick={() => archiveSelected()}
+                disabled={bulkBusy}
+                title="Archive selected"
+              >
                 <Icon name="archive" size={14} /> <span>Archive</span>
               </button>
-              <button type="button" onClick={selectAllVisible} disabled={bulkBusy || selectedCount === visibleThreadIds.length} title="Select all (⌘A)">
+              <button
+                type="button"
+                onClick={selectAllVisible}
+                disabled={bulkBusy || selectedCount === visibleThreadIds.length}
+                title="Select all (⌘A)"
+              >
                 <span>Select all ({visibleThreadIds.length})</span>
               </button>
-              <button type="button" className="selection-clear" onClick={clearThreadSelection} disabled={bulkBusy} title="Clear selection" aria-label="Clear selection">
+              <button
+                type="button"
+                className="selection-clear"
+                onClick={clearThreadSelection}
+                disabled={bulkBusy}
+                title="Clear selection"
+                aria-label="Clear selection"
+              >
                 <Icon name="close" size={14} />
               </button>
             </div>
           </div>
         ) : (
           <>
-            <h2 data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>{TITLES[view] ?? "Inbox"}</h2>
+            <h2 data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
+              {TITLES[view] ?? "Inbox"}
+            </h2>
             <div className="head-actions">
-              <button className="filter" onClick={doSync} disabled={syncing} title="Sync all accounts" style={{ opacity: syncing ? 0.7 : 1 }}>
+              <button
+                className="filter"
+                onClick={doSync}
+                disabled={syncing}
+                title="Sync all accounts"
+                style={{ opacity: syncing ? 0.7 : 1 }}
+              >
                 <Icon name="cloud" size={12} weight="duotone" /> {syncing ? "Syncing…" : "Sync"}
               </button>
-              <button className="filter" onClick={() => { clearThreadSelection(); setSortMode(NEXT[sortMode]); }} title="Sort order">
+              <button
+                className="filter"
+                onClick={() => {
+                  clearThreadSelection();
+                  setSortMode(NEXT[sortMode]);
+                }}
+                title="Sort order"
+              >
                 <Icon name="snoozed" size={12} weight="duotone" /> {SORT_LABEL[sortMode]}
               </button>
-              <button className="filter" onClick={sort} disabled={sorting} title="Summarize + prioritize with AI" style={{ opacity: sorting ? 0.7 : 1 }}>
+              <button
+                className="filter"
+                onClick={sort}
+                disabled={sorting}
+                title="Summarize + prioritize with AI"
+                style={{ opacity: sorting ? 0.7 : 1 }}
+              >
                 <Icon name="ai" size={12} weight="duotone" /> {sorting ? "Sorting…" : "AI sort"}
               </button>
             </div>
@@ -546,41 +708,83 @@ export function Stream() {
         )}
       </div>
       {(syncMsg || sortMsg || selectionMsg) && (
-        <div className={`stream-status${/(fail|could not)/i.test(syncMsg || selectionMsg) ? " err" : ""}`} title={syncMsg || sortMsg || selectionMsg}>
+        <div
+          className={`stream-status${/(fail|could not)/i.test(syncMsg || selectionMsg) ? " err" : ""}`}
+          title={syncMsg || sortMsg || selectionMsg}
+        >
           {syncMsg || sortMsg || selectionMsg}
         </div>
       )}
       <div className="search-box">
         <Icon name="search" size={15} weight="duotone" />
-        <input aria-label="Search mail" value={q} onChange={(e) => { clearThreadSelection(); setQ(e.target.value); }} placeholder="Search mail…" />
-        {q && <button className="search-clear" onClick={() => { clearThreadSelection(); setQ(""); }} title="Clear"><Icon name="close" size={13} /></button>}
+        <input
+          aria-label="Search mail"
+          value={q}
+          onChange={(e) => {
+            clearThreadSelection();
+            setQ(e.target.value);
+          }}
+          placeholder="Search mail…"
+        />
+        {q && (
+          <button
+            className="search-clear"
+            onClick={() => {
+              clearThreadSelection();
+              setQ("");
+            }}
+            title="Clear"
+          >
+            <Icon name="close" size={13} />
+          </button>
+        )}
       </div>
-      {!query && <SmartChips chips={chips} active={liveChips} onToggle={(id) => { clearThreadSelection(); toggleChip(id); }} onClear={() => { clearThreadSelection(); setActiveChips(new Set()); }} />}
+      {!query && (
+        <SmartChips
+          chips={chips}
+          active={liveChips}
+          onToggle={(id) => {
+            clearThreadSelection();
+            toggleChip(id);
+          }}
+          onClear={() => {
+            clearThreadSelection();
+            setActiveChips(new Set());
+          }}
+        />
+      )}
       {priorityFallback && !query && (
         <div className="priority-hint">
-          <Icon name="ai" size={12} weight="duotone" /> <span>Not AI-sorted yet — showing unread &amp; urgent.</span>
+          <Icon name="ai" size={12} weight="duotone" />{" "}
+          <span>Not AI-sorted yet — showing unread &amp; urgent.</span>
         </div>
       )}
-      <div className="list" ref={listRef} key={`${view}|${selectedFolder ?? ""}|${selectedAccountId ?? ""}|${query ? "q" : ""}`}>
-        {rows.length === 0 && (
-          query ? (
+      <div
+        className="list"
+        ref={listRef}
+        key={`${view}|${selectedFolder ?? ""}|${selectedAccountId ?? ""}|${query ? "q" : ""}`}
+      >
+        {rows.length === 0 &&
+          (query ? (
             <div className="empty">No results for “{q}”</div>
           ) : threads.length === 0 ? (
             <div className="empty">
               <p style={{ marginBottom: 12 }}>No mail yet.</p>
-              <button className="send" onClick={() => setView("settings")}>Connect an account</button>
+              <button className="send" onClick={() => setView("settings")}>
+                Connect an account
+              </button>
             </div>
           ) : (
             <div className="empty">Nothing here. Inbox zero. ✦</div>
-          )
-        )}
+          ))}
         {(() => {
           const renderRow = (r: Row) => {
             const count = r.t.messages.length;
             const isOpen = expandedConvos.has(r.t.id);
-            const kids = isOpen && count > 1
-              ? [...r.t.messages].sort((a, b) => whenMs(b.when) - whenMs(a.when))
-              : [];
+            const kids =
+              isOpen && count > 1
+                ? [...r.t.messages].sort((a, b) => whenMs(b.when) - whenMs(a.when))
+                : [];
             return (
               <div key={r.t.id} className={`convo${isOpen ? " open" : ""}`}>
                 <MailRow
@@ -595,7 +799,9 @@ export function Stream() {
                   onSelect={(event) => onRowCheckbox(r.t.id, event)}
                   onSelectStart={(event) => beginDragSelect(r.t.id, event)}
                   onSelectSweep={() => sweepSelect(r.t.id)}
-                  onOpen={(event) => activateThread(r.t.id, () => selectThread(r.t.id, r.m.id), event)}
+                  onOpen={(event) =>
+                    activateThread(r.t.id, () => selectThread(r.t.id, r.m.id), event)
+                  }
                   onArchive={() => archiveThread(r.t.id)}
                   onSnooze={() => snoozeThread(r.t.id)}
                   mailbox={!selectedAccountId ? acctEmail[r.t.accountId] : undefined}
@@ -611,7 +817,9 @@ export function Stream() {
                         t={r.t}
                         m={cm}
                         selected={selectedMessageId === cm.id}
-                        onOpen={(event) => activateThread(r.t.id, () => selectThread(r.t.id, cm.id), event)}
+                        onOpen={(event) =>
+                          activateThread(r.t.id, () => selectThread(r.t.id, cm.id), event)
+                        }
                         onContext={openThreadContext(r.t)}
                       />
                     ))}
@@ -635,99 +843,230 @@ export function Stream() {
             );
           });
         })()}
-        {!query && rows.length > 0 && (
-          reachedEnd ? (
+        {!query &&
+          rows.length > 0 &&
+          (reachedEnd ? (
             <div className="load-older load-older--done">All caught up · nothing older</div>
           ) : (
             <button className="load-older" onClick={() => void loadOlder()} disabled={loadingOlder}>
               {loadingOlder ? "Loading older…" : "Load older ↓"}
             </button>
-          )
-        )}
+          ))}
       </div>
 
-      {ctx && (() => {
-        const t = ctx.t;
-        const contextIds = ctx.ids;
-        const multi = contextIds.length > 1;
-        const run = (fn: () => void) => () => { fn(); closeContextMenu(); };
-        const senderEmail = t.messages?.[0]?.from?.address ?? t.participants[0] ?? "";
-        // Move targets: this account's real folders, minus the one it's already in.
-        const moveTargets = folders.filter((f) => f.name !== t.folder);
-        return (
-          <>
-            <div className="ctx-backdrop" onClick={closeContextMenu} onContextMenu={(e) => { e.preventDefault(); closeContextMenu(); }} />
-            <div ref={ctxMenuRef} className="ctx-menu" style={{ left: ctx.x, top: ctx.y }} role="menu" aria-label={multi ? `${contextIds.length} selected conversation actions` : "Message actions"} onKeyDown={onContextMenuKeyDown}>
-              <div className="ctx-summary" aria-hidden="true">
-                <strong>{multi ? `${contextIds.length} conversations selected` : "Conversation actions"}</strong>
-                <span>{multi ? "Changes apply to the full selection" : t.subject}</span>
-              </div>
-              <div className="ctx-sep" />
-              {multi ? (
-                <>
-                  <button type="button" role="menuitem" onClick={run(() => { void applySelectedReadState(true, contextIds); })}>
-                    <Icon name="envelopeOpen" size={14} /> Mark as read
-                  </button>
-                  <button type="button" role="menuitem" onClick={run(() => { void applySelectedReadState(false, contextIds); })}>
-                    <Icon name="envelope" size={14} /> Mark as unread
-                  </button>
-                  <div className="ctx-sep" />
-                  <button type="button" role="menuitem" onClick={run(() => archiveSelected(contextIds))}>
-                    <Icon name="archive" size={14} weight="duotone" /> Archive selected
-                  </button>
-                  <button type="button" role="menuitem" onClick={run(clearThreadSelection)}>
-                    <Icon name="close" size={14} /> Clear selection
-                  </button>
-                </>
-              ) : ctxSub === "move" ? (
-                <>
-                  <button type="button" role="menuitem" className="ctx-back" onClick={() => setCtxSub(null)}><Icon name="reply" size={13} /> Move to folder</button>
-                  <div className="ctx-sep" />
-                  {moveTargets.length === 0 && <div className="ctx-empty">No other folders</div>}
-                  {moveTargets.map((f) => (
-                    <button key={f.name} type="button" role="menuitem" onClick={run(() => moveThread(t.id, f.name))}>
-                      <Icon name="folder" size={14} /> {f.name}
+      {ctx &&
+        (() => {
+          const t = ctx.t;
+          const contextIds = ctx.ids;
+          const multi = contextIds.length > 1;
+          const run = (fn: () => void) => () => {
+            fn();
+            closeContextMenu();
+          };
+          const senderEmail = t.messages?.[0]?.from?.address ?? t.participants[0] ?? "";
+          // Move targets: this account's real folders, minus the one it's already in.
+          const moveTargets = folders.filter((f) => f.name !== t.folder);
+          return (
+            <>
+              <div
+                className="ctx-backdrop"
+                onClick={closeContextMenu}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  closeContextMenu();
+                }}
+              />
+              <div
+                ref={ctxMenuRef}
+                className="ctx-menu"
+                style={{ left: ctx.x, top: ctx.y }}
+                role="menu"
+                aria-label={
+                  multi ? `${contextIds.length} selected conversation actions` : "Message actions"
+                }
+                onKeyDown={onContextMenuKeyDown}
+              >
+                <div className="ctx-summary" aria-hidden="true">
+                  <strong>
+                    {multi ? `${contextIds.length} conversations selected` : "Conversation actions"}
+                  </strong>
+                  <span>{multi ? "Changes apply to the full selection" : t.subject}</span>
+                </div>
+                <div className="ctx-sep" />
+                {multi ? (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={run(() => {
+                        void applySelectedReadState(true, contextIds);
+                      })}
+                    >
+                      <Icon name="envelopeOpen" size={14} /> Mark as read
                     </button>
-                  ))}
-                </>
-              ) : (
-                <>
-                  <button type="button" role="menuitem" onClick={run(() => selectThread(t.id))}><Icon name="inbox" size={14} /> Open</button>
-                  <div className="ctx-sep" />
-                  <button type="button" role="menuitem" onClick={run(() => requestCompose(t.id, "reply"))}><Icon name="reply" size={14} /> Reply</button>
-                  <button type="button" role="menuitem" onClick={run(() => requestCompose(t.id, "replyAll"))}><Icon name="replyAll" size={14} /> Reply all</button>
-                  <button type="button" role="menuitem" onClick={run(() => requestCompose(t.id, "forward"))}><Icon name="forward" size={14} /> Forward</button>
-                  <button type="button" role="menuitem" onClick={run(() => requestAiReply(t.id))}><Icon name="ai" size={14} weight="duotone" /> Draft reply with AI</button>
-                  <div className="ctx-sep" />
-                  <button type="button" role="menuitem" onClick={run(() => toggleRead(t.id))}>
-                    <Icon name={t.unread ? "envelopeOpen" : "envelope"} size={14} /> Mark as {t.unread ? "read" : "unread"}
-                  </button>
-                  <button type="button" role="menuitem" onClick={run(() => toggleFlag(t.id))}><Icon name="priority" size={14} weight={flaggedIds.includes(t.id) ? "fill" : "regular"} /> {flaggedIds.includes(t.id) ? "Unflag" : "Flag"}</button>
-                  <button type="button" role="menuitem" onClick={run(() => archiveThread(t.id))}><Icon name="archive" size={14} weight="duotone" /> Archive</button>
-                  <button type="button" role="menuitem" onClick={run(() => snoozeThread(t.id))}><Icon name="snoozed" size={14} /> Snooze</button>
-                  {moveTargets.length > 0 && (
-                    <button type="button" role="menuitem" className="ctx-submenu" onClick={() => setCtxSub("move")}><Icon name="folder" size={14} /> Move to folder<span className="ctx-caret">›</span></button>
-                  )}
-                  <button type="button" role="menuitem" onClick={run(() => createTask(`Follow up: ${t.subject}`, t.id))}><Icon name="tasks" size={14} /> Turn into task</button>
-                  <div className="ctx-sep" />
-                  <button type="button" role="menuitem" onClick={run(() => copyText(senderEmail))}><Icon name="copy" size={14} /> Copy sender email</button>
-                  <button type="button" role="menuitem" onClick={run(() => copyText(t.subject))}><Icon name="copy" size={14} /> Copy subject</button>
-                  <div className="ctx-sep" />
-                  <button type="button" role="menuitem" onClick={run(() => markSpam(t.id))}><Icon name="flag" size={14} /> Report spam</button>
-                  <button type="button" role="menuitem" className="danger" onClick={run(() => deleteThread(t.id))}><Icon name="trash" size={14} /> Delete</button>
-                </>
-              )}
-            </div>
-          </>
-        );
-      })()}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={run(() => {
+                        void applySelectedReadState(false, contextIds);
+                      })}
+                    >
+                      <Icon name="envelope" size={14} /> Mark as unread
+                    </button>
+                    <div className="ctx-sep" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={run(() => archiveSelected(contextIds))}
+                    >
+                      <Icon name="archive" size={14} weight="duotone" /> Archive selected
+                    </button>
+                    <button type="button" role="menuitem" onClick={run(clearThreadSelection)}>
+                      <Icon name="close" size={14} /> Clear selection
+                    </button>
+                  </>
+                ) : ctxSub === "move" ? (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="ctx-back"
+                      onClick={() => setCtxSub(null)}
+                    >
+                      <Icon name="reply" size={13} /> Move to folder
+                    </button>
+                    <div className="ctx-sep" />
+                    {moveTargets.length === 0 && <div className="ctx-empty">No other folders</div>}
+                    {moveTargets.map((f) => (
+                      <button
+                        key={f.name}
+                        type="button"
+                        role="menuitem"
+                        onClick={run(() => moveThread(t.id, f.name))}
+                      >
+                        <Icon name="folder" size={14} /> {f.name}
+                      </button>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <button type="button" role="menuitem" onClick={run(() => selectThread(t.id))}>
+                      <Icon name="inbox" size={14} /> Open
+                    </button>
+                    <div className="ctx-sep" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={run(() => requestCompose(t.id, "reply"))}
+                    >
+                      <Icon name="reply" size={14} /> Reply
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={run(() => requestCompose(t.id, "replyAll"))}
+                    >
+                      <Icon name="replyAll" size={14} /> Reply all
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={run(() => requestCompose(t.id, "forward"))}
+                    >
+                      <Icon name="forward" size={14} /> Forward
+                    </button>
+                    <button type="button" role="menuitem" onClick={run(() => requestAiReply(t.id))}>
+                      <Icon name="ai" size={14} weight="duotone" /> Draft reply with AI
+                    </button>
+                    <div className="ctx-sep" />
+                    <button type="button" role="menuitem" onClick={run(() => toggleRead(t.id))}>
+                      <Icon name={t.unread ? "envelopeOpen" : "envelope"} size={14} /> Mark as{" "}
+                      {t.unread ? "read" : "unread"}
+                    </button>
+                    <button type="button" role="menuitem" onClick={run(() => toggleFlag(t.id))}>
+                      <Icon
+                        name="priority"
+                        size={14}
+                        weight={flaggedIds.includes(t.id) ? "fill" : "regular"}
+                      />{" "}
+                      {flaggedIds.includes(t.id) ? "Unflag" : "Flag"}
+                    </button>
+                    <button type="button" role="menuitem" onClick={run(() => archiveThread(t.id))}>
+                      <Icon name="archive" size={14} weight="duotone" /> Archive
+                    </button>
+                    <button type="button" role="menuitem" onClick={run(() => snoozeThread(t.id))}>
+                      <Icon name="snoozed" size={14} /> Snooze
+                    </button>
+                    {moveTargets.length > 0 && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="ctx-submenu"
+                        onClick={() => setCtxSub("move")}
+                      >
+                        <Icon name="folder" size={14} /> Move to folder
+                        <span className="ctx-caret">›</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={run(() => createTask(`Follow up: ${t.subject}`, t.id))}
+                    >
+                      <Icon name="tasks" size={14} /> Turn into task
+                    </button>
+                    <div className="ctx-sep" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={run(() => copyText(senderEmail))}
+                    >
+                      <Icon name="copy" size={14} /> Copy sender email
+                    </button>
+                    <button type="button" role="menuitem" onClick={run(() => copyText(t.subject))}>
+                      <Icon name="copy" size={14} /> Copy subject
+                    </button>
+                    <div className="ctx-sep" />
+                    <button type="button" role="menuitem" onClick={run(() => markSpam(t.id))}>
+                      <Icon name="flag" size={14} /> Report spam
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="danger"
+                      onClick={run(() => deleteThread(t.id))}
+                    >
+                      <Icon name="trash" size={14} /> Delete
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
+          );
+        })()}
     </section>
   );
 }
 
 function MailRow({
-  t, msg, active, checked, onSelect, onSelectStart, onSelectSweep, onOpen, onArchive, onSnooze, onContext, mailbox, flagged, coarsePointer,
-  convo, count, expanded, onToggleExpand,
+  t,
+  msg,
+  active,
+  checked,
+  onSelect,
+  onSelectStart,
+  onSelectSweep,
+  onOpen,
+  onArchive,
+  onSnooze,
+  onContext,
+  mailbox,
+  flagged,
+  coarsePointer,
+  convo,
+  count,
+  expanded,
+  onToggleExpand,
 }: {
   t: Thread;
   msg?: Message;
@@ -743,29 +1082,54 @@ function MailRow({
   mailbox?: string;
   flagged?: boolean;
   coarsePointer: boolean;
-  convo?: boolean; count?: number; expanded?: boolean; onToggleExpand?: () => void;
+  convo?: boolean;
+  count?: number;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const dragPolicy = mailDragPolicy(coarsePointer);
   // `convo`: the collapsed conversation header (msg = its newest message, but the
   // sender line shows the whole participant list + a message-count badge).
   const m = msg ?? t.messages[t.messages.length - 1];
-  const senderName = msg ? (msg.from.name || msg.from.address) : (t.participants[0] || m?.from.name || m?.from.address || "");
+  const senderName = msg
+    ? msg.from.name || msg.from.address
+    : t.participants[0] || m?.from.name || m?.from.address || "";
   const senderSeed = m?.from.address || senderName;
   const avPaint = avatarColor(senderSeed);
   const trust = senderTrust(m?.meta?.auth);
   // Escalate to red "Likely phishing" when failed auth + a deceptive link coincide.
   const threat = convo ? threadThreat(t) : msg ? messageThreat(msg) : threadThreat(t);
-  const shield = threat.level === "phishing"
-    ? { show: true, tone: "bad", icon: "shieldWarning" as const, label: "Likely phishing", detail: threat.reason }
-    : { show: trust.level !== "unknown", tone: trust.tone, icon: trust.icon, label: trust.label, detail: trust.detail };
-  const hasAttachments = convo ? (t.messages?.some((x) => x.attachments && x.attachments.length > 0) ?? false) : msg ? !!(msg.attachments && msg.attachments.length) : false;
+  const shield =
+    threat.level === "phishing"
+      ? {
+          show: true,
+          tone: "bad",
+          icon: "shieldWarning" as const,
+          label: "Likely phishing",
+          detail: threat.reason,
+        }
+      : {
+          show: trust.level !== "unknown",
+          tone: trust.tone,
+          icon: trust.icon,
+          label: trust.label,
+          detail: trust.detail,
+        };
+  const hasAttachments = convo
+    ? (t.messages?.some((x) => x.attachments && x.attachments.length > 0) ?? false)
+    : msg
+      ? !!(msg.attachments && msg.attachments.length)
+      : false;
   const multi = !!(convo && count && count > 1);
   const isReplyish = /^\s*(re|aw|fwd|fw)\s*:/i.test(t.subject);
   const rowFrom = convo
     ? participantsLabel(t)
-    : msg ? senderLabel(msg.from.name, msg.from.address)
-    : t.participants.map((p) => (p.includes("@") && !p.includes(" ") ? senderLabel(undefined, p) : p)).join(", ");
+    : msg
+      ? senderLabel(msg.from.name, msg.from.address)
+      : t.participants
+          .map((p) => (p.includes("@") && !p.includes(" ") ? senderLabel(undefined, p) : p))
+          .join(", ");
   const rowTime = m?.when ?? t.lastTime;
   // Always CSS-free: header rows prefer the clean backend preview; everything is
   // re-derived from HTML the moment it smells like leaked Outlook <style>.
@@ -775,23 +1139,34 @@ function MailRow({
       {/* swipe-action background — only rendered while actually dragging */}
       {dragging && (
         <div className="swipe-bg">
-          <span className="swipe-left"><Icon name="snoozed" size={16} weight="duotone" /> Snooze</span>
-          <span className="swipe-right">Archive <Icon name="awaiting" size={16} weight="duotone" /></span>
+          <span className="swipe-left">
+            <Icon name="snoozed" size={16} weight="duotone" /> Snooze
+          </span>
+          <span className="swipe-right">
+            Archive <Icon name="awaiting" size={16} weight="duotone" />
+          </span>
         </div>
       )}
       <motion.div
         className={`mail${t.unread ? " unread" : ""}${active ? " sel" : ""}${checked ? " multi-sel" : ""}`}
         data-thread-id={t.id}
-        onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, e.currentTarget); }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onContext(e.clientX, e.clientY, e.currentTarget);
+        }}
         drag={dragPolicy.drag}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={dragPolicy.dragElastic}
         onDragStart={coarsePointer ? () => setDragging(true) : undefined}
-        onDragEnd={coarsePointer ? (_e, info) => {
-          setDragging(false);
-          if (info.offset.x <= -90) onArchive();
-          else if (info.offset.x >= 90) onSnooze();
-        } : undefined}
+        onDragEnd={
+          coarsePointer
+            ? (_e, info) => {
+                setDragging(false);
+                if (info.offset.x <= -90) onArchive();
+                else if (info.offset.x >= 90) onSnooze();
+              }
+            : undefined
+        }
       >
         <button
           type="button"
@@ -814,24 +1189,58 @@ function MailRow({
             rowPreview,
             shortTime(rowTime),
             shield.show ? shield.label : undefined,
-          ].filter(Boolean).join(", ")}
+          ]
+            .filter(Boolean)
+            .join(", ")}
           onClick={(event) => onOpen(event)}
           onKeyDown={(event) => handleRowKeyDown(event, onOpen, onContext)}
         >
-          <span className="mail-av" style={{ background: avPaint.bg, color: avPaint.fg, boxShadow: `0 0 0 1.5px ${avPaint.ring}` }} aria-hidden>{initials(senderName)}</span>
+          <span
+            className="mail-av"
+            style={{
+              background: avPaint.bg,
+              color: avPaint.fg,
+              boxShadow: `0 0 0 1.5px ${avPaint.ring}`,
+            }}
+            aria-hidden
+          >
+            {initials(senderName)}
+          </span>
           <span className="mail-main">
             <span className="mail-l1">
               {t.unread && <span className="mail-unread" aria-label="Unread" />}
-              {convo && isReplyish && <Icon name="reply" size={12} weight="bold" className="mail-replyglyph" aria-hidden />}
+              {convo && isReplyish && (
+                <Icon
+                  name="reply"
+                  size={12}
+                  weight="bold"
+                  className="mail-replyglyph"
+                  aria-hidden
+                />
+              )}
               <span className="from">{rowFrom}</span>
               <span className="time">
                 {shield.show && (
-                  <span className={`mail-trust trust-${shield.tone}`} title={`${shield.label} — ${shield.detail}`} aria-label={shield.label}>
+                  <span
+                    className={`mail-trust trust-${shield.tone}`}
+                    title={`${shield.label} — ${shield.detail}`}
+                    aria-label={shield.label}
+                  >
                     <Icon name={shield.icon} size={15} weight="duotone" />
                   </span>
                 )}
-                {flagged && <Icon name="priority" size={12} weight="fill" className="mail-flag" aria-label="Flagged" />}
-                {hasAttachments && <Icon name="attach" size={12} weight="duotone" aria-label="Has attachment" />}
+                {flagged && (
+                  <Icon
+                    name="priority"
+                    size={12}
+                    weight="fill"
+                    className="mail-flag"
+                    aria-label="Flagged"
+                  />
+                )}
+                {hasAttachments && (
+                  <Icon name="attach" size={12} weight="duotone" aria-label="Has attachment" />
+                )}
                 {shortTime(rowTime)}
               </span>
             </span>
@@ -849,8 +1258,16 @@ function MailRow({
             {(labelTag(t) || t.aiDraft || mailbox) && (
               <span className="mail-foot">
                 {labelTag(t)}
-                {t.aiDraft && <Tag variant="ai" icon="ai">AI draft</Tag>}
-                {mailbox && <span className="mail-chip"><Icon name="folder" size={11} weight="duotone" /> {mailbox}</span>}
+                {t.aiDraft && (
+                  <Tag variant="ai" icon="ai">
+                    AI draft
+                  </Tag>
+                )}
+                {mailbox && (
+                  <span className="mail-chip">
+                    <Icon name="folder" size={11} weight="duotone" /> {mailbox}
+                  </span>
+                )}
               </span>
             )}
           </span>
@@ -874,8 +1291,18 @@ function MailRow({
 
 // A compact child row inside an expanded conversation accordion: one message,
 // indented under its conversation header, newest→oldest.
-function ChildRow({ t, m, selected, onOpen, onContext }: {
-  t: Thread; m: Message; selected: boolean; onOpen: (event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => void; onContext: (x: number, y: number, opener: HTMLElement) => void;
+function ChildRow({
+  t,
+  m,
+  selected,
+  onOpen,
+  onContext,
+}: {
+  t: Thread;
+  m: Message;
+  selected: boolean;
+  onOpen: (event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => void;
+  onContext: (x: number, y: number, opener: HTMLElement) => void;
 }) {
   const sender = senderLabel(m.from.name, m.from.address);
   const av = avatarColor(m.from.address || sender);
@@ -887,22 +1314,33 @@ function ChildRow({ t, m, selected, onOpen, onContext }: {
       className={`convo-kid${selected ? " sel" : ""}`}
       onClick={onOpen}
       onKeyDown={(event) => handleRowKeyDown(event, onOpen, onContext)}
-      onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, e.currentTarget); }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContext(e.clientX, e.clientY, e.currentTarget);
+      }}
       aria-current={selected ? "true" : undefined}
       aria-label={[
         sender,
         previewText(t, m),
         shortTime(m.when),
         hasAtt ? "Has attachment" : undefined,
-      ].filter(Boolean).join(", ")}
+      ]
+        .filter(Boolean)
+        .join(", ")}
     >
-      <span className="ck-av" style={{ background: av.bg, color: av.fg }} aria-hidden>{initials(m.from.name || m.from.address)}</span>
+      <span className="ck-av" style={{ background: av.bg, color: av.fg }} aria-hidden>
+        {initials(m.from.name || m.from.address)}
+      </span>
       <span className="ck-main">
         <span className="ck-l1">
-          {isReplyish && <Icon name="reply" size={11} weight="bold" className="mail-replyglyph" aria-hidden />}
+          {isReplyish && (
+            <Icon name="reply" size={11} weight="bold" className="mail-replyglyph" aria-hidden />
+          )}
           <span className="ck-from">{sender}</span>
           <span className="ck-time">
-            {hasAtt && <Icon name="attach" size={11} weight="duotone" aria-label="Has attachment" />}
+            {hasAtt && (
+              <Icon name="attach" size={11} weight="duotone" aria-label="Has attachment" />
+            )}
             {shortTime(m.when)}
           </span>
         </span>

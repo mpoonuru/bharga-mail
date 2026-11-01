@@ -9,20 +9,22 @@ let cleanup: (() => void) | undefined;
 
 afterEach(() => cleanup?.());
 
-const calendars: Calendar[] = [{
-  id: "calendar-1",
-  sourceId: "source-1",
-  providerId: null,
-  name: "Work",
-  description: "",
-  color: "#6f8df6",
-  timezone: "Europe/Berlin",
-  accessRole: "owner",
-  writable: true,
-  visible: true,
-  isDefault: true,
-  sortOrder: 0,
-}];
+const calendars: Calendar[] = [
+  {
+    id: "calendar-1",
+    sourceId: "source-1",
+    providerId: null,
+    name: "Work",
+    description: "",
+    color: "#6f8df6",
+    timezone: "Europe/Berlin",
+    accessRole: "owner",
+    writable: true,
+    visible: true,
+    isDefault: true,
+    sortOrder: 0,
+  },
+];
 
 function initial(overrides: Partial<EventDialogInitial> = {}): EventDialogInitial {
   return {
@@ -60,7 +62,9 @@ describe("EventDialog", () => {
         open
         initial={initial({
           end: { kind: "timed", utc: "2026-09-25T11:00:00Z" },
-          attendees: [{ email: "guest@example.test", role: "required", status: "needsAction", rsvp: true }],
+          attendees: [
+            { email: "guest@example.test", role: "required", status: "needsAction", rsvp: true },
+          ],
         })}
         calendars={calendars}
         onSave={onSave}
@@ -70,7 +74,9 @@ describe("EventDialog", () => {
     );
     cleanup = rendered.unmount;
     await act(async () => {
-      [...document.querySelectorAll("button")].find((button) => button.textContent === "Check availability")?.click();
+      [...document.querySelectorAll("button")]
+        .find((button) => button.textContent === "Check availability")
+        ?.click();
     });
     expect(document.body.textContent).toContain("Availability incomplete");
     expect(document.body.textContent).toContain("1 known busy interval");
@@ -80,10 +86,18 @@ describe("EventDialog", () => {
   it("does not save an invalid interval", () => {
     const onSave = vi.fn();
     const rendered = renderTest(
-      <EventDialog open initial={initial()} calendars={calendars} onSave={onSave} onClose={() => {}} />,
+      <EventDialog
+        open
+        initial={initial()}
+        calendars={calendars}
+        onSave={onSave}
+        onClose={() => {}}
+      />,
     );
     cleanup = rendered.unmount;
-    const save = [...document.querySelectorAll("button")].find((button) => button.textContent === "Save event");
+    const save = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent === "Save event",
+    );
 
     act(() => save?.click());
 
@@ -108,7 +122,9 @@ describe("EventDialog", () => {
     );
     cleanup = rendered.unmount;
     const title = document.querySelector<HTMLInputElement>('input[aria-label="Title"]');
-    const save = [...document.querySelectorAll("button")].find((button) => button.textContent === "Save event");
+    const save = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent === "Save event",
+    );
 
     if (title) setInputValue(title, "Architecture review changed");
     act(() => save?.click());
@@ -124,7 +140,9 @@ describe("EventDialog", () => {
         open
         initial={initial({
           end: { kind: "timed", utc: "2026-09-25T11:00:00Z" },
-          attendees: [{ email: "guest@example.test", role: "required", status: "needsAction", rsvp: true }],
+          attendees: [
+            { email: "guest@example.test", role: "required", status: "needsAction", rsvp: true },
+          ],
         })}
         calendars={calendars}
         notificationPolicy="providerManaged"
@@ -134,13 +152,19 @@ describe("EventDialog", () => {
     );
     cleanup = rendered.unmount;
 
-    expect(document.body.textContent).toContain("Invitation delivery is managed by this calendar provider");
+    expect(document.body.textContent).toContain(
+      "Invitation delivery is managed by this calendar provider",
+    );
     expect(document.body.textContent).not.toContain("Send updates to attendees");
     await act(async () => {
-      [...document.querySelectorAll("button")].find((button) => button.textContent === "Save event")?.click();
+      [...document.querySelectorAll("button")]
+        .find((button) => button.textContent === "Save event")
+        ?.click();
     });
     expect(onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ attendees: [expect.objectContaining({ email: "guest@example.test" })] }),
+      expect.objectContaining({
+        attendees: [expect.objectContaining({ email: "guest@example.test" })],
+      }),
       expect.objectContaining({ notifyAttendees: true }),
     );
   });

@@ -1,11 +1,21 @@
-import { create } from "zustand";
 import dayjs from "dayjs";
-import type { View, Thread, Task, AiProfile, AiRole, AiModel, Account, FolderInfo, SaveAiProviderInput } from "@/types";
-import { api, listenMail } from "@/lib/bridge";
+import { create } from "zustand";
 import { SEND } from "@/config";
-import { loadFont, applyFont, loadLocale, applyLocale } from "@/lib/prefs";
 import { resolveSendAccountId } from "@/lib/accountIdentity";
+import { api, listenMail } from "@/lib/bridge";
+import { applyFont, applyLocale, loadFont, loadLocale } from "@/lib/prefs";
 import { keepLoadedBodies, messageSignature, needsBodies } from "@/lib/threadMerge";
+import type {
+  Account,
+  AiModel,
+  AiProfile,
+  AiRole,
+  FolderInfo,
+  SaveAiProviderInput,
+  Task,
+  Thread,
+  View,
+} from "@/types";
 
 /** Fire a desktop notification for newly-arrived mail, but only when the window
  *  is in the background (no point notifying about mail you're looking at). Uses
@@ -21,7 +31,9 @@ function notifyNewMail(count: number): void {
     const show = () => new Notification(title, { body: "Bharga Mail", tag: "bharga-new-mail" });
     if (Notification.permission === "granted") show();
     else if (Notification.permission !== "denied") {
-      void Notification.requestPermission().then((p) => { if (p === "granted" && document.hidden) show(); });
+      void Notification.requestPermission().then((p) => {
+        if (p === "granted" && document.hidden) show();
+      });
     }
   } catch {
     /* notifications unsupported — the auto-refresh still surfaces the mail */
@@ -214,15 +226,24 @@ function loadSignatures(): { signatures: Signature[]; defaultId: string | null }
     const raw = localStorage.getItem(SIGS_KEY);
     if (raw) {
       const signatures = JSON.parse(raw) as Signature[];
-      return { signatures, defaultId: localStorage.getItem(SIG_DEFAULT_KEY) || signatures[0]?.id || null };
+      return {
+        signatures,
+        defaultId: localStorage.getItem(SIG_DEFAULT_KEY) || signatures[0]?.id || null,
+      };
     }
     // migrate the old single plain signature, if any
     const legacy = localStorage.getItem(SIG_KEY);
     if (legacy) {
-      const sig: Signature = { id: `sig-${Date.now()}`, name: "Default", html: legacy.replace(/\n/g, "<br>") };
+      const sig: Signature = {
+        id: `sig-${Date.now()}`,
+        name: "Default",
+        html: legacy.replace(/\n/g, "<br>"),
+      };
       return { signatures: [sig], defaultId: sig.id };
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return { signatures: [], defaultId: null };
 }
 
@@ -231,7 +252,9 @@ function persistSignatures(signatures: Signature[], defaultId: string | null) {
     localStorage.setItem(SIGS_KEY, JSON.stringify(signatures));
     if (defaultId) localStorage.setItem(SIG_DEFAULT_KEY, defaultId);
     else localStorage.removeItem(SIG_DEFAULT_KEY);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   // Durable copy in the core settings store (DB), like other user prefs.
   void api.setSetting("signatures", JSON.stringify(signatures));
   void api.setSetting("signature_default", defaultId ?? "");
@@ -245,18 +268,28 @@ function applyDoc(theme: Theme, density: Density) {
 
 // Persisted appearance prefs (theme + density) — survive refresh/restart.
 function loadTheme(): Theme {
-  try { return localStorage.getItem("bharga.theme") === "light" ? "light" : "dark"; } catch { return "dark"; }
+  try {
+    return localStorage.getItem("bharga.theme") === "light" ? "light" : "dark";
+  } catch {
+    return "dark";
+  }
 }
 function loadDensity(): Density {
   try {
     const v = localStorage.getItem("bharga.density");
     return v === "compact" || v === "comfy" ? v : "cozy";
-  } catch { return "cozy"; }
+  } catch {
+    return "cozy";
+  }
 }
 // Persist a UI pref to both the instant localStorage cache and the durable core
 // settings store (so it lives in the app's data model, not just the webview).
 function persistPref(name: string, value: string) {
-  try { localStorage.setItem(`bharga.${name}`, value); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(`bharga.${name}`, value);
+  } catch {
+    /* ignore */
+  }
   void api.setSetting(name, value);
 }
 
@@ -274,7 +307,16 @@ export const useApp = create<AppState>((set, get) => ({
   // Changing what list you're looking at also resets the reading pane — otherwise
   // the Stage keeps showing the previously-opened email (it resolves the thread
   // from the GLOBAL thread list, which still contains the old folder's mail).
-  setView: (v) => set({ view: v, selectedFolder: null, selectedThreadId: null, selectedMessageId: null, composeOpen: false, drawerOpen: false, mobileStage: false }),
+  setView: (v) =>
+    set({
+      view: v,
+      selectedFolder: null,
+      selectedThreadId: null,
+      selectedMessageId: null,
+      composeOpen: false,
+      drawerOpen: false,
+      mobileStage: false,
+    }),
   hydrateThread: async (id) => {
     const current = get().threads.find((t) => t.id === id);
     if (!current || !needsBodies(current)) return;
@@ -289,7 +331,9 @@ export const useApp = create<AppState>((set, get) => ({
       hydratedSignatures.set(id, signature);
       // Fill bodies into the thread as it is NOW: a refresh may have updated its
       // flags or messages while the fetch was in flight.
-      set({ threads: get().threads.map((t) => (t.id === id ? keepLoadedBodies([t], [full])[0] : t)) });
+      set({
+        threads: get().threads.map((t) => (t.id === id ? keepLoadedBodies([t], [full])[0] : t)),
+      });
     } finally {
       hydrating.delete(id);
     }
@@ -320,7 +364,11 @@ export const useApp = create<AppState>((set, get) => ({
   },
   dismissSendWarning: async (accountId) => {
     await api.setSetting(`send_warning:${accountId}`, "").catch(() => {});
-    set({ sendWarnings: Object.fromEntries(Object.entries(get().sendWarnings).filter(([k]) => k !== accountId)) });
+    set({
+      sendWarnings: Object.fromEntries(
+        Object.entries(get().sendWarnings).filter(([k]) => k !== accountId),
+      ),
+    });
   },
   selectThread: (id, messageId) => {
     set({ selectedThreadId: id, selectedMessageId: messageId ?? null, mobileStage: true });
@@ -359,10 +407,11 @@ export const useApp = create<AppState>((set, get) => ({
   setCmd: (cmdOpen) => set({ cmdOpen }),
   setModelPicker: (modelPickerOpen) => set({ modelPickerOpen }),
   setCompose: (composeOpen) => set({ composeOpen }),
-  openAccountConnector: (accountConnectorOpener = null) => set({
-    accountConnectorOpen: true,
-    accountConnectorOpener,
-  }),
+  openAccountConnector: (accountConnectorOpener = null) =>
+    set({
+      accountConnectorOpen: true,
+      accountConnectorOpener,
+    }),
   closeAccountConnector: () => {
     const closingOpener = get().accountConnectorOpener;
     set({ accountConnectorOpen: false });
@@ -374,10 +423,16 @@ export const useApp = create<AppState>((set, get) => ({
     });
   },
   aiReplyFor: null,
-  requestAiReply: (id) => { set({ aiReplyFor: id, selectedThreadId: id, mobileStage: true }); void get().hydrateThread(id); },
+  requestAiReply: (id) => {
+    set({ aiReplyFor: id, selectedThreadId: id, mobileStage: true });
+    void get().hydrateThread(id);
+  },
   clearAiReply: () => set({ aiReplyFor: null }),
   composeIntent: null,
-  requestCompose: (id, mode) => { set({ composeIntent: { id, mode }, selectedThreadId: id, mobileStage: true }); void get().hydrateThread(id); },
+  requestCompose: (id, mode) => {
+    set({ composeIntent: { id, mode }, selectedThreadId: id, mobileStage: true });
+    void get().hydrateThread(id);
+  },
   clearComposeIntent: () => set({ composeIntent: null }),
   setDrawer: (drawerOpen) => set({ drawerOpen }),
   backToStream: () => set({ mobileStage: false, composeOpen: false }),
@@ -391,7 +446,16 @@ export const useApp = create<AppState>((set, get) => ({
   folders: [],
   selectedFolder: null,
   setAccount: (selectedAccountId) => {
-    set({ selectedAccountId, selectedFolder: null, selectedThreadId: null, selectedMessageId: null, folders: [], view: "inbox", mobileStage: false, reachedEnd: false });
+    set({
+      selectedAccountId,
+      selectedFolder: null,
+      selectedThreadId: null,
+      selectedMessageId: null,
+      folders: [],
+      view: "inbox",
+      mobileStage: false,
+      reachedEnd: false,
+    });
     if (selectedAccountId) {
       void get().loadFolders(selectedAccountId);
       void get().refreshFolders(selectedAccountId);
@@ -458,10 +522,18 @@ export const useApp = create<AppState>((set, get) => ({
   },
   // Mark every loaded thread in a folder as read (local now + best-effort \Seen).
   markFolderRead: async (accountId, folder) => {
-    const targets = get().threads.filter((t) => t.accountId === accountId && t.folder === folder && t.unread);
+    const targets = get().threads.filter(
+      (t) => t.accountId === accountId && t.folder === folder && t.unread,
+    );
     if (!targets.length) return;
-    set({ threads: get().threads.map((t) => (t.accountId === accountId && t.folder === folder && t.unread ? { ...t, unread: false } : t)) });
-    await Promise.all(targets.map((t) => api.setThreadRead(t.id, t.accountId, false).catch(() => {})));
+    set({
+      threads: get().threads.map((t) =>
+        t.accountId === accountId && t.folder === folder && t.unread ? { ...t, unread: false } : t,
+      ),
+    });
+    await Promise.all(
+      targets.map((t) => api.setThreadRead(t.id, t.accountId, false).catch(() => {})),
+    );
     if (get().selectedAccountId === accountId) await get().loadFolders(accountId);
   },
   refreshFolders: async (accountId) => {
@@ -470,7 +542,14 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setFolder: async (name) => {
     const acct = get().selectedAccountId;
-    set({ selectedFolder: name, selectedThreadId: null, selectedMessageId: null, view: "inbox", mobileStage: false, reachedEnd: false });
+    set({
+      selectedFolder: name,
+      selectedThreadId: null,
+      selectedMessageId: null,
+      view: "inbox",
+      mobileStage: false,
+      reachedEnd: false,
+    });
     if (acct && name) {
       try {
         await api.syncFolder(acct, name, get().groupConversations);
@@ -492,7 +571,11 @@ export const useApp = create<AppState>((set, get) => ({
     const PAGE = 75; // fetch one fixed page of OLDER mail per call (no re-download)
     let stored = 0;
     for (const a of accounts) {
-      try { stored += await api.loadOlder(a.id, folder, PAGE, groupConversations); } catch { /* per-account; ignore non-IMAP */ }
+      try {
+        stored += await api.loadOlder(a.id, folder, PAGE, groupConversations);
+      } catch {
+        /* per-account; ignore non-IMAP */
+      }
     }
     // Nothing older came back across every account → we've hit the bottom.
     get().applyThreads(await api.listThreads());
@@ -539,7 +622,15 @@ export const useApp = create<AppState>((set, get) => ({
     // to the localStorage cache, then apply + mirror back so both stay in sync.
     try {
       const remote = await api.getSettings();
-      const pick = (k: string) => remote[k] ?? (() => { try { return localStorage.getItem(`bharga.${k}`) ?? undefined; } catch { return undefined; } })();
+      const pick = (k: string) =>
+        remote[k] ??
+        (() => {
+          try {
+            return localStorage.getItem(`bharga.${k}`) ?? undefined;
+          } catch {
+            return undefined;
+          }
+        })();
       const theme: Theme = pick("theme") === "light" ? "light" : "dark";
       const dRaw = pick("density");
       const density: Density = dRaw === "compact" || dRaw === "comfy" ? dRaw : "cozy";
@@ -559,23 +650,53 @@ export const useApp = create<AppState>((set, get) => ({
       persistPref("highlights", highlights ? "1" : "0");
       persistPref("autoOrganize", autoOrganize ? "1" : "0");
       let flaggedIds: string[] = get().flaggedIds;
-      try { flaggedIds = JSON.parse(pick("flaggedIds") || "[]"); } catch { /* keep */ }
+      try {
+        flaggedIds = JSON.parse(pick("flaggedIds") || "[]");
+      } catch {
+        /* keep */
+      }
       persistPref("flaggedIds", JSON.stringify(flaggedIds));
       const psw = parseInt(pick("panelSidebarW") || "", 10);
       const ptw = parseInt(pick("panelStreamW") || "", 10);
-      const panelSidebarW = Number.isFinite(psw) ? Math.max(180, Math.min(380, psw)) : get().panelSidebarW;
-      const panelStreamW = Number.isFinite(ptw) ? Math.max(280, Math.min(640, ptw)) : get().panelStreamW;
+      const panelSidebarW = Number.isFinite(psw)
+        ? Math.max(180, Math.min(380, psw))
+        : get().panelSidebarW;
+      const panelStreamW = Number.isFinite(ptw)
+        ? Math.max(280, Math.min(640, ptw))
+        : get().panelStreamW;
       persistPref("panelSidebarW", String(panelSidebarW));
       persistPref("panelStreamW", String(panelStreamW));
       const sidebarCollapsed = (pick("sidebarCollapsed") ?? "0") === "1";
       persistPref("sidebarCollapsed", sidebarCollapsed ? "1" : "0");
       let accountOrder: string[] = get().accountOrder;
-      try { accountOrder = JSON.parse(pick("accountOrder") || "[]"); } catch { /* keep */ }
+      try {
+        accountOrder = JSON.parse(pick("accountOrder") || "[]");
+      } catch {
+        /* keep */
+      }
       persistPref("accountOrder", JSON.stringify(accountOrder));
       let pinnedFolders: string[] = get().pinnedFolders;
-      try { pinnedFolders = JSON.parse(pick("pinnedFolders") || "[]"); } catch { /* keep */ }
+      try {
+        pinnedFolders = JSON.parse(pick("pinnedFolders") || "[]");
+      } catch {
+        /* keep */
+      }
       persistPref("pinnedFolders", JSON.stringify(pinnedFolders));
-      set({ theme, density, font, locale, groupConversations, highlights, autoOrganize, flaggedIds, panelSidebarW, panelStreamW, sidebarCollapsed, accountOrder, pinnedFolders });
+      set({
+        theme,
+        density,
+        font,
+        locale,
+        groupConversations,
+        highlights,
+        autoOrganize,
+        flaggedIds,
+        panelSidebarW,
+        panelStreamW,
+        sidebarCollapsed,
+        accountOrder,
+        pinnedFolders,
+      });
 
       // Signatures: DB is the source of truth; fall back to the local cache.
       if (remote["signatures"]) {
@@ -583,8 +704,13 @@ export const useApp = create<AppState>((set, get) => ({
           const sigs: Signature[] = JSON.parse(remote["signatures"]);
           const def = remote["signature_default"] || null;
           persistSignatures(sigs, def);
-          set({ signatures: sigs, defaultSignatureId: def && sigs.some((s) => s.id === def) ? def : sigs[0]?.id ?? null });
-        } catch { /* ignore malformed */ }
+          set({
+            signatures: sigs,
+            defaultSignatureId: def && sigs.some((s) => s.id === def) ? def : (sigs[0]?.id ?? null),
+          });
+        } catch {
+          /* ignore malformed */
+        }
       } else if (get().signatures.length > 0) {
         // migrate existing local signatures into the DB
         persistSignatures(get().signatures, get().defaultSignatureId);
@@ -619,7 +745,10 @@ export const useApp = create<AppState>((set, get) => ({
     if (!ai) return;
     const models = ai.models.map((m) => ({
       ...m,
-      roles: m.id === modelId ? Array.from(new Set([...m.roles, role])) : m.roles.filter((r) => r !== role),
+      roles:
+        m.id === modelId
+          ? Array.from(new Set([...m.roles, role]))
+          : m.roles.filter((r) => r !== role),
     }));
     set({ ai: { ...ai, models } });
   },
@@ -637,9 +766,7 @@ export const useApp = create<AppState>((set, get) => ({
     } catch (error) {
       // Roll back only the field this request owns. Provider updates may have
       // completed while persistence was in flight and must never be discarded.
-      set((state) => state.ai
-        ? { ai: { ...state.ai, privacy: previous.privacy } }
-        : {});
+      set((state) => (state.ai ? { ai: { ...state.ai, privacy: previous.privacy } } : {}));
       throw error;
     }
   },
@@ -658,7 +785,9 @@ export const useApp = create<AppState>((set, get) => ({
   addModel: () => {
     const ai = get().ai;
     if (!ai) return null;
-    const n = ai.models.filter((model) => model.kind === "openai-compatible" || model.kind === "custom").length + 1;
+    const n =
+      ai.models.filter((model) => model.kind === "openai-compatible" || model.kind === "custom")
+        .length + 1;
     const id = crypto.randomUUID();
     const model: AiModel = {
       id,
@@ -676,16 +805,18 @@ export const useApp = create<AppState>((set, get) => ({
     if (!saved) throw new Error("The saved provider was not returned by the core.");
     // Merge only the provider this request owns. Out-of-order responses from
     // concurrent providers must not roll back each other or the privacy field.
-    set((state) => state.ai
-      ? {
-          ai: {
-            ...state.ai,
-            models: state.ai.models.some((model) => model.id === saved.id)
-              ? state.ai.models.map((model) => model.id === saved.id ? saved : model)
-              : [...state.ai.models, saved],
-          },
-        }
-      : { ai: persisted });
+    set((state) =>
+      state.ai
+        ? {
+            ai: {
+              ...state.ai,
+              models: state.ai.models.some((model) => model.id === saved.id)
+                ? state.ai.models.map((model) => (model.id === saved.id ? saved : model))
+                : [...state.ai.models, saved],
+            },
+          }
+        : { ai: persisted },
+    );
   },
   removeModel: async (id) => {
     await api.removeAiProvider(id);
@@ -741,28 +872,107 @@ export const useApp = create<AppState>((set, get) => ({
   },
   font: loadFont(),
   locale: loadLocale(),
-  setFont: (font) => { applyFont(font); persistPref("font", font); set({ font }); },
-  setLocale: (locale) => { applyLocale(locale); persistPref("locale", locale); set({ locale }); },
-  groupConversations: (() => { try { return localStorage.getItem("bharga.group") !== "0"; } catch { return true; } })(),
-  setGroupConversations: (v) => { persistPref("group", v ? "1" : "0"); set({ groupConversations: v }); },
-  highlights: (() => { try { return localStorage.getItem("bharga.highlights") !== "0"; } catch { return true; } })(),
-  setHighlights: (v) => { persistPref("highlights", v ? "1" : "0"); set({ highlights: v }); },
-  contentPx: (() => { try { const n = parseFloat(localStorage.getItem("bharga.contentPx") ?? ""); return Number.isFinite(n) && n >= 12 && n <= 22 ? n : 14.5; } catch { return 14.5; } })(),
-  setContentPx: (v) => { const px = Math.min(22, Math.max(12, v)); persistPref("contentPx", String(px)); set({ contentPx: px }); },
-  autoOrganize: (() => { try { return localStorage.getItem("bharga.autoOrganize") !== "0"; } catch { return true; } })(),
-  setAutoOrganize: (v) => { persistPref("autoOrganize", v ? "1" : "0"); set({ autoOrganize: v }); },
-  panelSidebarW: (() => { try { const v = parseInt(localStorage.getItem("bharga.panelSidebarW") || "", 10); return Number.isFinite(v) ? v : 234; } catch { return 234; } })(),
-  panelStreamW: (() => { try { const v = parseInt(localStorage.getItem("bharga.panelStreamW") || "", 10); return Number.isFinite(v) ? v : 360; } catch { return 360; } })(),
+  setFont: (font) => {
+    applyFont(font);
+    persistPref("font", font);
+    set({ font });
+  },
+  setLocale: (locale) => {
+    applyLocale(locale);
+    persistPref("locale", locale);
+    set({ locale });
+  },
+  groupConversations: (() => {
+    try {
+      return localStorage.getItem("bharga.group") !== "0";
+    } catch {
+      return true;
+    }
+  })(),
+  setGroupConversations: (v) => {
+    persistPref("group", v ? "1" : "0");
+    set({ groupConversations: v });
+  },
+  highlights: (() => {
+    try {
+      return localStorage.getItem("bharga.highlights") !== "0";
+    } catch {
+      return true;
+    }
+  })(),
+  setHighlights: (v) => {
+    persistPref("highlights", v ? "1" : "0");
+    set({ highlights: v });
+  },
+  contentPx: (() => {
+    try {
+      const n = parseFloat(localStorage.getItem("bharga.contentPx") ?? "");
+      return Number.isFinite(n) && n >= 12 && n <= 22 ? n : 14.5;
+    } catch {
+      return 14.5;
+    }
+  })(),
+  setContentPx: (v) => {
+    const px = Math.min(22, Math.max(12, v));
+    persistPref("contentPx", String(px));
+    set({ contentPx: px });
+  },
+  autoOrganize: (() => {
+    try {
+      return localStorage.getItem("bharga.autoOrganize") !== "0";
+    } catch {
+      return true;
+    }
+  })(),
+  setAutoOrganize: (v) => {
+    persistPref("autoOrganize", v ? "1" : "0");
+    set({ autoOrganize: v });
+  },
+  panelSidebarW: (() => {
+    try {
+      const v = parseInt(localStorage.getItem("bharga.panelSidebarW") || "", 10);
+      return Number.isFinite(v) ? v : 234;
+    } catch {
+      return 234;
+    }
+  })(),
+  panelStreamW: (() => {
+    try {
+      const v = parseInt(localStorage.getItem("bharga.panelStreamW") || "", 10);
+      return Number.isFinite(v) ? v : 360;
+    } catch {
+      return 360;
+    }
+  })(),
   setPanelWidths: (sidebar, stream, persist = false) => {
     const s = Math.max(180, Math.min(380, Math.round(sidebar)));
     const st = Math.max(280, Math.min(640, Math.round(stream)));
     set({ panelSidebarW: s, panelStreamW: st });
-    if (persist) { persistPref("panelSidebarW", String(s)); persistPref("panelStreamW", String(st)); }
+    if (persist) {
+      persistPref("panelSidebarW", String(s));
+      persistPref("panelStreamW", String(st));
+    }
   },
-  sidebarCollapsed: (() => { try { return localStorage.getItem("bharga.sidebarCollapsed") === "1"; } catch { return false; } })(),
-  toggleSidebar: () => { const v = !get().sidebarCollapsed; persistPref("sidebarCollapsed", v ? "1" : "0"); set({ sidebarCollapsed: v }); },
+  sidebarCollapsed: (() => {
+    try {
+      return localStorage.getItem("bharga.sidebarCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  })(),
+  toggleSidebar: () => {
+    const v = !get().sidebarCollapsed;
+    persistPref("sidebarCollapsed", v ? "1" : "0");
+    set({ sidebarCollapsed: v });
+  },
   triaging: false,
-  flaggedIds: (() => { try { return JSON.parse(localStorage.getItem("bharga.flaggedIds") || "[]") as string[]; } catch { return []; } })(),
+  flaggedIds: (() => {
+    try {
+      return JSON.parse(localStorage.getItem("bharga.flaggedIds") || "[]") as string[];
+    } catch {
+      return [];
+    }
+  })(),
   toggleFlag: (id) => {
     const cur = get().flaggedIds;
     const flagged = !cur.includes(id);
@@ -773,9 +983,24 @@ export const useApp = create<AppState>((set, get) => ({
     const accountId = get().threads.find((t) => t.id === id)?.accountId;
     if (accountId) void api.flagThread(id, accountId, flagged);
   },
-  accountOrder: (() => { try { return JSON.parse(localStorage.getItem("bharga.accountOrder") || "[]") as string[]; } catch { return []; } })(),
-  setAccountOrder: (ids) => { persistPref("accountOrder", JSON.stringify(ids)); set({ accountOrder: ids }); },
-  pinnedFolders: (() => { try { return JSON.parse(localStorage.getItem("bharga.pinnedFolders") || "[]") as string[]; } catch { return []; } })(),
+  accountOrder: (() => {
+    try {
+      return JSON.parse(localStorage.getItem("bharga.accountOrder") || "[]") as string[];
+    } catch {
+      return [];
+    }
+  })(),
+  setAccountOrder: (ids) => {
+    persistPref("accountOrder", JSON.stringify(ids));
+    set({ accountOrder: ids });
+  },
+  pinnedFolders: (() => {
+    try {
+      return JSON.parse(localStorage.getItem("bharga.pinnedFolders") || "[]") as string[];
+    } catch {
+      return [];
+    }
+  })(),
   togglePinFolder: (accountId, folder) => {
     const key = `${accountId}${folder}`;
     const cur = get().pinnedFolders;
@@ -786,7 +1011,14 @@ export const useApp = create<AppState>((set, get) => ({
   snoozeThread: (id) => {
     set({
       threads: get().threads.map((t) =>
-        t.id === id ? { ...t, view: Array.from(new Set([...t.view.filter((v) => v !== "priority" && v !== "inbox"), "snoozed"])) } : t
+        t.id === id
+          ? {
+              ...t,
+              view: Array.from(
+                new Set([...t.view.filter((v) => v !== "priority" && v !== "inbox"), "snoozed"]),
+              ),
+            }
+          : t,
       ),
       mobileStage: false,
     });
@@ -794,7 +1026,10 @@ export const useApp = create<AppState>((set, get) => ({
   },
   archiveThread: (id) => {
     const t = get().threads.find((x) => x.id === id);
-    set({ threads: get().threads.map((x) => (x.id === id ? { ...x, view: [] } : x)), mobileStage: false });
+    set({
+      threads: get().threads.map((x) => (x.id === id ? { ...x, view: [] } : x)),
+      mobileStage: false,
+    });
     if (t) void api.archiveThread(id, t.accountId);
   },
   toggleRead: (id) => {
@@ -811,24 +1046,24 @@ export const useApp = create<AppState>((set, get) => ({
     const targetUnread = !read;
     const previousUnread = new Map(targets.map((thread) => [thread.id, thread.unread]));
     set({
-      threads: get().threads.map((thread) => (
-        idSet.has(thread.id) ? { ...thread, unread: targetUnread } : thread
-      )),
+      threads: get().threads.map((thread) =>
+        idSet.has(thread.id) ? { ...thread, unread: targetUnread } : thread,
+      ),
     });
 
     const results = await Promise.allSettled(
       targets.map((thread) => api.setThreadRead(thread.id, thread.accountId, targetUnread)),
     );
     const failedIds = new Set(
-      results.flatMap((result, index) => result.status === "rejected" ? [targets[index].id] : []),
+      results.flatMap((result, index) => (result.status === "rejected" ? [targets[index].id] : [])),
     );
     if (failedIds.size > 0) {
       set({
-        threads: get().threads.map((thread) => (
+        threads: get().threads.map((thread) =>
           failedIds.has(thread.id)
             ? { ...thread, unread: previousUnread.get(thread.id) ?? thread.unread }
-            : thread
-        )),
+            : thread,
+        ),
       });
     }
 
@@ -875,7 +1110,17 @@ export const useApp = create<AppState>((set, get) => ({
       set({ triaging: false });
     }
   },
-  queueSend: async ({ to, cc, bcc, subject, body, threadId, accountId: fromId, attachments, sendAt }) => {
+  queueSend: async ({
+    to,
+    cc,
+    bcc,
+    subject,
+    body,
+    threadId,
+    accountId: fromId,
+    attachments,
+    sendAt,
+  }) => {
     const def = get().signatures.find((s) => s.id === get().defaultSignatureId);
     const fullBody = def?.html ? `${body}<br><br>--<br>${def.html}` : body;
     // Route from the right account: an explicit From (Compose picker) wins, else a

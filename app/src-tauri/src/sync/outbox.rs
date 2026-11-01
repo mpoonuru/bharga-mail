@@ -18,12 +18,40 @@ pub async fn flush(store: &Store) -> usize {
             continue;
         }
         let result = if item.account_id.starts_with("gmail:") {
-            gmail::send(&item.account_id, &item.to, &item.cc, &item.bcc, &item.subject, &item.body, &item.attachments).await
+            gmail::send(
+                &item.account_id,
+                &item.to,
+                &item.cc,
+                &item.bcc,
+                &item.subject,
+                &item.body,
+                &item.attachments,
+            )
+            .await
         } else if item.account_id.starts_with("ms:") {
-            microsoft::send(&item.account_id, &item.to, &item.cc, &item.bcc, &item.subject, &item.body, &item.attachments).await
+            microsoft::send(
+                &item.account_id,
+                &item.to,
+                &item.cc,
+                &item.bcc,
+                &item.subject,
+                &item.body,
+                &item.attachments,
+            )
+            .await
         } else {
             // Plain IMAP/SMTP accounts.
-            smtp::send_for(store, &item.account_id, &item.to, &item.cc, &item.bcc, &item.subject, &item.body, &item.attachments).await
+            smtp::send_for(
+                store,
+                &item.account_id,
+                &item.to,
+                &item.cc,
+                &item.bcc,
+                &item.subject,
+                &item.body,
+                &item.attachments,
+            )
+            .await
         };
         match result {
             Ok(()) => {
@@ -37,7 +65,9 @@ pub async fn flush(store: &Store) -> usize {
                 match store.mark_outbox_failure(&item.id, &e.to_string(), max_attempts) {
                     Ok(true) => log::error!("outbox: {} dead-lettered: {e}", item.id),
                     Ok(false) => log::warn!("outbox: {} send failed, will retry: {e}", item.id),
-                    Err(db) => log::error!("outbox: failed to record failure for {}: {db}", item.id),
+                    Err(db) => {
+                        log::error!("outbox: failed to record failure for {}: {db}", item.id)
+                    }
                 }
             }
         }

@@ -33,10 +33,11 @@ export function layoutTimedEvents(events: readonly TimedLayoutInput[]): TimedLay
     if (endValue <= startValue) throw new RangeError(`Event ${event.id} must end after it starts`);
     return { ...event, column: 0, columnCount: 1, startValue, endValue };
   });
-  positioned.sort((left, right) =>
-    left.startValue - right.startValue
-    || (right.endValue - right.startValue) - (left.endValue - left.startValue)
-    || left.id.localeCompare(right.id),
+  positioned.sort(
+    (left, right) =>
+      left.startValue - right.startValue ||
+      right.endValue - right.startValue - (left.endValue - left.startValue) ||
+      left.id.localeCompare(right.id),
   );
 
   let active: PositionedEvent[] = [];
@@ -81,10 +82,11 @@ export function layoutMonthSpans(
     throw new RangeError("Visible month range must be a non-empty ISO-week grid");
   }
 
-  const sorted = [...events].sort((left, right) =>
-    left.startDate.localeCompare(right.startDate)
-    || left.endDate.localeCompare(right.endDate)
-    || left.id.localeCompare(right.id),
+  const sorted = [...events].sort(
+    (left, right) =>
+      left.startDate.localeCompare(right.startDate) ||
+      left.endDate.localeCompare(right.endDate) ||
+      left.id.localeCompare(right.id),
   );
   const segments: MonthSpanSegment[] = [];
 

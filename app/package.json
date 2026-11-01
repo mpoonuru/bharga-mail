@@ -13,6 +13,8 @@
     "check:open-source": "node ../scripts/check-open-source-hygiene.mjs",
     "check:version": "bun ../scripts/check-version-integrity.mjs",
     "test": "vitest run",
+    "lint": "biome check",
+    "format": "biome check --write",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
@@ -46,6 +48,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/cli": "^2.11.2",
     "@types/react": "^19.2.15",

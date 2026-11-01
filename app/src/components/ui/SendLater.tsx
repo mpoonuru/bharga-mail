@@ -1,10 +1,16 @@
-import { useState } from "react";
 import dayjs from "dayjs";
+import { useState } from "react";
 import { Icon } from "@/components/icons";
 
 /** A compact "Send later" popover: quick presets + a custom date/time picker.
  *  Calls `onSchedule` with an absolute epoch in **seconds**. */
-export function SendLater({ onSchedule, disabled }: { onSchedule: (epochSeconds: number) => void; disabled?: boolean }) {
+export function SendLater({
+  onSchedule,
+  disabled,
+}: {
+  onSchedule: (epochSeconds: number) => void;
+  disabled?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState("");
 
@@ -16,16 +22,31 @@ export function SendLater({ onSchedule, disabled }: { onSchedule: (epochSeconds:
   };
   const presets: { label: string; at: dayjs.Dayjs }[] = [
     { label: "In 1 hour", at: dayjs().add(1, "hour") },
-    { label: "This evening", at: (dayjs().hour() < 18 ? dayjs().hour(18) : dayjs().add(1, "day").hour(18)).minute(0).second(0) },
+    {
+      label: "This evening",
+      at: (dayjs().hour() < 18 ? dayjs().hour(18) : dayjs().add(1, "day").hour(18))
+        .minute(0)
+        .second(0),
+    },
     { label: "Tomorrow morning", at: dayjs().add(1, "day").hour(8).minute(0).second(0) },
     { label: "Monday morning", at: nextWeekdayAt(1, 8) },
   ];
 
-  const pick = (at: dayjs.Dayjs) => { onSchedule(at.unix()); setOpen(false); setCustom(""); };
+  const pick = (at: dayjs.Dayjs) => {
+    onSchedule(at.unix());
+    setOpen(false);
+    setCustom("");
+  };
 
   return (
     <span className="sendlater">
-      <button type="button" className="iconbtn" title="Send later" disabled={disabled} onClick={() => setOpen((o) => !o)}>
+      <button
+        type="button"
+        className="iconbtn"
+        title="Send later"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+      >
         <Icon name="schedule" size={15} weight="duotone" />
       </button>
       {open && (
@@ -34,7 +55,12 @@ export function SendLater({ onSchedule, disabled }: { onSchedule: (epochSeconds:
           <div className="sendlater-menu" role="menu">
             <div className="sendlater-head">Schedule send</div>
             {presets.map((p) => (
-              <button key={p.label} role="menuitem" className="sendlater-opt" onClick={() => pick(p.at)}>
+              <button
+                key={p.label}
+                role="menuitem"
+                className="sendlater-opt"
+                onClick={() => pick(p.at)}
+              >
                 <span>{p.label}</span>
                 <span className="sendlater-when">{p.at.format("ddd HH:mm")}</span>
               </button>

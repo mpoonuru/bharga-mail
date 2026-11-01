@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import { flushSync } from "react-dom";
 import { Reorder, useDragControls } from "motion/react";
-import { useApp } from "@/store";
-import type { View, Account } from "@/types";
+import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Icon, type IconName } from "@/components/icons";
-import { Tooltip } from "@/components/ui/Tooltip";
-import { accountColor } from "@/lib/colors";
-import { titlebarDoubleClick } from "@/lib/bridge";
-import { MOTION, MOTION_EASE } from "@/lib/motion";
 import { AccountRemovalDialog } from "@/components/settings/AccountRemovalDialog";
 import { MeasuredDisclosure } from "@/components/ui/MeasuredDisclosure";
 import { Modal } from "@/components/ui/Modal";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { titlebarDoubleClick } from "@/lib/bridge";
+import { accountColor } from "@/lib/colors";
+import { MOTION, MOTION_EASE } from "@/lib/motion";
+import { useApp } from "@/store";
+import type { Account, View } from "@/types";
 
 const NAV: { id: View; icon: IconName; label: string }[] = [
   { id: "priority", icon: "priority", label: "Priority" },
@@ -102,7 +102,16 @@ const ACCOUNT_ROW_MOTION_STYLE: DisclosureStyle = {
 
 /** A single account row in the expanded sidebar: drag-handle to reorder, the
  *  account selector, refresh, and (when focused) its folders with pin toggles. */
-function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEditing, reordering, setReordering, onKeyboardMove }: {
+function AccountRow({
+  a,
+  expanded,
+  onToggleDisclosure,
+  onOpenDisclosure,
+  orderEditing,
+  reordering,
+  setReordering,
+  onKeyboardMove,
+}: {
   a: Account;
   expanded: boolean;
   onToggleDisclosure: () => void;
@@ -112,7 +121,23 @@ function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEd
   setReordering: (active: boolean) => void;
   onKeyboardMove: (account: Account, direction: -1 | 1) => void;
 }) {
-  const { selectedAccountId, setAccount, folders, selectedFolder, setFolder, refreshFolders, pinnedFolders, togglePinFolder, threads, createFolder, renameFolder, deleteFolder, renameAccount, syncOneFolder, markFolderRead } = useApp();
+  const {
+    selectedAccountId,
+    setAccount,
+    folders,
+    selectedFolder,
+    setFolder,
+    refreshFolders,
+    pinnedFolders,
+    togglePinFolder,
+    threads,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    renameAccount,
+    syncOneFolder,
+    markFolderRead,
+  } = useApp();
   const controls = useDragControls();
   const [busy, setBusy] = useState(false);
   const isFocused = selectedAccountId === a.id;
@@ -136,7 +161,11 @@ function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEd
   const folderMenuButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const run = async (fn: () => Promise<void>) => {
     setFolderErr("");
-    try { await fn(); } catch (e) { setFolderErr(String(e).replace(/^Error:\s*/, "")); }
+    try {
+      await fn();
+    } catch (e) {
+      setFolderErr(String(e).replace(/^Error:\s*/, ""));
+    }
   };
   // New folders nest like the account's existing ones ("INBOX." / "INBOX/" prefix).
   const sep = folders.find((f) => /^INBOX[./]/.test(f.name))?.name.match(/^INBOX([./])/)?.[1];
@@ -148,7 +177,8 @@ function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEd
   // Live unread counts derived from threads (the cached AccountInfo/FolderInfo
   // counts are a sync-time snapshot and don't react to marking a mail read).
   const acctUnread = threads.filter((t) => t.accountId === a.id && t.unread).length;
-  const folderUnread = (name: string) => threads.filter((t) => t.accountId === a.id && t.folder === name && t.unread).length;
+  const folderUnread = (name: string) =>
+    threads.filter((t) => t.accountId === a.id && t.folder === name && t.unread).length;
   const confirmFolderDeletion = async () => {
     if (!deleteTarget || deletingFolder) return;
     setDeletingFolder(true);
@@ -190,27 +220,42 @@ function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEd
               event.preventDefault();
               onKeyboardMove(a, event.key === "ArrowUp" ? -1 : 1);
             }}
-            onPointerDown={(e) => activateAccountReorder(
-              () => setReordering(true),
-              () => controls.start(e),
-            )}
+            onPointerDown={(e) =>
+              activateAccountReorder(
+                () => setReordering(true),
+                () => controls.start(e),
+              )
+            }
           >
             <Icon name="grip" size={13} weight="bold" />
           </button>
         )}
         {acctRename !== null ? (
-          <input className="folder-edit" autoFocus value={acctRename} placeholder={a.email}
+          <input
+            className="folder-edit"
+            autoFocus
+            value={acctRename}
+            placeholder={a.email}
             onChange={(e) => setAcctRename(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") { const nm = acctRename.trim(); setAcctRename(null); if (nm) void run(() => renameAccount(a.id, nm)); }
-              else if (e.key === "Escape") setAcctRename(null);
+              if (e.key === "Enter") {
+                const nm = acctRename.trim();
+                setAcctRename(null);
+                if (nm) void run(() => renameAccount(a.id, nm));
+              } else if (e.key === "Escape") setAcctRename(null);
             }}
-            onBlur={() => setAcctRename(null)} />
+            onBlur={() => setAcctRename(null)}
+          />
         ) : (
-          <button className={`nav-item acct-main${isFocused ? " active" : ""}`}
+          <button
+            className={`nav-item acct-main${isFocused ? " active" : ""}`}
             aria-expanded={expanded}
-            onClick={onToggleDisclosure} title={a.email}>
-            <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
+            onClick={onToggleDisclosure}
+            title={a.email}
+          >
+            <span className="ic">
+              <span className="acct-dot" style={{ background: accountColor(a.id) }} />
+            </span>
             <span className="acct-email">{a.displayName?.trim() || a.email}</span>
             <span className="acct-caret" aria-hidden="true">
               <Icon name="caretRight" size={11} weight="bold" />
@@ -219,30 +264,74 @@ function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEd
           </button>
         )}
         {acctRename === null && (
-          <button ref={accountMenuButtonRef} className={`acct-more${acctMenu ? " open" : ""}`} title={busy ? "Refreshing folders" : "Account options"}
-            aria-haspopup="menu" aria-expanded={acctMenu}
+          <button
+            ref={accountMenuButtonRef}
+            className={`acct-more${acctMenu ? " open" : ""}`}
+            title={busy ? "Refreshing folders" : "Account options"}
+            aria-haspopup="menu"
+            aria-expanded={acctMenu}
             disabled={busy}
-            onClick={(e) => { e.stopPropagation(); setAcctMenu((o) => !o); }}>
+            onClick={(e) => {
+              e.stopPropagation();
+              setAcctMenu((o) => !o);
+            }}
+          >
             <Icon name={busy ? "cloud" : "more"} size={15} weight={busy ? "fill" : "bold"} />
           </button>
         )}
         {acctMenu && (
           <>
-            <div className="folder-menu-backdrop" onClick={() => setAcctMenu(false)} aria-hidden="true" />
+            <div
+              className="folder-menu-backdrop"
+              onClick={() => setAcctMenu(false)}
+              aria-hidden="true"
+            />
             <div className="folder-menu acct-menu" role="menu">
-              {isImap && <button role="menuitem" onClick={() => {
-                setAcctMenu(false);
-                onOpenDisclosure();
-                if (!isFocused) setAccount(a.id);
-                setNewName("");
-              }}><Icon name="compose" size={12} /> New folder</button>}
-              {isImap && <button role="menuitem" onClick={() => { setAcctMenu(false); setBusy(true); void refreshFolders(a.id).finally(() => setBusy(false)); }}><Icon name="cloud" size={12} /> Refresh folders</button>}
-              <button role="menuitem" onClick={() => { setAcctMenu(false); setAcctRename(a.displayName?.trim() || ""); }}><Icon name="reply" size={12} /> Rename</button>
-              <button role="menuitem" className="danger" onClick={() => {
-                setRemoveReturnFocus(accountMenuButtonRef.current);
-                setAcctMenu(false);
-                setRemoveOpen(true);
-              }}><Icon name="trash" size={12} /> Remove account</button>
+              {isImap && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setAcctMenu(false);
+                    onOpenDisclosure();
+                    if (!isFocused) setAccount(a.id);
+                    setNewName("");
+                  }}
+                >
+                  <Icon name="compose" size={12} /> New folder
+                </button>
+              )}
+              {isImap && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setAcctMenu(false);
+                    setBusy(true);
+                    void refreshFolders(a.id).finally(() => setBusy(false));
+                  }}
+                >
+                  <Icon name="cloud" size={12} /> Refresh folders
+                </button>
+              )}
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setAcctMenu(false);
+                  setAcctRename(a.displayName?.trim() || "");
+                }}
+              >
+                <Icon name="reply" size={12} /> Rename
+              </button>
+              <button
+                role="menuitem"
+                className="danger"
+                onClick={() => {
+                  setRemoveReturnFocus(accountMenuButtonRef.current);
+                  setAcctMenu(false);
+                  setRemoveOpen(true);
+                }}
+              >
+                <Icon name="trash" size={12} /> Remove account
+              </button>
             </div>
           </>
         )}
@@ -256,97 +345,233 @@ function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEd
         easing={ACCOUNT_DISCLOSURE_MOTION.easing}
       >
         <div className="folder-tree">
-          {(folders.length ? folders : [{ name: "INBOX", role: "inbox", unread: 0, total: 0 }]).map((f) => {
-            const pinned = pinnedFolders.includes(pinKey(a.id, f.name));
-            // Every IMAP folder gets a full options menu (Open / Sync / Mark all
-            // read / New subfolder / Pin). Rename is offered for non-Inbox folders;
-            // Delete only for CUSTOM ones (Inbox + Sent/Drafts/Trash/Junk protected).
-            const manageable = isImap && f.role !== "inbox";
-            const canDelete = isImap && !f.role;
-            const editing = edit?.name === f.name;
-            const [, leaf] = splitName(f.name);
-            return (
-              <div className="folder-row" key={f.name}
-                onContextMenu={(e) => { if (isImap) { e.preventDefault(); setMenu(menu === f.name ? null : f.name); } }}>
-                {editing ? (
-                  <input className="folder-edit" autoFocus value={edit!.val}
-                    onChange={(e) => setEdit({ name: f.name, val: e.target.value })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") { const [pre] = splitName(f.name); const to = pre + edit!.val.trim(); const ok = edit!.val.trim() && to !== f.name; setEdit(null); if (ok) void run(() => renameFolder(a.id, f.name, to)); }
-                      else if (e.key === "Escape") setEdit(null);
-                    }}
-                    onBlur={() => setEdit(null)} />
-                ) : (
-                  <button className={`nav-item folder-item${selectedFolder === f.name ? " active" : ""}`} onClick={() => setFolder(f.name)} title={f.name}>
-                    <span className="ic"><Icon name={folderIcon(f.role, f.name)} size={15} weight="duotone" /></span>
-                    <span className="acct-email">{f.role === "inbox" ? "Inbox" : leaf}</span>
-                    {(() => { const u = folderUnread(f.name); return u ? <span className="count">{u}</span> : null; })()}
-                  </button>
-                )}
-                {/* Visible affordance — a hover "⋯" button so folder management
+          {(folders.length ? folders : [{ name: "INBOX", role: "inbox", unread: 0, total: 0 }]).map(
+            (f) => {
+              const pinned = pinnedFolders.includes(pinKey(a.id, f.name));
+              // Every IMAP folder gets a full options menu (Open / Sync / Mark all
+              // read / New subfolder / Pin). Rename is offered for non-Inbox folders;
+              // Delete only for CUSTOM ones (Inbox + Sent/Drafts/Trash/Junk protected).
+              const manageable = isImap && f.role !== "inbox";
+              const canDelete = isImap && !f.role;
+              const editing = edit?.name === f.name;
+              const [, leaf] = splitName(f.name);
+              return (
+                <div
+                  className="folder-row"
+                  key={f.name}
+                  onContextMenu={(e) => {
+                    if (isImap) {
+                      e.preventDefault();
+                      setMenu(menu === f.name ? null : f.name);
+                    }
+                  }}
+                >
+                  {editing ? (
+                    <input
+                      className="folder-edit"
+                      autoFocus
+                      value={edit!.val}
+                      onChange={(e) => setEdit({ name: f.name, val: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const [pre] = splitName(f.name);
+                          const to = pre + edit!.val.trim();
+                          const ok = edit!.val.trim() && to !== f.name;
+                          setEdit(null);
+                          if (ok) void run(() => renameFolder(a.id, f.name, to));
+                        } else if (e.key === "Escape") setEdit(null);
+                      }}
+                      onBlur={() => setEdit(null)}
+                    />
+                  ) : (
+                    <button
+                      className={`nav-item folder-item${selectedFolder === f.name ? " active" : ""}`}
+                      onClick={() => setFolder(f.name)}
+                      title={f.name}
+                    >
+                      <span className="ic">
+                        <Icon name={folderIcon(f.role, f.name)} size={15} weight="duotone" />
+                      </span>
+                      <span className="acct-email">{f.role === "inbox" ? "Inbox" : leaf}</span>
+                      {(() => {
+                        const u = folderUnread(f.name);
+                        return u ? <span className="count">{u}</span> : null;
+                      })()}
+                    </button>
+                  )}
+                  {/* Visible affordance — a hover "⋯" button so folder management
                     doesn't depend on a (non-obvious, WebView-flaky) right-click. */}
-                {!editing && isImap && (
-                  <button ref={(node) => {
-                    if (node) folderMenuButtonRefs.current.set(f.name, node);
-                    else folderMenuButtonRefs.current.delete(f.name);
-                  }} className={`folder-more${menu === f.name ? " open" : ""}`} title="Folder options"
-                    aria-haspopup="menu" aria-expanded={menu === f.name}
-                    onClick={(e) => { e.stopPropagation(); setMenu(menu === f.name ? null : f.name); }}>
-                    <Icon name="more" size={15} weight="bold" />
-                  </button>
-                )}
-                {!editing && (
-                  <button className={`folder-pin${pinned ? " pinned" : ""}`} title={pinned ? "Unpin" : "Pin to top"}
-                    onClick={(e) => { e.stopPropagation(); togglePinFolder(a.id, f.name); }}>
-                    <Icon name="pin" size={11} weight={pinned ? "fill" : "regular"} />
-                  </button>
-                )}
-                {menu === f.name && isImap && (
-                  <>
-                    <div className="folder-menu-backdrop" onClick={() => setMenu(null)} aria-hidden="true" />
-                    <div className="folder-menu" role="menu">
-                      <button role="menuitem" onClick={() => { setMenu(null); void setFolder(f.name); }}><Icon name="inbox" size={12} /> Open</button>
-                      <button role="menuitem" onClick={() => { setMenu(null); void run(() => syncOneFolder(a.id, f.name)); }}><Icon name="cloud" size={12} /> Sync now</button>
-                      <button role="menuitem" onClick={() => { setMenu(null); void markFolderRead(a.id, f.name); }}><Icon name="envelopeOpen" size={12} /> Mark all as read</button>
-                      <button role="menuitem" onClick={() => { setMenu(null); setNewParent(f.name); setNewName(""); }}><Icon name="compose" size={12} /> New subfolder</button>
-                      <button role="menuitem" onClick={() => { setMenu(null); togglePinFolder(a.id, f.name); }}><Icon name="pin" size={12} /> {pinned ? "Unpin from top" : "Pin to top"}</button>
-                      {manageable && <div className="folder-menu-sep" aria-hidden="true" />}
-                      {manageable && <button role="menuitem" onClick={() => { setEdit({ name: f.name, val: leaf }); setMenu(null); }}><Icon name="reply" size={12} /> Rename</button>}
-                      {canDelete && (
-                        <button role="menuitem" className="danger" onClick={() => {
-                          setDeleteReturnFocus(folderMenuButtonRefs.current.get(f.name) ?? null);
-                          setMenu(null);
-                          setDeleteError("");
-                          setDeleteTarget({ name: f.name, label: leaf });
-                        }}><Icon name="trash" size={12} /> Delete</button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-          {isImap && (newName === null ? (
-            <button className="folder-new" onClick={() => { setNewParent(null); setNewName(""); }} title="Create a new folder">
-              <span className="ic"><Icon name="compose" size={13} weight="duotone" /></span> New folder
-            </button>
-          ) : (
-            <input className="folder-edit" autoFocus value={newName}
-              placeholder={newParent ? `New folder inside ${splitName(newParent)[1]}…` : "Folder name…"}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  const nm = newName.trim();
-                  const parent = newParent;
-                  setNewName(null); setNewParent(null);
-                  // Nest under the chosen parent (using the account's hierarchy
-                  // delimiter), else create at the account's top level.
-                  if (nm) void run(() => createFolder(a.id, (parent ? `${parent}${sep ?? "."}` : newPrefix) + nm));
-                } else if (e.key === "Escape") { setNewName(null); setNewParent(null); }
-              }}
-              onBlur={() => { setNewName(null); setNewParent(null); }} />
-          ))}
-          {folderErr && <div className="folder-err" title={folderErr}>{folderErr}</div>}
+                  {!editing && isImap && (
+                    <button
+                      ref={(node) => {
+                        if (node) folderMenuButtonRefs.current.set(f.name, node);
+                        else folderMenuButtonRefs.current.delete(f.name);
+                      }}
+                      className={`folder-more${menu === f.name ? " open" : ""}`}
+                      title="Folder options"
+                      aria-haspopup="menu"
+                      aria-expanded={menu === f.name}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenu(menu === f.name ? null : f.name);
+                      }}
+                    >
+                      <Icon name="more" size={15} weight="bold" />
+                    </button>
+                  )}
+                  {!editing && (
+                    <button
+                      className={`folder-pin${pinned ? " pinned" : ""}`}
+                      title={pinned ? "Unpin" : "Pin to top"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        togglePinFolder(a.id, f.name);
+                      }}
+                    >
+                      <Icon name="pin" size={11} weight={pinned ? "fill" : "regular"} />
+                    </button>
+                  )}
+                  {menu === f.name && isImap && (
+                    <>
+                      <div
+                        className="folder-menu-backdrop"
+                        onClick={() => setMenu(null)}
+                        aria-hidden="true"
+                      />
+                      <div className="folder-menu" role="menu">
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            setMenu(null);
+                            void setFolder(f.name);
+                          }}
+                        >
+                          <Icon name="inbox" size={12} /> Open
+                        </button>
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            setMenu(null);
+                            void run(() => syncOneFolder(a.id, f.name));
+                          }}
+                        >
+                          <Icon name="cloud" size={12} /> Sync now
+                        </button>
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            setMenu(null);
+                            void markFolderRead(a.id, f.name);
+                          }}
+                        >
+                          <Icon name="envelopeOpen" size={12} /> Mark all as read
+                        </button>
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            setMenu(null);
+                            setNewParent(f.name);
+                            setNewName("");
+                          }}
+                        >
+                          <Icon name="compose" size={12} /> New subfolder
+                        </button>
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            setMenu(null);
+                            togglePinFolder(a.id, f.name);
+                          }}
+                        >
+                          <Icon name="pin" size={12} /> {pinned ? "Unpin from top" : "Pin to top"}
+                        </button>
+                        {manageable && <div className="folder-menu-sep" aria-hidden="true" />}
+                        {manageable && (
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              setEdit({ name: f.name, val: leaf });
+                              setMenu(null);
+                            }}
+                          >
+                            <Icon name="reply" size={12} /> Rename
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            role="menuitem"
+                            className="danger"
+                            onClick={() => {
+                              setDeleteReturnFocus(
+                                folderMenuButtonRefs.current.get(f.name) ?? null,
+                              );
+                              setMenu(null);
+                              setDeleteError("");
+                              setDeleteTarget({ name: f.name, label: leaf });
+                            }}
+                          >
+                            <Icon name="trash" size={12} /> Delete
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            },
+          )}
+          {isImap &&
+            (newName === null ? (
+              <button
+                className="folder-new"
+                onClick={() => {
+                  setNewParent(null);
+                  setNewName("");
+                }}
+                title="Create a new folder"
+              >
+                <span className="ic">
+                  <Icon name="compose" size={13} weight="duotone" />
+                </span>{" "}
+                New folder
+              </button>
+            ) : (
+              <input
+                className="folder-edit"
+                autoFocus
+                value={newName}
+                placeholder={
+                  newParent ? `New folder inside ${splitName(newParent)[1]}…` : "Folder name…"
+                }
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const nm = newName.trim();
+                    const parent = newParent;
+                    setNewName(null);
+                    setNewParent(null);
+                    // Nest under the chosen parent (using the account's hierarchy
+                    // delimiter), else create at the account's top level.
+                    if (nm)
+                      void run(() =>
+                        createFolder(a.id, (parent ? `${parent}${sep ?? "."}` : newPrefix) + nm),
+                      );
+                  } else if (e.key === "Escape") {
+                    setNewName(null);
+                    setNewParent(null);
+                  }
+                }}
+                onBlur={() => {
+                  setNewName(null);
+                  setNewParent(null);
+                }}
+              />
+            ))}
+          {folderErr && (
+            <div className="folder-err" title={folderErr}>
+              {folderErr}
+            </div>
+          )}
         </div>
       </MeasuredDisclosure>
       {removeOpen && (
@@ -357,25 +582,49 @@ function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEd
           onClose={() => setRemoveOpen(false)}
           onRemoved={() => {
             setFolder(null);
-            requestAnimationFrame(() => document.querySelector<HTMLElement>(".compose-btn")?.focus());
+            requestAnimationFrame(() =>
+              document.querySelector<HTMLElement>(".compose-btn")?.focus(),
+            );
           }}
         />
       )}
       <Modal
         open={deleteTarget !== null}
-        onClose={() => { if (!deletingFolder) setDeleteTarget(null); }}
+        onClose={() => {
+          if (!deletingFolder) setDeleteTarget(null);
+        }}
         title="Delete folder"
         maxWidth={500}
         returnFocus={deleteReturnFocus}
         fallbackFocus={accountMenuButtonRef.current}
       >
         <div className="remove-account-dialog">
-          <p>Delete <b>{deleteTarget?.label}</b> and its locally synced mail?</p>
-          <p className="sub">This also requests deletion from the connected IMAP server and cannot be undone.</p>
-          {deleteError && <div className="settings-alert error" role="alert">{deleteError}</div>}
+          <p>
+            Delete <b>{deleteTarget?.label}</b> and its locally synced mail?
+          </p>
+          <p className="sub">
+            This also requests deletion from the connected IMAP server and cannot be undone.
+          </p>
+          {deleteError && (
+            <div className="settings-alert error" role="alert">
+              {deleteError}
+            </div>
+          )}
           <div className="dialog-actions">
-            <button type="button" className="af-btn ghost" disabled={deletingFolder} onClick={() => setDeleteTarget(null)}>Cancel</button>
-            <button type="button" className="af-btn danger" disabled={deletingFolder} onClick={() => void confirmFolderDeletion()}>
+            <button
+              type="button"
+              className="af-btn ghost"
+              disabled={deletingFolder}
+              onClick={() => setDeleteTarget(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="af-btn danger"
+              disabled={deletingFolder}
+              onClick={() => void confirmFolderDeletion()}
+            >
               <Icon name="trash" size={14} /> {deletingFolder ? "Deleting…" : "Delete folder"}
             </button>
           </div>
@@ -386,7 +635,26 @@ function AccountRow({ a, expanded, onToggleDisclosure, onOpenDisclosure, orderEd
 }
 
 export function Sidebar({ rail = false }: { rail?: boolean }) {
-  const { view, setView, setCompose, setModelPicker, threads, tasks, ai, accounts, selectedAccountId, setAccount, selectedFolder, setFolder, toggleSidebar, accountOrder, setAccountOrder, pinnedFolders, togglePinFolder, openAccountConnector } = useApp();
+  const {
+    view,
+    setView,
+    setCompose,
+    setModelPicker,
+    threads,
+    tasks,
+    ai,
+    accounts,
+    selectedAccountId,
+    setAccount,
+    selectedFolder,
+    setFolder,
+    toggleSidebar,
+    accountOrder,
+    setAccountOrder,
+    pinnedFolders,
+    togglePinFolder,
+    openAccountConnector,
+  } = useApp();
   const [reordering, setReordering] = useState(false);
   const [orderEditing, setOrderEditing] = useState(false);
   const [accountActionsOpen, setAccountActionsOpen] = useState(false);
@@ -405,7 +673,8 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
   }, [accounts.length]);
   // Accounts in the user's saved order; any not yet in the order sort to the end.
   const ordered = [...accounts].sort((x, y) => {
-    const ix = accountOrder.indexOf(x.id), iy = accountOrder.indexOf(y.id);
+    const ix = accountOrder.indexOf(x.id),
+      iy = accountOrder.indexOf(y.id);
     if (ix === -1) return iy === -1 ? 0 : 1;
     if (iy === -1) return -1;
     return ix - iy;
@@ -419,13 +688,16 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
     next.splice(from, 1);
     next.splice(to, 0, account.id);
     setAccountOrder(next);
-    setOrderAnnouncement(`${account.displayName?.trim() || account.email} moved to position ${to + 1} of ${next.length}.`);
+    setOrderAnnouncement(
+      `${account.displayName?.trim() || account.email} moved to position ${to + 1} of ${next.length}.`,
+    );
   };
   const showAccountActions = (edge?: "first" | "last") => {
     setAccountActionsOpen(true);
     if (!edge) return;
     requestAnimationFrame(() => {
-      const items = accountActionsMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
+      const items =
+        accountActionsMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
       items?.[edge === "first" ? 0 : items.length - 1]?.focus();
     });
   };
@@ -461,25 +733,52 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
     setAccountActionsOpen(false);
     openAccountConnector(opener);
   };
-  const count = (v: View) => threads.filter((t) => t.view.includes(v) && t.unread).length || undefined;
+  const count = (v: View) =>
+    threads.filter((t) => t.view.includes(v) && t.unread).length || undefined;
   const draftModel = ai?.models.find((m) => m.roles.includes("draft"));
   const triageModel = ai?.models.find((m) => m.roles.includes("triage"));
 
-  const NavButton = ({ n, badge }: { n: { id: View; icon: IconName; label: string }; badge?: number }) => {
+  const NavButton = ({
+    n,
+    badge,
+  }: {
+    n: { id: View; icon: IconName; label: string };
+    badge?: number;
+  }) => {
     const btn = (
-      <button className={`nav-item${view === n.id && !selectedFolder ? " active" : ""}`} onClick={() => setView(n.id)}>
-        <span className="ic"><Icon name={n.icon} size={17} weight="duotone" /></span>
+      <button
+        className={`nav-item${view === n.id && !selectedFolder ? " active" : ""}`}
+        onClick={() => setView(n.id)}
+      >
+        <span className="ic">
+          <Icon name={n.icon} size={17} weight="duotone" />
+        </span>
         {!rail && n.label}
         {!rail && badge ? <span className="count">{badge}</span> : null}
       </button>
     );
-    return rail ? <Tooltip label={n.label} block>{btn}</Tooltip> : btn;
+    return rail ? (
+      <Tooltip label={n.label} block>
+        {btn}
+      </Tooltip>
+    ) : (
+      btn
+    );
   };
 
   return (
     <aside className={`sidebar${rail ? " rail" : ""}`}>
-      <div className={`sidebar-top${rail ? " rail" : ""}`} data-tauri-drag-region onDoubleClick={titlebarDoubleClick}>
-        <button className="rail-toggle" onClick={toggleSidebar} title={rail ? "Expand sidebar" : "Collapse sidebar"} aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}>
+      <div
+        className={`sidebar-top${rail ? " rail" : ""}`}
+        data-tauri-drag-region
+        onDoubleClick={titlebarDoubleClick}
+      >
+        <button
+          className="rail-toggle"
+          onClick={toggleSidebar}
+          title={rail ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}
+        >
           <Icon name={rail ? "caretRight" : "caretLeft"} size={15} weight="bold" />
         </button>
       </div>
@@ -497,7 +796,9 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
       )}
 
       <div className="sidebar-scroll">
-        {NAV.map((n) => <NavButton key={n.id} n={n} badge={count(n.id)} />)}
+        {NAV.map((n) => (
+          <NavButton key={n.id} n={n} badge={count(n.id)} />
+        ))}
 
         {/* Pinned folders — quick jumps, kept at the top. */}
         {!rail && pinnedFolders.length > 0 && (
@@ -512,13 +813,28 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                 <div className="acct-row" key={key}>
                   <button
                     className={`nav-item acct-main folder-item${active ? " active" : ""}`}
-                    onClick={() => { setExpandedAccountId(accId); setAccount(accId); void setFolder(folder); }}
+                    onClick={() => {
+                      setExpandedAccountId(accId);
+                      setAccount(accId);
+                      void setFolder(folder);
+                    }}
                     title={`${acc.email} · ${folder}`}
                   >
-                    <span className="ic"><span className="acct-dot" style={{ background: accountColor(accId) }} /></span>
-                    <span className="acct-email">{folder === "INBOX" ? "Inbox" : folder.replace(/^INBOX[./]/, "")}</span>
+                    <span className="ic">
+                      <span className="acct-dot" style={{ background: accountColor(accId) }} />
+                    </span>
+                    <span className="acct-email">
+                      {folder === "INBOX" ? "Inbox" : folder.replace(/^INBOX[./]/, "")}
+                    </span>
                   </button>
-                  <button className="folder-pin pinned" title="Unpin" onClick={(e) => { e.stopPropagation(); togglePinFolder(accId, folder); }}>
+                  <button
+                    className="folder-pin pinned"
+                    title="Unpin"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePinFolder(accId, folder);
+                    }}
+                  >
                     <Icon name="pin" size={12} weight="fill" />
                   </button>
                 </div>
@@ -536,26 +852,38 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                 aria-label="Add account"
                 onClick={(event) => addAccount(event.currentTarget)}
               >
-                <span className="ic"><Icon name="plus" size={17} weight="bold" /></span>
+                <span className="ic">
+                  <Icon name="plus" size={17} weight="bold" />
+                </span>
               </button>
             </Tooltip>
             {accounts.length > 1 && (
               <button
                 className={`nav-item${selectedAccountId === null ? " active" : ""}`}
-                onClick={() => { setExpandedAccountId(null); setAccount(null); }}
+                onClick={() => {
+                  setExpandedAccountId(null);
+                  setAccount(null);
+                }}
                 title="All accounts"
               >
-                <span className="ic"><Icon name="inbox" size={17} weight="duotone" /></span>
+                <span className="ic">
+                  <Icon name="inbox" size={17} weight="duotone" />
+                </span>
               </button>
             )}
             {ordered.map((a) => (
               <button
                 key={a.id}
                 className={`nav-item${selectedAccountId === a.id ? " active" : ""}`}
-                onClick={() => { setExpandedAccountId(a.id); setAccount(a.id); }}
+                onClick={() => {
+                  setExpandedAccountId(a.id);
+                  setAccount(a.id);
+                }}
                 title={a.email}
               >
-                <span className="ic"><span className="acct-dot" style={{ background: accountColor(a.id) }} /></span>
+                <span className="ic">
+                  <span className="acct-dot" style={{ background: accountColor(a.id) }} />
+                </span>
               </button>
             ))}
           </>
@@ -595,9 +923,17 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                     aria-expanded={accountActionsOpen}
                     onClick={() => setAccountActionsOpen((current) => !current)}
                     onKeyDown={(event) => {
-                      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
+                      if (
+                        event.key !== "ArrowDown" &&
+                        event.key !== "ArrowUp" &&
+                        event.key !== "Home" &&
+                        event.key !== "End"
+                      )
+                        return;
                       event.preventDefault();
-                      showAccountActions(event.key === "ArrowUp" || event.key === "End" ? "last" : "first");
+                      showAccountActions(
+                        event.key === "ArrowUp" || event.key === "End" ? "last" : "first",
+                      );
                     }}
                   >
                     <Icon name="more" size={14} weight="bold" />
@@ -605,7 +941,11 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                 ) : null}
                 {accountActionsOpen && (
                   <>
-                    <div className="folder-menu-backdrop" onClick={() => closeAccountActions()} aria-hidden="true" />
+                    <div
+                      className="folder-menu-backdrop"
+                      onClick={() => closeAccountActions()}
+                      aria-hidden="true"
+                    />
                     <div
                       ref={accountActionsMenuRef}
                       className="folder-menu account-actions-menu"
@@ -634,7 +974,9 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                 Drag the handles, or focus one and press Arrow Up or Arrow Down.
               </p>
             )}
-            <span className="sr-only" role="status" aria-live="polite">{orderAnnouncement}</span>
+            <span className="sr-only" role="status" aria-live="polite">
+              {orderAnnouncement}
+            </span>
             {accounts.length === 0 ? (
               <div className="account-empty-compact">
                 <b>No accounts connected</b>
@@ -645,13 +987,24 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                 {accounts.length > 1 && (
                   <button
                     className={`nav-item${selectedAccountId === null ? " active" : ""}`}
-                    onClick={() => { setExpandedAccountId(null); setAccount(null); }}
+                    onClick={() => {
+                      setExpandedAccountId(null);
+                      setAccount(null);
+                    }}
                   >
-                    <span className="ic"><Icon name="inbox" size={17} weight="duotone" /></span>
+                    <span className="ic">
+                      <Icon name="inbox" size={17} weight="duotone" />
+                    </span>
                     All accounts
                   </button>
                 )}
-                <Reorder.Group axis="y" values={orderedIds} onReorder={setAccountOrder} as="div" className="acct-list">
+                <Reorder.Group
+                  axis="y"
+                  values={orderedIds}
+                  onReorder={setAccountOrder}
+                  as="div"
+                  className="acct-list"
+                >
                   {ordered.map((a) => (
                     <AccountRow
                       key={a.id}
@@ -659,7 +1012,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                       expanded={expandedAccountId === a.id}
                       onToggleDisclosure={() => {
                         if (selectedAccountId === a.id) {
-                          setExpandedAccountId((current) => current === a.id ? null : a.id);
+                          setExpandedAccountId((current) => (current === a.id ? null : a.id));
                           return;
                         }
                         setExpandedAccountId(a.id);
@@ -679,28 +1032,55 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
         )}
 
         {!rail && <div className="nav-label">Bundles</div>}
-        {BUNDLES.map((n) => <NavButton key={n.id} n={n} />)}
+        {BUNDLES.map((n) => (
+          <NavButton key={n.id} n={n} />
+        ))}
 
         {!rail && <div className="nav-label">Workspace</div>}
-        {WORKSPACE.map((n) => <NavButton key={n.id} n={n} badge={n.id === "tasks" ? tasks.filter((t) => !t.done).length : undefined} />)}
+        {WORKSPACE.map((n) => (
+          <NavButton
+            key={n.id}
+            n={n}
+            badge={n.id === "tasks" ? tasks.filter((t) => !t.done).length : undefined}
+          />
+        ))}
       </div>
 
       {(() => {
         const settingsBtn = (
-          <button className={`nav-item${view === "settings" ? " active" : ""}`} onClick={() => setView("settings")}>
-            <span className="ic"><Icon name="settings" size={17} weight="duotone" /></span> {!rail && "Settings"}
+          <button
+            className={`nav-item${view === "settings" ? " active" : ""}`}
+            onClick={() => setView("settings")}
+          >
+            <span className="ic">
+              <Icon name="settings" size={17} weight="duotone" />
+            </span>{" "}
+            {!rail && "Settings"}
           </button>
         );
-        return rail ? <Tooltip label="Settings" block>{settingsBtn}</Tooltip> : settingsBtn;
+        return rail ? (
+          <Tooltip label="Settings" block>
+            {settingsBtn}
+          </Tooltip>
+        ) : (
+          settingsBtn
+        );
       })()}
 
       <button className="model-chip" onClick={() => setModelPicker(true)} title="AI engine">
         {rail ? (
-          <div className="row" style={{ justifyContent: "center" }}><span className="dot" /></div>
+          <div className="row" style={{ justifyContent: "center" }}>
+            <span className="dot" />
+          </div>
         ) : (
           <>
-            <div className="row"><span className="dot" /><b>{ai?.name ?? "AI engine"}</b></div>
-            <small>Draft: {draftModel?.label ?? "—"} · Triage: {triageModel?.label ?? "—"}</small>
+            <div className="row">
+              <span className="dot" />
+              <b>{ai?.name ?? "AI engine"}</b>
+            </div>
+            <small>
+              Draft: {draftModel?.label ?? "—"} · Triage: {triageModel?.label ?? "—"}
+            </small>
           </>
         )}
       </button>

@@ -57,7 +57,7 @@ pub struct ModelConfig {
     #[serde(default)]
     pub ready: bool,
     pub endpoint: Option<String>,
-    /// Provider-specific model id (e.g. "gpt-4o", "llama3"). Optional; sensible default per kind.
+    /// Provider-specific model id (e.g. "gpt-5.1", "llama3.2"). Optional; sensible default per kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(default)]
@@ -141,10 +141,7 @@ pub fn build_provider(m: &ModelConfig, api_key: Option<String>) -> Box<dyn AiPro
         }),
         ProviderKind::Local => Box::new(LocalProvider {
             id: m.id.clone(),
-            base_url: m
-                .endpoint
-                .clone()
-                .unwrap_or_else(|| "http://localhost:11434".into()),
+            base_url: m.endpoint.clone().unwrap_or_else(|| "http://localhost:11434".into()),
             model: model_name,
             caps: m.caps.clone(),
         }),
@@ -152,10 +149,7 @@ pub fn build_provider(m: &ModelConfig, api_key: Option<String>) -> Box<dyn AiPro
         ProviderKind::OpenAiCompatible | ProviderKind::Google | ProviderKind::Custom => {
             Box::new(OpenAiCompatibleProvider {
                 id: m.id.clone(),
-                base_url: m
-                    .endpoint
-                    .clone()
-                    .unwrap_or_else(|| "https://api.openai.com/v1".into()),
+                base_url: m.endpoint.clone().unwrap_or_else(|| "https://api.openai.com/v1".into()),
                 api_key,
                 model: model_name,
                 caps: m.caps.clone(),
@@ -172,10 +166,10 @@ impl ModelConfig {
             return name.clone();
         }
         match self.kind {
-            ProviderKind::Anthropic => "claude-sonnet-4-6",
-            ProviderKind::OpenAiCompatible => "gpt-4o",
-            ProviderKind::Google => "gemini-1.5-pro",
-            ProviderKind::Local => "llama3",
+            ProviderKind::Anthropic => "claude-sonnet-5-5",
+            ProviderKind::OpenAiCompatible => "gpt-5.1",
+            ProviderKind::Google => "gemini-3-pro-preview",
+            ProviderKind::Local => "llama3.2",
             ProviderKind::Custom => "default",
         }
         .to_string()
@@ -195,7 +189,7 @@ pub fn default_profile() -> AiProfile {
                 roles: vec![Role::Draft, Role::Agent, Role::Summarize],
                 ready: false,
                 endpoint: None,
-                model: Some("claude-sonnet-4-6".into()),
+                model: Some("claude-sonnet-5-5".into()),
                 caps: Capabilities {
                     context_tokens: 200_000,
                     tool_calling: true,
@@ -206,12 +200,12 @@ pub fn default_profile() -> AiProfile {
             },
             ModelConfig {
                 id: "llama".into(),
-                label: "Llama 3 8B · local".into(),
+                label: "Llama 3.2 · local".into(),
                 kind: ProviderKind::Local,
                 roles: vec![Role::Triage, Role::Embeddings],
                 ready: false,
                 endpoint: Some("http://localhost:11434".into()),
-                model: Some("llama3".into()),
+                model: Some("llama3.2".into()),
                 caps: Capabilities {
                     context_tokens: 8192,
                     tool_calling: false,

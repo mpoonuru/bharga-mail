@@ -34,16 +34,43 @@ export function ConflictDialog({ conflict, onClose, onResolve }: ConflictDialogP
     <Modal open={!!conflict} onClose={onClose} title="Resolve calendar conflict" maxWidth={760}>
       {conflict && (
         <div className="calendar-conflict-dialog">
-          <p>Both this device and the calendar provider changed this event. Choose which version to keep.</p>
+          <p>
+            Both this device and the calendar provider changed this event. Choose which version to
+            keep.
+          </p>
           <div className="calendar-conflict-versions">
             <Version label="On this device" event={conflict.local} />
             <Version label="From provider" event={conflict.remote} />
           </div>
           <div className="calendar-conflict-actions">
-            <button type="button" className="calendar-button calendar-button-quiet" onClick={onClose}>Decide later</button>
-            <button type="button" className="calendar-button calendar-button-quiet" onClick={() => void onResolve("duplicate")}>Keep both</button>
-            <button type="button" className="calendar-button calendar-button-quiet" onClick={() => void onResolve("useRemote")}>Use provider version</button>
-            <button type="button" className="calendar-button calendar-button-primary" onClick={() => void onResolve("keepLocal")}>Keep local</button>
+            <button
+              type="button"
+              className="calendar-button calendar-button-quiet"
+              onClick={onClose}
+            >
+              Decide later
+            </button>
+            <button
+              type="button"
+              className="calendar-button calendar-button-quiet"
+              onClick={() => void onResolve("duplicate")}
+            >
+              Keep both
+            </button>
+            <button
+              type="button"
+              className="calendar-button calendar-button-quiet"
+              onClick={() => void onResolve("useRemote")}
+            >
+              Use provider version
+            </button>
+            <button
+              type="button"
+              className="calendar-button calendar-button-primary"
+              onClick={() => void onResolve("keepLocal")}
+            >
+              Keep local
+            </button>
           </div>
         </div>
       )}

@@ -17,7 +17,8 @@ function originalCanvas() {
   document.body.appendChild(viewport);
   Object.defineProperty(viewport, "clientWidth", { configurable: true, value: 500 });
   const doc = frame.contentDocument!;
-  doc.body.innerHTML = '<table width="1100"><tr><td style="white-space:nowrap">10000.50</td></tr></table>';
+  doc.body.innerHTML =
+    '<table width="1100"><tr><td style="white-space:nowrap">10000.50</td></tr></table>';
   doc.body.style.padding = "20px 24px";
   Object.defineProperty(doc.body, "scrollWidth", { configurable: true, value: 1124 });
   Object.defineProperty(doc.body, "scrollHeight", { configurable: true, value: 600 });
@@ -64,7 +65,7 @@ describe("email canvas sizing", () => {
     binding.update({ layout: "original", zoom: 200 });
     expect(frame.style.height).toBe(height);
     expect(body.style.getPropertyValue("zoom")).toBe("1");
-    expect(frame.contentDocument!.head.querySelector('[data-bharga-layout]')).toBeNull();
+    expect(frame.contentDocument!.head.querySelector("[data-bharga-layout]")).toBeNull();
   });
 
   it("keeps table values unbroken and restores the sender's whitespace in Original layout", () => {

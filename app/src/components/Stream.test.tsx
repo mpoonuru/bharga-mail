@@ -6,7 +6,9 @@ import { Stream } from "@/components/Stream";
 import { account, threads } from "@/data/mock";
 import { useApp } from "@/store";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const roots: ReturnType<typeof createRoot>[] = [];
 const containers: HTMLDivElement[] = [];
@@ -73,7 +75,7 @@ describe("Stream row motion", () => {
 describe("Stream row keyboard behavior", () => {
   it("gives the mail search field an accessible name", () => {
     const { container } = renderStream();
-    const search = container.querySelector<HTMLInputElement>('.search-box input');
+    const search = container.querySelector<HTMLInputElement>(".search-box input");
 
     expect(search?.getAttribute("aria-label")).toBe("Search mail");
   });
@@ -86,11 +88,19 @@ describe("Stream row keyboard behavior", () => {
     expect(row?.tabIndex).toBe(0);
     expect(row?.getAttribute("aria-label")).toContain(threads[1].subject);
 
-    act(() => row?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+    act(() =>
+      row?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      ),
+    );
     expect(selectThread).toHaveBeenCalledTimes(1);
 
     selectThread.mockClear();
-    act(() => row?.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true })));
+    act(() =>
+      row?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }),
+      ),
+    );
     expect(selectThread).toHaveBeenCalledTimes(1);
   });
 
@@ -98,22 +108,36 @@ describe("Stream row keyboard behavior", () => {
     const { container } = renderStream();
     const row = container.querySelector<HTMLElement>(".mail-open");
 
-    act(() => row?.dispatchEvent(new KeyboardEvent("keydown", {
-      key: "F10",
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    })));
+    act(() =>
+      row?.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "F10",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
 
     expect(container.querySelector(".ctx-menu")).not.toBeNull();
     const firstItem = container.querySelector<HTMLButtonElement>('.ctx-menu [role="menuitem"]');
     expect(document.activeElement).toBe(firstItem);
 
-    act(() => firstItem?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
-    const menuItems = [...container.querySelectorAll<HTMLButtonElement>('.ctx-menu [role="menuitem"]')];
+    act(() =>
+      firstItem?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+      ),
+    );
+    const menuItems = [
+      ...container.querySelectorAll<HTMLButtonElement>('.ctx-menu [role="menuitem"]'),
+    ];
     expect(document.activeElement).toBe(menuItems[1]);
 
-    act(() => menuItems[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    act(() =>
+      menuItems[1]?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      ),
+    );
     expect(container.querySelector(".ctx-menu")).toBeNull();
     expect(document.activeElement).toBe(row);
   });
@@ -125,7 +149,11 @@ describe("Stream row keyboard behavior", () => {
 
     expect(row?.contains(toggle ?? null)).toBe(false);
     expect(toggle?.getAttribute("aria-label")).toContain("expand");
-    act(() => toggle?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+    act(() =>
+      toggle?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      ),
+    );
     expect(selectThread).not.toHaveBeenCalled();
 
     act(() => toggle?.click());
@@ -136,11 +164,19 @@ describe("Stream row keyboard behavior", () => {
     expect(child?.tabIndex).toBe(0);
     expect(child?.getAttribute("aria-label")).toContain("Marco Reyes");
 
-    act(() => child?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+    act(() =>
+      child?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      ),
+    );
     expect(selectThread).toHaveBeenCalledTimes(1);
 
     selectThread.mockClear();
-    act(() => child?.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true })));
+    act(() =>
+      child?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }),
+      ),
+    );
     expect(selectThread).toHaveBeenCalledTimes(1);
   });
 });
@@ -150,10 +186,12 @@ describe("Stream conversation selection", () => {
     const thread = threads[0];
     const { container } = renderStream([thread]);
 
-    act(() => useApp.setState({
-      selectedThreadId: thread.id,
-      selectedMessageId: thread.messages[0].id,
-    }));
+    act(() =>
+      useApp.setState({
+        selectedThreadId: thread.id,
+        selectedMessageId: thread.messages[0].id,
+      }),
+    );
 
     const row = container.querySelector<HTMLElement>(`.mail[data-thread-id="${thread.id}"]`);
     expect(row?.classList.contains("sel")).toBe(true);
@@ -166,7 +204,9 @@ describe("Stream conversation selection", () => {
 
     act(() => selector?.click());
 
-    const markRead = container.querySelector<HTMLButtonElement>('.selection-actions button[title="Mark selected as read"]');
+    const markRead = container.querySelector<HTMLButtonElement>(
+      '.selection-actions button[title="Mark selected as read"]',
+    );
     expect(markRead).not.toBeNull();
     expect(markRead?.closest("[data-tauri-drag-region]")).toBeNull();
   });
@@ -175,32 +215,46 @@ describe("Stream conversation selection", () => {
     const { container } = renderStream([threads[0], threads[1]]);
     const row = container.querySelector<HTMLElement>(".mail");
 
-    act(() => row?.dispatchEvent(new MouseEvent("contextmenu", {
-      bubbles: true,
-      cancelable: true,
-      button: 2,
-      clientX: 24,
-      clientY: 24,
-    })));
+    act(() =>
+      row?.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 24,
+          clientY: 24,
+        }),
+      ),
+    );
 
-    const markRead = [...container.querySelectorAll<HTMLButtonElement>('.ctx-menu [role="menuitem"]')]
-      .find((button) => button.textContent?.trim() === "Mark as read");
+    const markRead = [
+      ...container.querySelectorAll<HTMLButtonElement>('.ctx-menu [role="menuitem"]'),
+    ].find((button) => button.textContent?.trim() === "Mark as read");
     expect(markRead).not.toBeNull();
     expect(markRead?.type).toBe("button");
   });
 
   it("selects a contiguous visible range with Shift+click without opening the range endpoint", () => {
-    const { container, selectThread } = renderStream([threads[0], threads[1], threads[2], threads[3]]);
+    const { container, selectThread } = renderStream([
+      threads[0],
+      threads[1],
+      threads[2],
+      threads[3],
+    ]);
     const rows = [...container.querySelectorAll<HTMLButtonElement>(".mail-open")];
 
     act(() => rows[0].click());
     expect(selectThread).toHaveBeenCalledTimes(1);
 
-    act(() => rows[2].dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-      shiftKey: true,
-    })));
+    act(() =>
+      rows[2].dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          shiftKey: true,
+        }),
+      ),
+    );
 
     expect(selectThread).toHaveBeenCalledTimes(1);
     expect(container.querySelectorAll(".mail.multi-sel")).toHaveLength(3);
@@ -211,16 +265,24 @@ describe("Stream conversation selection", () => {
     const { container, selectThread } = renderStream([threads[0], threads[1], threads[2]]);
     const rows = [...container.querySelectorAll<HTMLButtonElement>(".mail-open")];
 
-    act(() => rows[0].dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-      metaKey: true,
-    })));
-    act(() => rows[2].dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-      ctrlKey: true,
-    })));
+    act(() =>
+      rows[0].dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          metaKey: true,
+        }),
+      ),
+    );
+    act(() =>
+      rows[2].dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+        }),
+      ),
+    );
 
     expect(selectThread).not.toHaveBeenCalled();
     expect(container.querySelectorAll(".mail.multi-sel")).toHaveLength(2);
@@ -234,27 +296,41 @@ describe("Stream conversation selection", () => {
 
     act(() => selectors[0].click());
     act(() => selectors[1].click());
-    act(() => mailRows[1].dispatchEvent(new MouseEvent("contextmenu", {
-      bubbles: true,
-      cancelable: true,
-      button: 2,
-      clientX: 24,
-      clientY: 24,
-    })));
+    act(() =>
+      mailRows[1].dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 24,
+          clientY: 24,
+        }),
+      ),
+    );
 
-    expect(container.querySelector(".ctx-summary")?.textContent).toContain("2 conversations selected");
-    const actions = [...container.querySelectorAll<HTMLButtonElement>('.ctx-menu [role="menuitem"]')]
-      .map((button) => button.textContent?.trim());
+    expect(container.querySelector(".ctx-summary")?.textContent).toContain(
+      "2 conversations selected",
+    );
+    const actions = [
+      ...container.querySelectorAll<HTMLButtonElement>('.ctx-menu [role="menuitem"]'),
+    ].map((button) => button.textContent?.trim());
     expect(actions).toContain("Mark as read");
     expect(actions).toContain("Mark as unread");
 
-    const markRead = [...container.querySelectorAll<HTMLButtonElement>('.ctx-menu [role="menuitem"]')]
-      .find((button) => button.textContent?.trim() === "Mark as read");
+    const markRead = [
+      ...container.querySelectorAll<HTMLButtonElement>('.ctx-menu [role="menuitem"]'),
+    ].find((button) => button.textContent?.trim() === "Mark as read");
     await act(async () => markRead?.click());
 
-    const selectedIds = [...container.querySelectorAll<HTMLElement>(".mail.multi-sel")]
-      .map((row) => row.dataset.threadId);
+    const selectedIds = [...container.querySelectorAll<HTMLElement>(".mail.multi-sel")].map(
+      (row) => row.dataset.threadId,
+    );
     expect(selectedIds).toHaveLength(2);
-    expect(useApp.getState().threads.filter((thread) => selectedIds.includes(thread.id)).every((thread) => !thread.unread)).toBe(true);
+    expect(
+      useApp
+        .getState()
+        .threads.filter((thread) => selectedIds.includes(thread.id))
+        .every((thread) => !thread.unread),
+    ).toBe(true);
   });
 });

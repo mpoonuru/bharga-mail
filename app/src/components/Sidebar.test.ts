@@ -1,18 +1,19 @@
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
-
+import { Icon, type IconName } from "@/components/icons";
 import {
   ACCOUNT_DISCLOSURE_MOTION,
   ACCOUNT_REORDER_MOTION,
-  Sidebar,
   accountReorderLayout,
   activateAccountReorder,
+  Sidebar,
 } from "@/components/Sidebar";
-import { Icon, type IconName } from "@/components/icons";
 import { useApp } from "@/store";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const accountAt = (index: number) => ({
   id: `a${index}`,
@@ -25,12 +26,14 @@ function enterAccountOrderMode(container: HTMLElement): HTMLButtonElement {
   const actions = container.querySelector<HTMLButtonElement>('[aria-label="Account actions"]');
   if (!actions) throw new Error("Account actions button not found");
   act(() => actions.click());
-  const editOrder = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
-    .find((button) => button.textContent?.includes("Edit order"));
+  const editOrder = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+    (button) => button.textContent?.includes("Edit order"),
+  );
   if (!editOrder) throw new Error("Edit order menu item not found");
   act(() => editOrder.click());
-  const done = [...container.querySelectorAll<HTMLButtonElement>("button")]
-    .find((button) => button.textContent?.trim() === "Done");
+  const done = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+    (button) => button.textContent?.trim() === "Done",
+  );
   if (!done) throw new Error("Done button not found");
   return done;
 }
@@ -40,22 +43,27 @@ describe("account creation entry points", () => {
     [0, false],
     [1, false],
     [2, true],
-  ])("shows Add account for %i accounts and order management only when useful", (count, hasOrderAction) => {
-    const container = document.createElement("div");
-    const root = createRoot(container);
-    useApp.setState({
-      accounts: Array.from({ length: count }, (_, index) => accountAt(index)),
-      accountOrder: [],
-      selectedAccountId: null,
-      threads: [],
-    });
+  ])(
+    "shows Add account for %i accounts and order management only when useful",
+    (count, hasOrderAction) => {
+      const container = document.createElement("div");
+      const root = createRoot(container);
+      useApp.setState({
+        accounts: Array.from({ length: count }, (_, index) => accountAt(index)),
+        accountOrder: [],
+        selectedAccountId: null,
+        threads: [],
+      });
 
-    act(() => root.render(createElement(Sidebar)));
+      act(() => root.render(createElement(Sidebar)));
 
-    expect(container.querySelector('[aria-label="Add account"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="Account actions"]') !== null).toBe(hasOrderAction);
-    act(() => root.unmount());
-  });
+      expect(container.querySelector('[aria-label="Add account"]')).not.toBeNull();
+      expect(container.querySelector('[aria-label="Account actions"]') !== null).toBe(
+        hasOrderAction,
+      );
+      act(() => root.unmount());
+    },
+  );
 
   it("renders a compact empty state until the first account is connected", () => {
     const container = document.createElement("div");
@@ -121,14 +129,18 @@ describe("account creation entry points", () => {
     if (!actions) throw new Error("Account actions button not found");
     actions.focus();
     await act(async () => {
-      actions.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+      actions.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+      );
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     });
     const menuItem = container.querySelector<HTMLButtonElement>('[role="menuitem"]');
     expect(document.activeElement).toBe(menuItem);
 
     await act(async () => {
-      menuItem?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      menuItem?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      );
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     });
     expect(document.activeElement).toBe(actions);
@@ -191,8 +203,9 @@ describe("mail account disclosure motion", () => {
       return markup;
     };
     const renderedIconMarkup = (label: string): string => {
-      const button = [...container.querySelectorAll<HTMLButtonElement>(".folder-item")]
-        .find((candidate) => candidate.querySelector(".acct-email")?.textContent === label);
+      const button = [...container.querySelectorAll<HTMLButtonElement>(".folder-item")].find(
+        (candidate) => candidate.querySelector(".acct-email")?.textContent === label,
+      );
       if (!button) throw new Error(`${label} folder button not found`);
       return button.querySelector("svg")?.innerHTML ?? "";
     };
@@ -230,8 +243,9 @@ describe("mail account disclosure motion", () => {
     expect(disclosure?.getAttribute("aria-hidden")).toBe("false");
     expect(disclosure?.hasAttribute("inert")).toBe(false);
 
-    const accountButton = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent?.includes("One"));
+    const accountButton = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent?.includes("One"),
+    );
     if (!accountButton) throw new Error("Account button not found");
     act(() => accountButton.click());
 
@@ -273,7 +287,11 @@ describe("mail account disclosure motion", () => {
     const dragHandles = [...container.querySelectorAll<HTMLButtonElement>(".acct-drag")];
     expect(instructions?.textContent).toContain("Drag the handles");
     expect(dragHandles).toHaveLength(2);
-    expect(dragHandles.every((handle) => handle.getAttribute("aria-describedby") === "account-order-instructions")).toBe(true);
+    expect(
+      dragHandles.every(
+        (handle) => handle.getAttribute("aria-describedby") === "account-order-instructions",
+      ),
+    ).toBe(true);
     expect(doneButton.textContent).toContain("Done");
 
     act(() => doneButton.click());
@@ -301,12 +319,20 @@ describe("mail account disclosure motion", () => {
     enterAccountOrderMode(container);
     const handles = [...container.querySelectorAll<HTMLButtonElement>(".acct-drag")];
 
-    expect(container.querySelector("#account-order-instructions")?.textContent).toContain("Arrow Up or Arrow Down");
+    expect(container.querySelector("#account-order-instructions")?.textContent).toContain(
+      "Arrow Up or Arrow Down",
+    );
     expect(handles[0]?.getAttribute("aria-keyshortcuts")).toBe("ArrowUp ArrowDown");
-    act(() => handles[0]?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
+    act(() =>
+      handles[0]?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+      ),
+    );
 
     expect(setAccountOrder).toHaveBeenCalledWith(["a2", "a1"]);
-    expect(container.querySelector('[role="status"]')?.textContent).toContain("One moved to position 2 of 2");
+    expect(container.querySelector('[role="status"]')?.textContent).toContain(
+      "One moved to position 2 of 2",
+    );
     act(() => root.unmount());
   });
 
@@ -332,22 +358,26 @@ describe("mail account disclosure motion", () => {
     const menuButton = container.querySelector<HTMLButtonElement>('button[title="Folder options"]');
     if (!menuButton) throw new Error("Folder options button not found");
     act(() => menuButton.click());
-    const deleteButton = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
-      .find((button) => button.textContent?.includes("Delete"));
+    const deleteButton = [
+      ...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
+    ].find((button) => button.textContent?.includes("Delete"));
     if (!deleteButton) throw new Error("Delete folder button not found");
     act(() => deleteButton.click());
 
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Delete folder");
     expect(nativeConfirm).not.toHaveBeenCalled();
-    const confirmDelete = [...document.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent?.trim() === "Delete folder");
+    const confirmDelete = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent?.trim() === "Delete folder",
+    );
     if (!confirmDelete) throw new Error("Delete folder confirmation not found");
     await act(async () => {
       confirmDelete.click();
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     });
     expect(deleteFolder).toHaveBeenCalledWith("a1", "Projects");
-    expect(document.activeElement).toBe(container.querySelector<HTMLButtonElement>('button[title="Account options"]'));
+    expect(document.activeElement).toBe(
+      container.querySelector<HTMLButtonElement>('button[title="Account options"]'),
+    );
 
     await act(async () => new Promise<void>((resolve) => setTimeout(resolve, 180)));
     act(() => root.unmount());
@@ -379,10 +409,14 @@ describe("mail account reorder motion", () => {
 
       return createElement("button", {
         "data-layout": accountReorderLayout(reordering),
-        onClick: () => activateAccountReorder(
-          () => setReordering(true),
-          () => observedLayoutStates.push(container.querySelector("button")?.dataset.layout ?? "missing"),
-        ),
+        onClick: () =>
+          activateAccountReorder(
+            () => setReordering(true),
+            () =>
+              observedLayoutStates.push(
+                container.querySelector("button")?.dataset.layout ?? "missing",
+              ),
+          ),
       });
     }
 

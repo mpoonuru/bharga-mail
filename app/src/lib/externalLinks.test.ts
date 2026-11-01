@@ -10,7 +10,9 @@ describe("parseExternalWebUrl", () => {
     });
     expect(parseExternalWebUrl("http://example.test/path")?.href).toBe("http://example.test/path");
     expect(parseExternalWebUrl("http://[::1]:8080/path")?.host).toBe("[::1]");
-    expect(parseExternalWebUrl("https://xn--bcher-kva.example/")?.host).toBe("xn--bcher-kva.example");
+    expect(parseExternalWebUrl("https://xn--bcher-kva.example/")?.host).toBe(
+      "xn--bcher-kva.example",
+    );
   });
 
   it.each([

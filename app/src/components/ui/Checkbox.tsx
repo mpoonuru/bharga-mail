@@ -1,10 +1,11 @@
-import { forwardRef, useId, type InputHTMLAttributes } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { forwardRef, type InputHTMLAttributes, useId } from "react";
 import { motionTransition, useMotionTransition } from "@/lib/motion";
 
 // Ported from the Topup Arena (iTopup) design system: a custom checkbox with an
 // animated SVG "draw" checkmark, sized variants, and an accessible hidden input.
-export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "size"> {
+export interface CheckboxProps
+  extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "size"> {
   checked?: boolean;
   onChange?: (checked: boolean) => void;
   label?: string;
@@ -50,7 +51,7 @@ function CheckMark({ size, stroke }: { size: number; stroke: number }) {
 
 export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox(
   { checked = false, onChange, label, description, size = "md", disabled, className, id, ...rest },
-  ref
+  ref,
 ) {
   const generated = useId();
   const inputId = id || generated;
@@ -78,15 +79,26 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
           height: s.box,
           background: checked ? "var(--accent-action)" : "var(--surface)",
           borderColor: checked ? "var(--accent-action)" : "var(--border-2)",
-          transition: "background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease)",
+          transition:
+            "background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease)",
         }}
       >
-        <AnimatePresence initial={false}>{checked && <CheckMark key="c" size={s.box} stroke={s.stroke} />}</AnimatePresence>
+        <AnimatePresence initial={false}>
+          {checked && <CheckMark key="c" size={s.box} stroke={s.stroke} />}
+        </AnimatePresence>
       </span>
       {(label || description) && (
         <span className={description ? "flex flex-col gap-0.5" : ""}>
-          {label && <span className={`${s.text} font-medium`} style={{ color: "var(--text)" }}>{label}</span>}
-          {description && <span className={s.desc} style={{ color: "var(--text-3)" }}>{description}</span>}
+          {label && (
+            <span className={`${s.text} font-medium`} style={{ color: "var(--text)" }}>
+              {label}
+            </span>
+          )}
+          {description && (
+            <span className={s.desc} style={{ color: "var(--text-3)" }}>
+              {description}
+            </span>
+          )}
         </span>
       )}
     </label>

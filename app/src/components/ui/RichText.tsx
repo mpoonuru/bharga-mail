@@ -1,17 +1,33 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
-import { useEditor, useEditorState, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import {
+  ArrowClockwiseIcon,
+  ArrowCounterClockwiseIcon,
+  ArrowsOutSimpleIcon,
+  CodeBlockIcon,
+  CodeIcon,
+  EraserIcon,
+  ImageIcon,
+  LinkBreakIcon,
+  LinkIcon,
+  ListBulletsIcon,
+  ListNumbersIcon,
+  MinusIcon,
+  QuotesIcon,
+  TextAlignCenterIcon,
+  TextAlignJustifyIcon,
+  TextAlignLeftIcon,
+  TextAlignRightIcon,
+  TextBIcon,
+  TextItalicIcon,
+  TextStrikethroughIcon,
+  TextUnderlineIcon,
+} from "@phosphor-icons/react";
+import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
-import Image from "@tiptap/extension-image";
+import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { forwardRef, useImperativeHandle, useState } from "react";
 import { Select } from "./Select";
-import {
-  TextBIcon, TextItalicIcon, TextUnderlineIcon, TextStrikethroughIcon,
-  ListBulletsIcon, ListNumbersIcon, TextAlignLeftIcon, TextAlignCenterIcon,
-  TextAlignRightIcon, TextAlignJustifyIcon, CodeIcon, CodeBlockIcon, QuotesIcon,
-  MinusIcon, LinkIcon, LinkBreakIcon, ImageIcon, ArrowCounterClockwiseIcon,
-  ArrowClockwiseIcon, ArrowsOutSimpleIcon, EraserIcon,
-} from "@phosphor-icons/react";
 
 export interface RichTextHandle {
   setHtml: (html: string) => void;
@@ -43,7 +59,7 @@ function Group({ children, end = false }: { children: React.ReactNode; end?: boo
 // horizontal rule, link/unlink, image, clear-formatting, undo/redo, fullscreen.
 export const RichText = forwardRef<RichTextHandle, Props>(function RichText(
   { initialHtml = "", placeholder = "Write…", minHeight = 140, onChange },
-  ref
+  ref,
 ) {
   const [full, setFull] = useState(false);
   const editor = useEditor({
@@ -66,11 +82,14 @@ export const RichText = forwardRef<RichTextHandle, Props>(function RichText(
   useImperativeHandle(
     ref,
     () => ({
-      setHtml: (html: string) => { editor?.commands.setContent(html); onChange?.(html); },
+      setHtml: (html: string) => {
+        editor?.commands.setContent(html);
+        onChange?.(html);
+      },
       getHtml: () => editor?.getHTML() ?? "",
       focus: () => editor?.commands.focus(),
     }),
-    [editor, onChange]
+    [editor, onChange],
   );
 
   const st = useEditorState({
@@ -100,10 +119,16 @@ export const RichText = forwardRef<RichTextHandle, Props>(function RichText(
 
   const setHeading = (level: number) => {
     if (level === 0) chain().setParagraph().run();
-    else chain().setHeading({ level: level as 1 | 2 | 3 | 4 }).run();
+    else
+      chain()
+        .setHeading({ level: level as 1 | 2 | 3 | 4 })
+        .run();
   };
   const setLink = () => {
-    if (st?.link) { chain().unsetLink().run(); return; }
+    if (st?.link) {
+      chain().unsetLink().run();
+      return;
+    }
     const url = window.prompt("Link URL");
     if (url) chain().setLink({ href: url }).run();
   };
@@ -112,8 +137,26 @@ export const RichText = forwardRef<RichTextHandle, Props>(function RichText(
     if (url) chain().setImage({ src: url }).run();
   };
 
-  const B = ({ on, title, run, children }: { on?: boolean; title: string; run: () => void; children: React.ReactNode }) => (
-    <button type="button" className={`rt-btn${on ? " on" : ""}`} title={title} onMouseDown={(e) => e.preventDefault()} onClick={run}>{children}</button>
+  const B = ({
+    on,
+    title,
+    run,
+    children,
+  }: {
+    on?: boolean;
+    title: string;
+    run: () => void;
+    children: React.ReactNode;
+  }) => (
+    <button
+      type="button"
+      className={`rt-btn${on ? " on" : ""}`}
+      title={title}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={run}
+    >
+      {children}
+    </button>
   );
   return (
     <div className={`richtext${full ? " rt-full" : ""}`}>
@@ -129,39 +172,81 @@ export const RichText = forwardRef<RichTextHandle, Props>(function RichText(
           />
         </Group>
         <Group>
-          <B on={st?.bold} title="Bold" run={() => chain().toggleBold().run()}><TextBIcon size={15} /></B>
-          <B on={st?.italic} title="Italic" run={() => chain().toggleItalic().run()}><TextItalicIcon size={15} /></B>
-          <B on={st?.underline} title="Underline" run={() => chain().toggleUnderline().run()}><TextUnderlineIcon size={15} /></B>
-          <B on={st?.strike} title="Strikethrough" run={() => chain().toggleStrike().run()}><TextStrikethroughIcon size={15} /></B>
+          <B on={st?.bold} title="Bold" run={() => chain().toggleBold().run()}>
+            <TextBIcon size={15} />
+          </B>
+          <B on={st?.italic} title="Italic" run={() => chain().toggleItalic().run()}>
+            <TextItalicIcon size={15} />
+          </B>
+          <B on={st?.underline} title="Underline" run={() => chain().toggleUnderline().run()}>
+            <TextUnderlineIcon size={15} />
+          </B>
+          <B on={st?.strike} title="Strikethrough" run={() => chain().toggleStrike().run()}>
+            <TextStrikethroughIcon size={15} />
+          </B>
         </Group>
         <Group>
-          <B on={st?.bullet} title="Bulleted list" run={() => chain().toggleBulletList().run()}><ListBulletsIcon size={15} /></B>
-          <B on={st?.ordered} title="Numbered list" run={() => chain().toggleOrderedList().run()}><ListNumbersIcon size={15} /></B>
+          <B on={st?.bullet} title="Bulleted list" run={() => chain().toggleBulletList().run()}>
+            <ListBulletsIcon size={15} />
+          </B>
+          <B on={st?.ordered} title="Numbered list" run={() => chain().toggleOrderedList().run()}>
+            <ListNumbersIcon size={15} />
+          </B>
         </Group>
         <Group>
-          <B on={st?.left} title="Align left" run={() => chain().setTextAlign("left").run()}><TextAlignLeftIcon size={15} /></B>
-          <B on={st?.center} title="Align center" run={() => chain().setTextAlign("center").run()}><TextAlignCenterIcon size={15} /></B>
-          <B on={st?.right} title="Align right" run={() => chain().setTextAlign("right").run()}><TextAlignRightIcon size={15} /></B>
-          <B on={st?.justify} title="Justify" run={() => chain().setTextAlign("justify").run()}><TextAlignJustifyIcon size={15} /></B>
+          <B on={st?.left} title="Align left" run={() => chain().setTextAlign("left").run()}>
+            <TextAlignLeftIcon size={15} />
+          </B>
+          <B on={st?.center} title="Align center" run={() => chain().setTextAlign("center").run()}>
+            <TextAlignCenterIcon size={15} />
+          </B>
+          <B on={st?.right} title="Align right" run={() => chain().setTextAlign("right").run()}>
+            <TextAlignRightIcon size={15} />
+          </B>
+          <B on={st?.justify} title="Justify" run={() => chain().setTextAlign("justify").run()}>
+            <TextAlignJustifyIcon size={15} />
+          </B>
         </Group>
         <Group>
-          <B on={st?.code} title="Inline code" run={() => chain().toggleCode().run()}><CodeIcon size={15} /></B>
-          <B on={st?.codeBlock} title="Code block" run={() => chain().toggleCodeBlock().run()}><CodeBlockIcon size={15} /></B>
-          <B on={st?.quote} title="Quote" run={() => chain().toggleBlockquote().run()}><QuotesIcon size={15} /></B>
-          <B title="Divider" run={() => chain().setHorizontalRule().run()}><MinusIcon size={15} /></B>
+          <B on={st?.code} title="Inline code" run={() => chain().toggleCode().run()}>
+            <CodeIcon size={15} />
+          </B>
+          <B on={st?.codeBlock} title="Code block" run={() => chain().toggleCodeBlock().run()}>
+            <CodeBlockIcon size={15} />
+          </B>
+          <B on={st?.quote} title="Quote" run={() => chain().toggleBlockquote().run()}>
+            <QuotesIcon size={15} />
+          </B>
+          <B title="Divider" run={() => chain().setHorizontalRule().run()}>
+            <MinusIcon size={15} />
+          </B>
         </Group>
         <Group>
-          <B on={st?.link} title="Link" run={setLink}><LinkIcon size={15} /></B>
-          <B title="Remove link" run={() => chain().unsetLink().run()}><LinkBreakIcon size={15} /></B>
-          <B title="Insert image" run={addImage}><ImageIcon size={15} /></B>
-          <B title="Clear formatting" run={() => chain().unsetAllMarks().clearNodes().run()}><EraserIcon size={15} /></B>
+          <B on={st?.link} title="Link" run={setLink}>
+            <LinkIcon size={15} />
+          </B>
+          <B title="Remove link" run={() => chain().unsetLink().run()}>
+            <LinkBreakIcon size={15} />
+          </B>
+          <B title="Insert image" run={addImage}>
+            <ImageIcon size={15} />
+          </B>
+          <B title="Clear formatting" run={() => chain().unsetAllMarks().clearNodes().run()}>
+            <EraserIcon size={15} />
+          </B>
         </Group>
         <Group>
-          <B title="Undo" run={() => chain().undo().run()}><ArrowCounterClockwiseIcon size={15} /></B>
-          <B title="Redo" run={() => chain().redo().run()}><ArrowClockwiseIcon size={15} /></B>
+          <B title="Undo" run={() => chain().undo().run()}>
+            <ArrowCounterClockwiseIcon size={15} />
+          </B>
+          <B title="Redo" run={() => chain().redo().run()}>
+            <ArrowClockwiseIcon size={15} />
+          </B>
         </Group>
         <Group end>
-          <B title="Fullscreen" run={() => setFull((v) => !v)}><ArrowsOutSimpleIcon size={15} /></B>
+          <B title="Fullscreen" run={() => setFull((v) => !v)}>
+            <ArrowsOutSimpleIcon size={15} />
+          </B>
         </Group>
       </div>
       <EditorContent editor={editor} className="rt-area" style={{ minHeight }} />

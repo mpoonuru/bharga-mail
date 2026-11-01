@@ -4,8 +4,8 @@ version = "0.2.2"
 license = "AGPL-3.0-only"
 description = "AI-native, model-agnostic, local-first mail client"
 authors = ["Arjun P"]
-edition = "2021"
-rust-version = "1.77"
+edition = "2024"
+rust-version = "1.85"
 
 [lib]
 name = "bharga_mail_lib"
@@ -27,20 +27,20 @@ tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 anyhow = "1"
 thiserror = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls"] }
 # Local-first store (bundled SQLite — compiles its own libsqlite3, FTS5 enabled)
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 # OAuth (PKCE) + secure token storage
 tiny_http = "0.12"
 sha2 = "0.10"
 base64 = "0.22"
-rand = "0.8"
+rand = "0.10"
 # Authenticated encryption (AES-256-GCM) for secrets at rest in the DB fallback;
 # the 32-byte master key lives in the OS keychain (see sync/tokens.rs).
 aes-gcm = "0.10"
 urlencoding = "2"
-# keyring v3 needs an explicit platform backend feature (mock elsewhere, e.g. Linux CI)
-keyring = { version = "3", features = ["apple-native", "windows-native"] }
+# keyring v4 auto-selects its platform backend at runtime (no compile-time features)
+keyring = "4"
 open = "5"
 chrono = { version = "0.4", features = ["serde"] }
 # SMTP send for IMAP/SMTP accounts (rustls — no system OpenSSL needed)
@@ -55,8 +55,8 @@ mailparse = "0.16"
 # text/plain part — handles malformed Outlook/Word markup, <style>/<script>,
 # MSO conditional comments, and entity decoding correctly.
 html2text = "0.12"
-# Calendar domain and interoperability. Versions are pinned to preserve the
-# project's Rust 1.77 minimum while the calendar core is introduced.
+# Calendar domain and interoperability. Versions are pinned for stability while
+# the calendar core is introduced (MSRV is 1.85 now that the crate is on edition 2024).
 icalendar = { version = "=0.17.6", features = ["parser", "chrono-tz"] }
 rrule = { version = "=0.14.0", features = ["serde"] }
 chrono-tz = "=0.10.4"

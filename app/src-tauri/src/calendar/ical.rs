@@ -17,7 +17,7 @@ use super::domain::{
     EventReminder, EventStatus, EventSyncState, EventVisibility, ParticipationStatus,
     RecurrenceSet, ReminderMethod, Transparency,
 };
-use super::recurrence::{expand_event, CalendarError};
+use super::recurrence::{CalendarError, expand_event};
 
 pub const MAX_ICS_BYTES: usize = 4 * 1024 * 1024;
 pub(crate) const IMPORT_CALENDAR_ID: &str = "ics-import";
@@ -128,10 +128,7 @@ fn calendar_error(code: &'static str, message: impl Into<String>) -> CalendarErr
 }
 
 fn calendar_property<'a>(calendar: &'a IcalCalendar, name: &str) -> Option<&'a Property> {
-    calendar
-        .properties
-        .iter()
-        .find(|property| property.key().eq_ignore_ascii_case(name))
+    calendar.properties.iter().find(|property| property.key().eq_ignore_ascii_case(name))
 }
 
 fn validate_source(bytes: &[u8], limits: Limits) -> Result<String, CalendarError> {
@@ -164,10 +161,7 @@ fn validate_source(bytes: &[u8], limits: Limits) -> Result<String, CalendarError
         }
         property_count += 1;
         if property_count > limits.max_properties {
-            return Err(calendar_error(
-                "ics-too-complex",
-                "Calendar has too many content lines",
-            ));
+            return Err(calendar_error("ics-too-complex", "Calendar has too many content lines"));
         }
         if line.starts_with("BEGIN:") {
             depth += 1;
@@ -182,10 +176,7 @@ fn validate_source(bytes: &[u8], limits: Limits) -> Result<String, CalendarError
         }
     }
     if depth != 0 {
-        return Err(calendar_error(
-            "invalid-ics",
-            "Calendar components are not balanced",
-        ));
+        return Err(calendar_error("invalid-ics", "Calendar components are not balanced"));
     }
     Ok(source.to_string())
 }
@@ -231,10 +222,7 @@ fn local_to_utc(
         .earliest()
         .map(|value| value.with_timezone(&Utc))
         .ok_or_else(|| {
-            calendar_error(
-                "invalid-time",
-                format!("{label} falls in a nonexistent local time"),
-            )
+            calendar_error("invalid-time", format!("{label} falls in a nonexistent local time"))
         })
 }
 
@@ -246,24 +234,17 @@ fn parse_moment(
     match DatePerhapsTime::from_property(property)
         .ok_or_else(|| calendar_error("invalid-time", format!("{label} is invalid")))?
     {
-        DatePerhapsTime::Date(date) => Ok((
-            EventMoment::AllDay {
-                date: date.format("%Y-%m-%d").to_string(),
-            },
-            None,
-        )),
+        DatePerhapsTime::Date(date) => {
+            Ok((EventMoment::AllDay { date: date.format("%Y-%m-%d").to_string() }, None))
+        }
         DatePerhapsTime::DateTime(CalendarDateTime::Utc(value)) => Ok((
-            EventMoment::Timed {
-                utc: value.to_rfc3339_opts(SecondsFormat::Secs, true),
-            },
+            EventMoment::Timed { utc: value.to_rfc3339_opts(SecondsFormat::Secs, true) },
             Some("UTC".into()),
         )),
         DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone { date_time, tzid }) => {
             let utc = local_to_utc(date_time, &tzid, label)?;
             Ok((
-                EventMoment::Timed {
-                    utc: utc.to_rfc3339_opts(SecondsFormat::Secs, true),
-                },
+                EventMoment::Timed { utc: utc.to_rfc3339_opts(SecondsFormat::Secs, true) },
                 Some(tzid),
             ))
         }
@@ -276,9 +257,7 @@ fn parse_moment(
             })?;
             let utc = local_to_utc(value, timezone, label)?;
             Ok((
-                EventMoment::Timed {
-                    utc: utc.to_rfc3339_opts(SecondsFormat::Secs, true),
-                },
+                EventMoment::Timed { utc: utc.to_rfc3339_opts(SecondsFormat::Secs, true) },
                 Some(timezone.to_string()),
             ))
         }
@@ -297,9 +276,7 @@ fn parse_recurrence_value(
         return Ok(date.format("%Y-%m-%d").to_string());
     }
     if let Ok(value) = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%SZ") {
-        return Ok(Utc
-            .from_utc_datetime(&value)
-            .to_rfc3339_opts(SecondsFormat::Secs, true));
+        return Ok(Utc.from_utc_datetime(&value).to_rfc3339_opts(SecondsFormat::Secs, true));
     }
     let local = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S")
         .map_err(|_| calendar_error("invalid-recurrence", "RDATE/EXDATE timestamp is invalid"))?;
@@ -326,10 +303,7 @@ fn mail_address(value: &str) -> Result<String, CalendarError> {
         .unwrap_or(value)
         .trim();
     if value.len() > 320 || !value.contains('@') || value.contains(['\r', '\n']) {
-        return Err(calendar_error(
-            "invalid-attendee",
-            "Calendar attendee address is invalid",
-        ));
+        return Err(calendar_error("invalid-attendee", "Calendar attendee address is invalid"));
     }
     Ok(value.to_ascii_lowercase())
 }
@@ -416,19 +390,11 @@ fn parse_duration_minutes(value: &str) -> Result<i64, CalendarError> {
             (true, 'H') => hours += value,
             (true, 'M') => minutes += value,
             (true, 'S') => seconds += value,
-            _ => {
-                return Err(calendar_error(
-                    "invalid-alarm",
-                    "VALARM duration is invalid",
-                ))
-            }
+            _ => return Err(calendar_error("invalid-alarm", "VALARM duration is invalid")),
         }
     }
     if !number.is_empty() {
-        return Err(calendar_error(
-            "invalid-alarm",
-            "VALARM duration is invalid",
-        ));
+        return Err(calendar_error("invalid-alarm", "VALARM duration is invalid"));
     }
     let total_seconds = days * 86_400 + hours * 3_600 + minutes * 60 + seconds;
     Ok((total_seconds + 59) / 60)
@@ -436,15 +402,10 @@ fn parse_duration_minutes(value: &str) -> Result<i64, CalendarError> {
 
 fn parse_reminders(event: &IcalEvent) -> Result<Vec<EventReminder>, CalendarError> {
     let mut reminders = Vec::new();
-    for component in event
-        .components()
-        .iter()
-        .filter(|component| component.component_kind() == "VALARM")
+    for component in
+        event.components().iter().filter(|component| component.component_kind() == "VALARM")
     {
-        let action = component
-            .property_value("ACTION")
-            .unwrap_or("DISPLAY")
-            .to_ascii_uppercase();
+        let action = component.property_value("ACTION").unwrap_or("DISPLAY").to_ascii_uppercase();
         if action != "DISPLAY" && action != "EMAIL" {
             continue;
         }
@@ -453,18 +414,11 @@ fn parse_reminders(event: &IcalEvent) -> Result<Vec<EventReminder>, CalendarErro
             .ok_or_else(|| calendar_error("invalid-alarm", "VALARM is missing TRIGGER"))?;
         reminders.push(EventReminder {
             id: None,
-            method: if action == "EMAIL" {
-                ReminderMethod::Email
-            } else {
-                ReminderMethod::Display
-            },
+            method: if action == "EMAIL" { ReminderMethod::Email } else { ReminderMethod::Display },
             minutes_before: parse_duration_minutes(trigger)?,
         });
         if reminders.len() > 20 {
-            return Err(calendar_error(
-                "ics-too-complex",
-                "Calendar event has too many reminders",
-            ));
+            return Err(calendar_error("ics-too-complex", "Calendar event has too many reminders"));
         }
     }
     Ok(reminders)
@@ -508,9 +462,7 @@ fn preserve_property(
     }
     if name.is_empty()
         || name.len() > 64
-        || !name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '-')
+        || !name.chars().all(|character| character.is_ascii_alphanumeric() || character == '-')
         || property.value().len() > 4_096
         || property.value().contains(['\r', '\n', '\0'])
         || property.params().len() > 16
@@ -539,11 +491,7 @@ fn preserve_property(
             "Calendar extension property limit exceeded",
         ));
     }
-    Ok(Some(PreservedProperty {
-        name,
-        value: property.value().to_string(),
-        parameters,
-    }))
+    Ok(Some(PreservedProperty { name, value: property.value().to_string(), parameters }))
 }
 
 fn parse_event(
@@ -578,11 +526,13 @@ fn parse_event(
     }
 
     let all_day = matches!(start, EventMoment::AllDay { .. });
-    let mut recurrence = RecurrenceSet::default();
-    recurrence.rules = properties_named(event, "RRULE")
-        .into_iter()
-        .map(|property| property.value().trim().to_string())
-        .collect();
+    let mut recurrence = RecurrenceSet {
+        rules: properties_named(event, "RRULE")
+            .into_iter()
+            .map(|property| property.value().trim().to_string())
+            .collect(),
+        ..Default::default()
+    };
     for property in properties_named(event, "RDATE") {
         for value in property.value().split(',') {
             recurrence.dates.push(parse_recurrence_value(
@@ -622,33 +572,22 @@ fn parse_event(
         .map(unescape_text)
         .unwrap_or_else(|| "(Untitled event)".into());
     if title.len() > 512 {
-        return Err(calendar_error(
-            "invalid-property",
-            "VEVENT summary is too large",
-        ));
+        return Err(calendar_error("invalid-property", "VEVENT summary is too large"));
     }
 
-    let status = match event
-        .property_value("STATUS")
-        .unwrap_or("CONFIRMED")
-        .to_ascii_uppercase()
-        .as_str()
-    {
-        "TENTATIVE" => EventStatus::Tentative,
-        "CANCELLED" => EventStatus::Cancelled,
-        _ => EventStatus::Confirmed,
-    };
-    let visibility = match event
-        .property_value("CLASS")
-        .unwrap_or("DEFAULT")
-        .to_ascii_uppercase()
-        .as_str()
-    {
-        "PUBLIC" => EventVisibility::Public,
-        "PRIVATE" => EventVisibility::Private,
-        "CONFIDENTIAL" => EventVisibility::Confidential,
-        _ => EventVisibility::Default,
-    };
+    let status =
+        match event.property_value("STATUS").unwrap_or("CONFIRMED").to_ascii_uppercase().as_str() {
+            "TENTATIVE" => EventStatus::Tentative,
+            "CANCELLED" => EventStatus::Cancelled,
+            _ => EventStatus::Confirmed,
+        };
+    let visibility =
+        match event.property_value("CLASS").unwrap_or("DEFAULT").to_ascii_uppercase().as_str() {
+            "PUBLIC" => EventVisibility::Public,
+            "PRIVATE" => EventVisibility::Private,
+            "CONFIDENTIAL" => EventVisibility::Confidential,
+            _ => EventVisibility::Default,
+        };
     let transparency = if event
         .property_value("TRANSP")
         .is_some_and(|value| value.eq_ignore_ascii_case("TRANSPARENT"))
@@ -681,9 +620,7 @@ fn parse_event(
         ));
     }
     preserved_properties.sort_by(|left, right| {
-        left.name
-            .cmp(&right.name)
-            .then_with(|| left.value.cmp(&right.value))
+        left.name.cmp(&right.name).then_with(|| left.value.cmp(&right.value))
     });
 
     let id = recurrence_id
@@ -696,14 +633,8 @@ fn parse_event(
         uid,
         provider_id: None,
         title,
-        description: event
-            .property_value("DESCRIPTION")
-            .map(unescape_text)
-            .unwrap_or_default(),
-        location: event
-            .property_value("LOCATION")
-            .map(unescape_text)
-            .unwrap_or_default(),
+        description: event.property_value("DESCRIPTION").map(unescape_text).unwrap_or_default(),
+        location: event.property_value("LOCATION").map(unescape_text).unwrap_or_default(),
         conference_url: event.property_value("URL").map(str::to_string),
         source_thread_id: None,
         start,
@@ -743,10 +674,7 @@ fn parse_event(
         expand_event(&calendar_event, &range, 512)?;
     }
 
-    Ok(ParsedEvent {
-        event: calendar_event,
-        preserved_properties,
-    })
+    Ok(ParsedEvent { event: calendar_event, preserved_properties })
 }
 
 pub fn parse_calendar(bytes: &[u8], limits: Limits) -> Result<ParsedCalendar, CalendarError> {
@@ -756,10 +684,7 @@ pub fn parse_calendar(bytes: &[u8], limits: Limits) -> Result<ParsedCalendar, Ca
     })?;
     let event_count = calendar.events().count();
     if event_count > limits.max_events {
-        return Err(calendar_error(
-            "ics-too-complex",
-            "Calendar contains too many events",
-        ));
+        return Err(calendar_error("ics-too-complex", "Calendar contains too many events"));
     }
 
     let calendar_timezone = calendar_property(&calendar, "X-WR-TIMEZONE")
@@ -831,19 +756,14 @@ fn timed_property(name: &str, utc: &str, timezone: &str) -> Result<Property, Cal
         .map(|value| value.with_timezone(&Utc))
         .map_err(|_| calendar_error("invalid-time", format!("{name} is invalid")))?;
     if timezone == "UTC" {
-        return Ok(Property::new(
-            name,
-            utc.format("%Y%m%dT%H%M%SZ").to_string(),
-        ));
+        return Ok(Property::new(name, utc.format("%Y%m%dT%H%M%SZ").to_string()));
     }
     let timezone_value = timezone.parse::<chrono_tz::Tz>().map_err(|_| {
         calendar_error("invalid-timezone", "Event timezone is not an IANA timezone")
     })?;
     Ok(property_with_parameters(
         name,
-        utc.with_timezone(&timezone_value)
-            .format("%Y%m%dT%H%M%S")
-            .to_string(),
+        utc.with_timezone(&timezone_value).format("%Y%m%dT%H%M%S").to_string(),
         &[("TZID", timezone.to_string())],
     ))
 }
@@ -898,11 +818,8 @@ fn append_recurrence_values(
                 let timezone_value = timezone
                     .parse::<chrono_tz::Tz>()
                     .map_err(|_| calendar_error("invalid-timezone", "Event timezone is invalid"))?;
-                encoded.push(
-                    utc.with_timezone(&timezone_value)
-                        .format("%Y%m%dT%H%M%S")
-                        .to_string(),
-                );
+                encoded
+                    .push(utc.with_timezone(&timezone_value).format("%Y%m%dT%H%M%S").to_string());
             }
         }
     }
@@ -913,11 +830,7 @@ fn append_recurrence_values(
     } else {
         Vec::new()
     };
-    event.append_multi_property(property_with_parameters(
-        name,
-        encoded.join(","),
-        &parameters,
-    ));
+    event.append_multi_property(property_with_parameters(name, encoded.join(","), &parameters));
     Ok(())
 }
 
@@ -934,12 +847,7 @@ fn timezone_component(
     let timezone = timezone_name.parse::<chrono_tz::Tz>().map_err(|_| {
         calendar_error("invalid-timezone", "Event timezone is not an IANA timezone")
     })?;
-    let first_year = years
-        .iter()
-        .next()
-        .copied()
-        .unwrap_or_else(|| Utc::now().year())
-        - 1;
+    let first_year = years.iter().next().copied().unwrap_or_else(|| Utc::now().year()) - 1;
     let last_year = years.iter().next_back().copied().unwrap_or(first_year + 1) + 1;
     let start = Utc
         .with_ymd_and_hms(first_year, 1, 1, 0, 0, 0)
@@ -952,18 +860,10 @@ fn timezone_component(
 
     let mut transitions: Vec<(bool, NaiveDateTime, i32, i32)> = Vec::new();
     let mut cursor = start;
-    let mut previous = cursor
-        .with_timezone(&timezone)
-        .offset()
-        .fix()
-        .local_minus_utc();
+    let mut previous = cursor.with_timezone(&timezone).offset().fix().local_minus_utc();
     while cursor < end {
         cursor += Duration::hours(1);
-        let next = cursor
-            .with_timezone(&timezone)
-            .offset()
-            .fix()
-            .local_minus_utc();
+        let next = cursor.with_timezone(&timezone).offset().fix().local_minus_utc();
         if next != previous {
             transitions.push((
                 next > previous,
@@ -978,11 +878,7 @@ fn timezone_component(
     let mut output =
         format!("BEGIN:VTIMEZONE\r\nTZID:{timezone_name}\r\nX-LIC-LOCATION:{timezone_name}\r\n");
     if transitions.is_empty() {
-        let offset = start
-            .with_timezone(&timezone)
-            .offset()
-            .fix()
-            .local_minus_utc();
+        let offset = start.with_timezone(&timezone).offset().fix().local_minus_utc();
         output.push_str(&format!(
             "BEGIN:STANDARD\r\nDTSTART:{first_year}0101T000000\r\nTZOFFSETFROM:{}\r\nTZOFFSETTO:{}\r\nTZNAME:{timezone_name}\r\nEND:STANDARD\r\n",
             offset_text(offset),
@@ -1053,10 +949,8 @@ fn to_ical_event(parsed: &ParsedEvent) -> Result<IcalEvent, CalendarError> {
         event.append_property(Property::new("URL", url));
     }
     event.append_property(Property::new("SEQUENCE", source.sequence.to_string()));
-    event.append_property(Property::new(
-        "DTSTAMP",
-        Utc::now().format("%Y%m%dT%H%M%SZ").to_string(),
-    ));
+    event
+        .append_property(Property::new("DTSTAMP", Utc::now().format("%Y%m%dT%H%M%SZ").to_string()));
     append_moment(&mut event, "DTSTART", &source.start, &source.timezone)?;
     append_moment(&mut event, "DTEND", &source.end, &source.timezone)?;
     if let Some(recurrence_id) = &source.recurrence_id {
@@ -1111,11 +1005,7 @@ fn to_ical_event(parsed: &ParsedEvent) -> Result<IcalEvent, CalendarError> {
     ));
     event.append_property(Property::new(
         "TRANSP",
-        if source.transparency == Transparency::Free {
-            "TRANSPARENT"
-        } else {
-            "OPAQUE"
-        },
+        if source.transparency == Transparency::Free { "TRANSPARENT" } else { "OPAQUE" },
     ));
     if source.visibility != EventVisibility::Default {
         event.append_property(Property::new(
@@ -1160,12 +1050,7 @@ fn to_ical_event(parsed: &ParsedEvent) -> Result<IcalEvent, CalendarError> {
                     .organizer
                     .as_ref()
                     .map(|organizer| organizer.email.as_str())
-                    .or_else(|| {
-                        source
-                            .attendees
-                            .first()
-                            .map(|attendee| attendee.email.as_str())
-                    })
+                    .or_else(|| source.attendees.first().map(|attendee| attendee.email.as_str()))
                     .ok_or_else(|| {
                         calendar_error(
                             "invalid-alarm",
@@ -1211,10 +1096,7 @@ pub fn write_calendar(
     options: ExportOptions,
 ) -> Result<Vec<u8>, CalendarError> {
     if events.len() > Limits::default().max_events {
-        return Err(calendar_error(
-            "ics-too-complex",
-            "Calendar contains too many events",
-        ));
+        return Err(calendar_error("ics-too-complex", "Calendar contains too many events"));
     }
     let mut calendar = IcalCalendar {
         properties: vec![
@@ -1265,10 +1147,8 @@ pub fn build_itip(
     event.sequence = event.sequence.saturating_add(1);
     match method {
         ItipMethod::Request | ItipMethod::Publish => {
-            event.organizer = Some(EventPerson {
-                name: actor.name.clone(),
-                email: actor.email.clone(),
-            });
+            event.organizer =
+                Some(EventPerson { name: actor.name.clone(), email: actor.email.clone() });
         }
         ItipMethod::Reply => {
             let attendee = event
@@ -1283,14 +1163,8 @@ pub fn build_itip(
         ItipMethod::Cancel => event.status = EventStatus::Cancelled,
     }
     write_calendar(
-        &[ParsedEvent {
-            event,
-            preserved_properties: Vec::new(),
-        }],
-        ExportOptions {
-            method,
-            ..ExportOptions::default()
-        },
+        &[ParsedEvent { event, preserved_properties: Vec::new() }],
+        ExportOptions { method, ..ExportOptions::default() },
     )
 }
 
@@ -1318,17 +1192,9 @@ mod tests {
             Limits::default(),
         )
         .unwrap();
-        assert!(matches!(
-            apple.events[0].event.start,
-            EventMoment::AllDay { .. }
-        ));
+        assert!(matches!(apple.events[0].event.start, EventMoment::AllDay { .. }));
         assert_eq!(
-            apple.events[0]
-                .event
-                .recurrence
-                .as_ref()
-                .unwrap()
-                .excluded_dates,
+            apple.events[0].event.recurrence.as_ref().unwrap().excluded_dates,
             ["2027-10-25"]
         );
 
@@ -1337,10 +1203,7 @@ mod tests {
             Limits::default(),
         )
         .unwrap();
-        assert_eq!(
-            outlook.events[0].event.recurrence_id.as_deref(),
-            Some("2026-11-02T14:00:00Z")
-        );
+        assert_eq!(outlook.events[0].event.recurrence_id.as_deref(), Some("2026-11-02T14:00:00Z"));
         assert_eq!(outlook.events[0].event.sequence, 4);
 
         let caldav = parse_calendar(
@@ -1349,10 +1212,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(caldav.timezones, ["Europe/Berlin"]);
-        assert_eq!(
-            caldav.events[0].preserved_properties[0].name,
-            "X-CALDAV-ETAG"
-        );
+        assert_eq!(caldav.events[0].preserved_properties[0].name, "X-CALDAV-ETAG");
     }
 
     #[test]
@@ -1368,7 +1228,7 @@ mod tests {
         let source = String::from_utf8(encoded).unwrap();
 
         assert!(!source.replace("\r\n", "").contains('\n'));
-        assert!(source.split("\r\n").all(|line| line.as_bytes().len() <= 75));
+        assert!(source.split("\r\n").all(|line| line.len() <= 75));
         assert!(source.contains("\r\n "));
     }
 
@@ -1393,10 +1253,7 @@ mod tests {
 
         assert_eq!(reply.method, Some(ItipMethod::Reply));
         assert_eq!(reply.events[0].event.sequence, 3);
-        assert_eq!(
-            reply.events[0].event.attendees[0].status,
-            ParticipationStatus::Accepted
-        );
+        assert_eq!(reply.events[0].event.attendees[0].status, ParticipationStatus::Accepted);
     }
 
     #[test]
@@ -1415,15 +1272,11 @@ mod tests {
     #[test]
     fn rejects_oversized_and_pathological_inputs_without_partial_events() {
         assert_eq!(
-            parse_calendar(&vec![b'X'; MAX_ICS_BYTES + 1], Limits::default())
-                .unwrap_err()
-                .code(),
+            parse_calendar(&vec![b'X'; MAX_ICS_BYTES + 1], Limits::default()).unwrap_err().code(),
             "ics-too-large"
         );
         assert_eq!(
-            parse_calendar(pathological_rrule(), Limits::default())
-                .unwrap_err()
-                .code(),
+            parse_calendar(pathological_rrule(), Limits::default()).unwrap_err().code(),
             "recurrence-limit"
         );
     }

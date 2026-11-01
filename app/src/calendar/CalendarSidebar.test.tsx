@@ -11,14 +11,30 @@ let cleanup: (() => void) | undefined;
 afterEach(() => cleanup?.());
 
 const source: CalendarSource = {
-  id: "source", linkedAccountId: null, provider: "calDav", label: "Team calendar",
-  address: null, authState: "ready", capabilities: [], lastSyncAt: null,
-  syncError: null, disabled: false,
+  id: "source",
+  linkedAccountId: null,
+  provider: "calDav",
+  label: "Team calendar",
+  address: null,
+  authState: "ready",
+  capabilities: [],
+  lastSyncAt: null,
+  syncError: null,
+  disabled: false,
 };
 const calendars: Calendar[] = ["Work", "Personal"].map((name, index) => ({
-  id: name.toLowerCase(), sourceId: "source", providerId: name, name, description: "",
-  color: "#6f8df6", timezone: "UTC", accessRole: "owner", writable: true,
-  visible: true, isDefault: index === 0, sortOrder: index,
+  id: name.toLowerCase(),
+  sourceId: "source",
+  providerId: name,
+  name,
+  description: "",
+  color: "#6f8df6",
+  timezone: "UTC",
+  accessRole: "owner",
+  writable: true,
+  visible: true,
+  isDefault: index === 0,
+  sortOrder: index,
 }));
 
 describe("CalendarSidebar", () => {
@@ -41,8 +57,12 @@ describe("CalendarSidebar", () => {
     expect(document.querySelector('[aria-label="Move Work down"]')).not.toBeNull();
     act(() => document.querySelector<HTMLButtonElement>('[aria-label="Move Work down"]')?.click());
     expect(onOrder).toHaveBeenCalledWith(["personal", "work"]);
-    act(() => document.querySelector<HTMLButtonElement>('[aria-label="Manage Team calendar"]')?.click());
-    expect(document.body.textContent).toContain("Disconnecting never deletes events from the calendar provider");
+    act(() =>
+      document.querySelector<HTMLButtonElement>('[aria-label="Manage Team calendar"]')?.click(),
+    );
+    expect(document.body.textContent).toContain(
+      "Disconnecting never deletes events from the calendar provider",
+    );
     expect(document.body.textContent).toContain("Disconnect and keep a local copy");
   });
 });

@@ -29,8 +29,9 @@ async function renderCompose() {
 }
 
 function sendButton(): HTMLButtonElement {
-  const button = [...(host?.querySelectorAll("button") ?? [])]
-    .find((candidate) => candidate.textContent?.trim() === "Send");
+  const button = [...(host?.querySelectorAll("button") ?? [])].find(
+    (candidate) => candidate.textContent?.trim() === "Send",
+  );
   if (!(button instanceof HTMLButtonElement)) throw new Error("Send button not found");
   return button;
 }
@@ -73,7 +74,12 @@ async function dragFilesOverEditor(files: File[], onEditorDragOver: () => void) 
 
   const event = new Event("dragover", { bubbles: true, cancelable: true });
   Object.defineProperty(event, "dataTransfer", {
-    value: { files, items: files.map(() => ({ kind: "file" })), types: ["Files"], dropEffect: "none" },
+    value: {
+      files,
+      items: files.map(() => ({ kind: "file" })),
+      types: ["Files"],
+      dropEffect: "none",
+    },
   });
 
   await act(async () => editor.dispatchEvent(event));

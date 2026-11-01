@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
-use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
+use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use uuid::Uuid;
 
 use super::connectors::{PushOutcome, RemoteCalendar, RemoteChange, SyncBatch};
@@ -85,11 +85,7 @@ fn participation_text(value: ParticipationStatus) -> &'static str {
 }
 
 fn reminder_method(value: &str) -> ReminderMethod {
-    if value == "email" {
-        ReminderMethod::Email
-    } else {
-        ReminderMethod::Display
-    }
+    if value == "email" { ReminderMethod::Email } else { ReminderMethod::Display }
 }
 
 fn normalize_moment(moment: &EventMoment) -> rusqlite::Result<EventMoment> {
@@ -98,9 +94,7 @@ fn normalize_moment(moment: &EventMoment) -> rusqlite::Result<EventMoment> {
             let parsed = DateTime::parse_from_rfc3339(utc)
                 .map_err(|_| invalid("timed event values must be RFC3339 timestamps"))?;
             Ok(EventMoment::Timed {
-                utc: parsed
-                    .with_timezone(&Utc)
-                    .to_rfc3339_opts(SecondsFormat::Secs, true),
+                utc: parsed.with_timezone(&Utc).to_rfc3339_opts(SecondsFormat::Secs, true),
             })
         }
         EventMoment::AllDay { date } => {
@@ -114,16 +108,11 @@ fn normalize_moment(moment: &EventMoment) -> rusqlite::Result<EventMoment> {
 fn validate_mutation(input: &EventMutation) -> rusqlite::Result<EventMutation> {
     let title = input.title.trim();
     if title.is_empty() || title.len() > MAX_TITLE_BYTES {
-        return Err(invalid(
-            "event title is required and must be at most 512 bytes",
-        ));
+        return Err(invalid("event title is required and must be at most 512 bytes"));
     }
     if input.description.len() > MAX_DESCRIPTION_BYTES
         || input.location.len() > MAX_LOCATION_BYTES
-        || input
-            .conference_url
-            .as_ref()
-            .is_some_and(|value| value.len() > MAX_URL_BYTES)
+        || input.conference_url.as_ref().is_some_and(|value| value.len() > MAX_URL_BYTES)
     {
         return Err(invalid("event text exceeds the supported size"));
     }
@@ -142,9 +131,7 @@ fn validate_mutation(input: &EventMutation) -> rusqlite::Result<EventMutation> {
     }
     for reminder in &input.reminders {
         if !(0..=40_320).contains(&reminder.minutes_before) {
-            return Err(invalid(
-                "event reminder must be between 0 and 40320 minutes",
-            ));
+            return Err(invalid("event reminder must be between 0 and 40320 minutes"));
         }
     }
     if let Some(recurrence) = &input.recurrence {
@@ -174,9 +161,7 @@ fn validate_mutation(input: &EventMutation) -> rusqlite::Result<EventMutation> {
         }
         (EventMoment::AllDay { date: start }, EventMoment::AllDay { date: end }) => {
             if start >= end {
-                return Err(invalid(
-                    "all-day event end date must be exclusive and after start",
-                ));
+                return Err(invalid("all-day event end date must be exclusive and after start"));
             }
         }
         _ => return Err(invalid("event start and end must use the same time shape")),
@@ -203,14 +188,8 @@ fn replace_people_and_reminders(
     attendees: &[EventAttendee],
     reminders: &[EventReminder],
 ) -> rusqlite::Result<()> {
-    tx.execute(
-        "DELETE FROM calendar_event_attendees WHERE event_id=?1",
-        [event_id],
-    )?;
-    tx.execute(
-        "DELETE FROM calendar_event_reminders WHERE event_id=?1",
-        [event_id],
-    )?;
+    tx.execute("DELETE FROM calendar_event_attendees WHERE event_id=?1", [event_id])?;
+    tx.execute("DELETE FROM calendar_event_reminders WHERE event_id=?1", [event_id])?;
     for attendee in attendees {
         tx.execute(
             "INSERT INTO calendar_event_attendees
@@ -233,10 +212,7 @@ fn replace_people_and_reminders(
              (id, event_id, method, minutes_before, delivered_at)
              VALUES (?1, ?2, ?3, ?4, NULL)",
             params![
-                reminder
-                    .id
-                    .clone()
-                    .unwrap_or_else(|| format!("reminder:{}", Uuid::new_v4())),
+                reminder.id.clone().unwrap_or_else(|| format!("reminder:{}", Uuid::new_v4())),
                 event_id,
                 reminder.method.as_str(),
                 reminder.minutes_before,
@@ -253,11 +229,10 @@ fn queue_operation(
     kind: OperationKind,
     notify_attendees: bool,
 ) -> rusqlite::Result<()> {
-    let provider: String = tx.query_row(
-        "SELECT provider FROM calendar_sources WHERE id=?1",
-        [source_id],
-        |row| row.get(0),
-    )?;
+    let provider: String =
+        tx.query_row("SELECT provider FROM calendar_sources WHERE id=?1", [source_id], |row| {
+            row.get(0)
+        })?;
     if provider == "local" {
         tx.execute(
             "UPDATE calendar_events SET sync_state='local', updated_at=?2 WHERE id=?1",
@@ -313,15 +288,7 @@ fn insert_local_calendar(
           created_at, updated_at)
          VALUES (?1, ?2, NULL, ?3, '', ?4, ?5, 'owner', 1, 1, ?6,
                  (SELECT COUNT(*) FROM calendar_calendars), 0, ?7, ?7)",
-        params![
-            calendar_id,
-            source_id,
-            name,
-            color,
-            timezone,
-            is_default,
-            now
-        ],
+        params![calendar_id, source_id, name, color, timezone, is_default, now],
     )?;
     Ok(Calendar {
         id: calendar_id,
@@ -394,10 +361,10 @@ fn hydrate_event(
                 "SELECT recurrence_id FROM calendar_event_exceptions
                  WHERE series_event_id=?1 ORDER BY recurrence_id",
             )?;
-            let values = statement
+
+            statement
                 .query_map([&event.id], |row| row.get::<_, String>(0))?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            values
+                .collect::<rusqlite::Result<Vec<_>>>()?
         };
         if let Some(recurrence) = event.recurrence.as_mut() {
             recurrence.excluded_dates.extend(exception_ids);
@@ -441,14 +408,11 @@ fn hydrate_event(
 }
 
 fn read_event(connection: &Connection, id: &str) -> rusqlite::Result<Option<CalendarEvent>> {
-    let mut statement = connection.prepare(&format!(
-        "SELECT {EVENT_COLUMNS} FROM calendar_events WHERE id=?1"
-    ))?;
+    let mut statement =
+        connection.prepare(&format!("SELECT {EVENT_COLUMNS} FROM calendar_events WHERE id=?1"))?;
     let event = statement.query_row([id], event_from_row).optional()?;
     drop(statement);
-    event
-        .map(|value| hydrate_event(connection, value))
-        .transpose()
+    event.map(|value| hydrate_event(connection, value)).transpose()
 }
 
 fn insert_event(
@@ -472,9 +436,7 @@ fn insert_event(
     }
 
     let id = format!("event:{}", Uuid::new_v4());
-    let uid = uid
-        .map(str::to_string)
-        .unwrap_or_else(|| format!("{}@bharga.local", Uuid::new_v4()));
+    let uid = uid.map(str::to_string).unwrap_or_else(|| format!("{}@bharga.local", Uuid::new_v4()));
     let now = Utc::now().timestamp();
     tx.execute(
         "INSERT INTO calendar_events
@@ -664,9 +626,7 @@ impl Store {
                 .iter()
                 .flat_map(|calendar| {
                     [
-                        calendar
-                            .supports_sync_collection
-                            .then_some("syncCollection"),
+                        calendar.supports_sync_collection.then_some("syncCollection"),
                         calendar.supports_scheduling.then_some("scheduling"),
                     ]
                     .into_iter()
@@ -741,9 +701,7 @@ impl Store {
     ) -> rusqlite::Result<Calendar> {
         let name = name.trim();
         if name.is_empty() || name.len() > 256 {
-            return Err(invalid(
-                "calendar name is required and must be at most 256 bytes",
-            ));
+            return Err(invalid("calendar name is required and must be at most 256 bytes"));
         }
         timezone
             .parse::<chrono_tz::Tz>()
@@ -751,9 +709,7 @@ impl Store {
         let color = color.trim();
         if color.len() != 7
             || !color.starts_with('#')
-            || !color[1..]
-                .chars()
-                .all(|character| character.is_ascii_hexdigit())
+            || !color[1..].chars().all(|character| character.is_ascii_hexdigit())
         {
             return Err(invalid("calendar color must be a six-digit hex color"));
         }
@@ -768,7 +724,8 @@ impl Store {
                         capabilities, last_sync_at, sync_error, disabled
                  FROM calendar_sources ORDER BY created_at, id",
             )?;
-            let sources = statement
+
+            statement
                 .query_map([], |row| {
                     Ok(CalendarSource {
                         id: row.get(0)?,
@@ -783,8 +740,7 @@ impl Store {
                         disabled: row.get::<_, i64>(9)? != 0,
                     })
                 })?
-                .collect();
-            sources
+                .collect()
         })
     }
 
@@ -795,7 +751,8 @@ impl Store {
                         timezone, access_role, writable, visible, is_default, sort_order
                  FROM calendar_calendars WHERE deleted=0 ORDER BY sort_order, id",
             )?;
-            let calendars = statement
+
+            statement
                 .query_map([], |row| {
                     Ok(Calendar {
                         id: row.get(0)?,
@@ -812,8 +769,7 @@ impl Store {
                         sort_order: row.get(11)?,
                     })
                 })?
-                .collect();
-            calendars
+                .collect()
         })
     }
 
@@ -854,16 +810,14 @@ impl Store {
                        (start_kind='allDay' AND start_value < ?4 AND end_value > ?3)
                      ) ORDER BY start_value, end_value, id",
                 )?;
-                let ids = statement
+
+                statement
                     .query_map(params![start, end, start_date, end_date], |row| {
                         row.get::<_, String>(0)
                     })?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
-                ids
+                    .collect::<rusqlite::Result<Vec<_>>>()?
             };
-            ids.into_iter()
-                .filter_map(|id| read_event(connection, &id).transpose())
-                .collect()
+            ids.into_iter().filter_map(|id| read_event(connection, &id).transpose()).collect()
         })
     }
 
@@ -1020,13 +974,7 @@ impl Store {
         let input = validate_mutation(&input)?;
         self.with_calendar_transaction(|tx| {
             let (source_id, event) = insert_event(tx, &input, None, None, None)?;
-            queue_operation(
-                tx,
-                &source_id,
-                &event,
-                OperationKind::Create,
-                notify_attendees,
-            )?;
+            queue_operation(tx, &source_id, &event, OperationKind::Create, notify_attendees)?;
             read_event(tx, &event.id)?.ok_or_else(|| invalid("created event was not found"))
         })
     }
@@ -1048,13 +996,7 @@ impl Store {
         let input = validate_mutation(&input)?;
         self.with_calendar_transaction(|tx| {
             let (source_id, event) = update_event(tx, id, &input)?;
-            queue_operation(
-                tx,
-                &source_id,
-                &event,
-                OperationKind::Update,
-                notify_attendees,
-            )?;
+            queue_operation(tx, &source_id, &event, OperationKind::Update, notify_attendees)?;
             read_event(tx, &event.id)?.ok_or_else(|| invalid("updated event was not found"))
         })
     }
@@ -1073,9 +1015,7 @@ impl Store {
                 .filter(|event| event.recurrence.is_some() && event.parent_event_id.is_none())
                 .ok_or_else(|| invalid("recurring series does not exist"))?;
             if input.calendar_id != master.calendar_id {
-                return Err(invalid(
-                    "a recurrence exception must remain in its series calendar",
-                ));
+                return Err(invalid("a recurrence exception must remain in its series calendar"));
             }
             let existing_id = tx
                 .query_row(
@@ -1108,11 +1048,7 @@ impl Store {
                 params![master_id, recurrence_id, exception.id],
             )?;
             queue_operation(tx, &source_id, &exception, operation, notify_attendees)?;
-            Ok(SeriesSplit {
-                original: master,
-                following: None,
-                exception: Some(exception),
-            })
+            Ok(SeriesSplit { original: master, following: None, exception: Some(exception) })
         })
     }
 
@@ -1169,11 +1105,7 @@ impl Store {
                 notify_attendees,
             )?;
             debug_assert_eq!(master.id, original.id);
-            Ok(SeriesSplit {
-                original,
-                following: Some(following),
-                exception: None,
-            })
+            Ok(SeriesSplit { original, following: Some(following), exception: None })
         })
     }
 
@@ -1238,7 +1170,8 @@ impl Store {
                  LEFT JOIN calendar_sync_state s ON s.calendar_id=c.id
                  WHERE c.source_id=?1 AND c.deleted=0 ORDER BY c.sort_order, c.id",
             )?;
-            let targets = statement
+
+            statement
                 .query_map([source_id], |row| {
                     Ok(CalendarSyncTarget {
                         calendar: Calendar {
@@ -1259,8 +1192,7 @@ impl Store {
                         cursor: row.get(13)?,
                     })
                 })?
-                .collect();
-            targets
+                .collect()
         })
     }
 
@@ -1278,7 +1210,8 @@ impl Store {
                  WHERE source_id=?1 AND next_retry_at<=?2
                  ORDER BY created_at, rowid LIMIT 100",
             )?;
-            let operations = statement
+
+            statement
                 .query_map(params![source_id, now], |row| {
                     Ok(CalendarOperation {
                         id: row.get(0)?,
@@ -1294,8 +1227,7 @@ impl Store {
                         last_error: row.get(10)?,
                     })
                 })?
-                .collect();
-            operations
+                .collect()
         })
     }
 
@@ -1318,10 +1250,7 @@ impl Store {
                     operation.revision,
                 ],
             )?;
-            tx.execute(
-                "DELETE FROM calendar_operations WHERE id=?1",
-                [&operation.id],
-            )?;
+            tx.execute("DELETE FROM calendar_operations WHERE id=?1", [&operation.id])?;
             Ok(())
         })
     }
@@ -1499,11 +1428,7 @@ impl Store {
                     now,
                     error_code,
                     retry_at,
-                    if auth_required {
-                        "reauthorizationRequired"
-                    } else {
-                        "error"
-                    },
+                    if auth_required { "reauthorizationRequired" } else { "error" },
                 ],
             )?;
             Ok(())
@@ -1516,7 +1441,8 @@ impl Store {
                 "SELECT event_id, local_json, remote_json, provider_version, created_at
                  FROM calendar_conflicts ORDER BY created_at, event_id",
             )?;
-            let conflicts = statement
+
+            statement
                 .query_map([], |row| {
                     let local_json: String = row.get(1)?;
                     let remote_json: String = row.get(2)?;
@@ -1540,8 +1466,7 @@ impl Store {
                         created_at: row.get(4)?,
                     })
                 })?
-                .collect();
-            conflicts
+                .collect()
         })
     }
 
@@ -1562,10 +1487,7 @@ impl Store {
                 .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
             let remote: CalendarEvent = serde_json::from_str(&remote_json)
                 .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
-            tx.execute(
-                "DELETE FROM calendar_operations WHERE event_id=?1",
-                [event_id],
-            )?;
+            tx.execute("DELETE FROM calendar_operations WHERE event_id=?1", [event_id])?;
             let now = Utc::now().timestamp();
             let mut resolved = Vec::new();
             match resolution {
@@ -1609,10 +1531,7 @@ impl Store {
                     }
                 }
             }
-            tx.execute(
-                "DELETE FROM calendar_conflicts WHERE event_id=?1",
-                [event_id],
-            )?;
+            tx.execute("DELETE FROM calendar_conflicts WHERE event_id=?1", [event_id])?;
             Ok(resolved)
         })
     }
@@ -1658,7 +1577,8 @@ impl Store {
                    AND e.start_value>=?1 AND e.start_value<=?2
                  ORDER BY e.start_value, r.minutes_before DESC LIMIT 2000",
             )?;
-            let candidates = statement
+
+            statement
                 .query_map(params![window_start, window_end], |row| {
                     Ok(ReminderCandidate {
                         id: row.get(0)?,
@@ -1671,8 +1591,7 @@ impl Store {
                         minutes_before: row.get(8)?,
                     })
                 })?
-                .collect();
-            candidates
+                .collect()
         })
     }
 
@@ -1716,11 +1635,7 @@ impl Store {
         if calendar_ids.is_empty() || calendar_ids.len() > 500 {
             return Err(invalid("calendar order is invalid"));
         }
-        if calendar_ids
-            .iter()
-            .collect::<std::collections::HashSet<_>>()
-            .len()
-            != calendar_ids.len()
+        if calendar_ids.iter().collect::<std::collections::HashSet<_>>().len() != calendar_ids.len()
         {
             return Err(invalid("calendar order contains duplicate entries"));
         }
@@ -1754,11 +1669,9 @@ impl Store {
     ) -> rusqlite::Result<()> {
         self.with_calendar_transaction(|tx| {
             let label: String = tx
-                .query_row(
-                    "SELECT label FROM calendar_sources WHERE id=?1",
-                    [source_id],
-                    |row| row.get(0),
-                )
+                .query_row("SELECT label FROM calendar_sources WHERE id=?1", [source_id], |row| {
+                    row.get(0)
+                })
                 .optional()?
                 .ok_or_else(|| invalid("calendar source was not found"))?;
             if policy == CalendarSourceRemovalPolicy::KeepLocalCopy {

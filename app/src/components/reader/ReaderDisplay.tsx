@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
 import { Select } from "@/components/ui/Select";
 import { Tooltip } from "@/components/ui/Tooltip";
 import type { MessageDisplay, MessageLayout } from "@/lib/emailFrameLayout";
@@ -35,18 +35,42 @@ export function ReaderDisplayControls() {
         ariaLabel="Message layout"
         value={layout}
         onChange={(value) => setLayout(value === "original" ? "original" : "fit")}
-        options={[{ value: "fit", label: "Fit width" }, { value: "original", label: "Original layout" }]}
+        options={[
+          { value: "fit", label: "Fit width" },
+          { value: "original", label: "Original layout" },
+        ]}
       />
       <div className="reader-zoom" role="group" aria-label="Message zoom controls">
         <Tooltip label="Zoom out" side="bottom">
-          <button type="button" className="iconbtn" aria-label="Zoom out" disabled={index <= 0} onClick={() => setZoom(ZOOM_LEVELS[Math.max(0, index - 1)])}>−</button>
+          <button
+            type="button"
+            className="iconbtn"
+            aria-label="Zoom out"
+            disabled={index <= 0}
+            onClick={() => setZoom(ZOOM_LEVELS[Math.max(0, index - 1)])}
+          >
+            −
+          </button>
         </Tooltip>
-        <Select ariaLabel="Message zoom" value={String(zoom)} onChange={(value) => {
-          const next = ZOOM_LEVELS.find((level) => level === Number(value));
-          if (next !== undefined) setZoom(next);
-        }} options={ZOOM_LEVELS.map((level) => ({ value: String(level), label: `${level}%` }))} />
+        <Select
+          ariaLabel="Message zoom"
+          value={String(zoom)}
+          onChange={(value) => {
+            const next = ZOOM_LEVELS.find((level) => level === Number(value));
+            if (next !== undefined) setZoom(next);
+          }}
+          options={ZOOM_LEVELS.map((level) => ({ value: String(level), label: `${level}%` }))}
+        />
         <Tooltip label="Zoom in" side="bottom">
-          <button type="button" className="iconbtn" aria-label="Zoom in" disabled={index >= ZOOM_LEVELS.length - 1} onClick={() => setZoom(ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, index + 1)])}>+</button>
+          <button
+            type="button"
+            className="iconbtn"
+            aria-label="Zoom in"
+            disabled={index >= ZOOM_LEVELS.length - 1}
+            onClick={() => setZoom(ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, index + 1)])}
+          >
+            +
+          </button>
         </Tooltip>
       </div>
     </div>

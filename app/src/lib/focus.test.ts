@@ -26,7 +26,7 @@ describe("dialog focus helpers", () => {
 
   it("wraps Shift+Tab from the first control to the last", () => {
     const host = document.createElement("div");
-    host.innerHTML = '<button>First</button><button>Last</button>';
+    host.innerHTML = "<button>First</button><button>Last</button>";
     document.body.append(host);
     const [first, last] = focusableElements(host);
     first.focus();

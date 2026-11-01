@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { deriveChips, orgFromAddress } from "@/lib/smartChips";
 import type { Thread } from "@/types";
 
@@ -14,7 +14,15 @@ function thread(p: Partial<Thread> & { id: string; from: string }): Thread {
     unread: p.unread ?? false,
     labels: p.labels ?? [],
     view: p.view ?? ["inbox"],
-    messages: [{ id: "m", from: { name: "", address: p.from }, to: [], when: "2026-06-01T10:00:00Z", bodyHtml: "" }],
+    messages: [
+      {
+        id: "m",
+        from: { name: "", address: p.from },
+        to: [],
+        when: "2026-06-01T10:00:00Z",
+        bodyHtml: "",
+      },
+    ],
   };
 }
 
@@ -57,10 +65,10 @@ describe("deriveChips", () => {
   });
 
   it("excludes the user's own domain from clustering", () => {
-    const chips = deriveChips([
-      thread({ id: "1", from: "me@self.com" }),
-      thread({ id: "2", from: "you@self.com" }),
-    ], "self.com");
+    const chips = deriveChips(
+      [thread({ id: "1", from: "me@self.com" }), thread({ id: "2", from: "you@self.com" })],
+      "self.com",
+    );
     expect(chips.some((c) => c.id === "org:Self")).toBe(false);
   });
 

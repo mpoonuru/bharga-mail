@@ -19,16 +19,19 @@ export function Tooltip({
   block?: boolean;
   children: ReactNode;
 }) {
-  const control = isValidElement<LabelableProps>(children)
-    && !children.props["aria-label"]
-    && !children.props["aria-labelledby"]
+  const control =
+    isValidElement<LabelableProps>(children) &&
+    !children.props["aria-label"] &&
+    !children.props["aria-labelledby"]
       ? cloneElement(children, { "aria-label": label })
       : children;
 
   return (
     <span className={`tip-wrap${block ? " tip-block" : ""}`}>
       {control}
-      <span aria-hidden="true" role="tooltip" className={`tip tip-${side}`}>{label}</span>
+      <span aria-hidden="true" role="tooltip" className={`tip tip-${side}`}>
+        {label}
+      </span>
     </span>
   );
 }

@@ -7,8 +7,8 @@ use chrono::{
     Datelike, Duration, LocalResult, NaiveDate, NaiveDateTime, SecondsFormat, TimeZone, Utc,
     Weekday,
 };
-use reqwest::{header, Client, Method, StatusCode, Url};
-use serde_json::{json, Value};
+use reqwest::{Client, Method, StatusCode, Url, header};
+use serde_json::{Value, json};
 
 use super::{
     BusyInterval, CalendarConnector, ConnectorError, ConnectorErrorKind, FreeBusyRequest,
@@ -71,11 +71,7 @@ pub fn oauth_config() -> OAuthConfig {
         client_id: std::env::var("BHARGA_MS_CALENDAR_CLIENT_ID")
             .or_else(|_| std::env::var("BHARGA_MS_CLIENT_ID"))
             .unwrap_or_default(),
-        scopes: vec![
-            "offline_access".into(),
-            "User.Read".into(),
-            "Calendars.ReadWrite".into(),
-        ],
+        scopes: vec!["offline_access".into(), "User.Read".into(), "Calendars.ReadWrite".into()],
         purpose: OAuthPurpose::Calendar,
         extra_auth_params: Vec::new(),
     }
@@ -182,15 +178,13 @@ impl MicrosoftConnector {
         })
     }
     fn opaque_link(&self, value: &str) -> Result<Url, ConnectorError> {
-        Url::parse(value)
-            .or_else(|_| self.api_url.join(value))
-            .map_err(|_| {
-                error(
-                    ConnectorErrorKind::Permanent,
-                    "invalid-delta-link",
-                    "Microsoft Graph returned an invalid delta link",
-                )
-            })
+        Url::parse(value).or_else(|_| self.api_url.join(value)).map_err(|_| {
+            error(
+                ConnectorErrorKind::Permanent,
+                "invalid-delta-link",
+                "Microsoft Graph returned an invalid delta link",
+            )
+        })
     }
     async fn request(
         &self,
@@ -263,16 +257,10 @@ fn graph_timezone(value: &str) -> &str {
 
 fn graph_moment(value: &Value, all_day: bool) -> Result<EventMoment, ConnectorError> {
     let raw = value["dateTime"].as_str().ok_or_else(|| {
-        error(
-            ConnectorErrorKind::Permanent,
-            "invalid-event",
-            "Microsoft event time is missing",
-        )
+        error(ConnectorErrorKind::Permanent, "invalid-event", "Microsoft event time is missing")
     })?;
     if all_day {
-        return Ok(EventMoment::AllDay {
-            date: raw.get(..10).unwrap_or(raw).into(),
-        });
+        return Ok(EventMoment::AllDay { date: raw.get(..10).unwrap_or(raw).into() });
     }
     let utc = if let Ok(value) = chrono::DateTime::parse_from_rfc3339(raw) {
         value.with_timezone(&Utc)
@@ -302,22 +290,16 @@ fn graph_moment(value: &Value, all_day: bool) -> Result<EventMoment, ConnectorEr
                     ConnectorErrorKind::Permanent,
                     "invalid-event",
                     "Microsoft event time falls in a timezone gap",
-                ))
+                ));
             }
         }
     };
-    Ok(EventMoment::Timed {
-        utc: utc.to_rfc3339_opts(SecondsFormat::Secs, true),
-    })
+    Ok(EventMoment::Timed { utc: utc.to_rfc3339_opts(SecondsFormat::Secs, true) })
 }
 
 fn graph_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, ConnectorError> {
     let id = value["id"].as_str().ok_or_else(|| {
-        error(
-            ConnectorErrorKind::Permanent,
-            "invalid-event",
-            "Microsoft event has no id",
-        )
+        error(ConnectorErrorKind::Permanent, "invalid-event", "Microsoft event has no id")
     })?;
     let all_day = value["isAllDay"].as_bool().unwrap_or(false);
     let attendees = value["attendees"]
@@ -327,9 +309,7 @@ fn graph_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Connec
                 .iter()
                 .filter_map(|attendee| {
                     Some(EventAttendee {
-                        name: attendee["emailAddress"]["name"]
-                            .as_str()
-                            .map(str::to_string),
+                        name: attendee["emailAddress"]["name"].as_str().map(str::to_string),
                         email: attendee["emailAddress"]["address"].as_str()?.into(),
                         role: if attendee["type"].as_str() == Some("optional") {
                             AttendeeRole::Optional
@@ -350,16 +330,12 @@ fn graph_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Connec
         })
         .unwrap_or_default();
     let timezone = iana_timezone(
-        value["originalStartTimeZone"]
-            .as_str()
-            .or_else(|| value["start"]["timeZone"].as_str()),
+        value["originalStartTimeZone"].as_str().or_else(|| value["start"]["timeZone"].as_str()),
     );
     let recurrence = value["recurrence"]
         .as_object()
         .map(|_| -> Result<RecurrenceSet, ConnectorError> {
-            let frequency = match value["recurrence"]["pattern"]["type"]
-                .as_str()
-                .unwrap_or("daily")
+            let frequency = match value["recurrence"]["pattern"]["type"].as_str().unwrap_or("daily")
             {
                 "weekly" => "WEEKLY",
                 "absoluteMonthly" | "relativeMonthly" => "MONTHLY",
@@ -368,9 +344,7 @@ fn graph_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Connec
             };
             let mut rule = format!(
                 "FREQ={frequency};INTERVAL={}",
-                value["recurrence"]["pattern"]["interval"]
-                    .as_i64()
-                    .unwrap_or(1)
+                value["recurrence"]["pattern"]["interval"].as_i64().unwrap_or(1)
             );
             if let Some(count) = value["recurrence"]["range"]["numberOfOccurrences"].as_i64() {
                 rule.push_str(&format!(";COUNT={count}"));
@@ -399,11 +373,7 @@ fn graph_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Connec
                     rule.push_str(&format!(";BYSETPOS={position}"));
                 }
             }
-            Ok(RecurrenceSet {
-                rules: vec![rule],
-                dates: Vec::new(),
-                excluded_dates: Vec::new(),
-            })
+            Ok(RecurrenceSet { rules: vec![rule], dates: Vec::new(), excluded_dates: Vec::new() })
         })
         .transpose()?;
     Ok(CalendarEvent {
@@ -413,22 +383,15 @@ fn graph_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Connec
         provider_id: Some(id.into()),
         title: value["subject"].as_str().unwrap_or("(untitled)").into(),
         description: value["body"]["content"].as_str().unwrap_or("").into(),
-        location: value["location"]["displayName"]
-            .as_str()
-            .unwrap_or("")
-            .into(),
-        conference_url: value["onlineMeeting"]["joinUrl"]
-            .as_str()
-            .map(str::to_string),
+        location: value["location"]["displayName"].as_str().unwrap_or("").into(),
+        conference_url: value["onlineMeeting"]["joinUrl"].as_str().map(str::to_string),
         source_thread_id: None,
         start: graph_moment(&value["start"], all_day)?,
         end: graph_moment(&value["end"], all_day)?,
         timezone,
         recurrence,
         recurrence_id: value["originalStart"].as_str().map(str::to_string),
-        parent_event_id: value["seriesMasterId"]
-            .as_str()
-            .map(|id| format!("microsoft:{id}")),
+        parent_event_id: value["seriesMasterId"].as_str().map(|id| format!("microsoft:{id}")),
         status: if value["isCancelled"].as_bool() == Some(true) {
             EventStatus::Cancelled
         } else {
@@ -444,23 +407,17 @@ fn graph_event(value: &Value, calendar_id: &str) -> Result<CalendarEvent, Connec
             Some("confidential") => EventVisibility::Confidential,
             _ => EventVisibility::Default,
         },
-        organizer: value["organizer"]["emailAddress"]["address"]
-            .as_str()
-            .map(|email| EventPerson {
-                name: value["organizer"]["emailAddress"]["name"]
-                    .as_str()
-                    .map(str::to_string),
+        organizer: value["organizer"]["emailAddress"]["address"].as_str().map(|email| {
+            EventPerson {
+                name: value["organizer"]["emailAddress"]["name"].as_str().map(str::to_string),
                 email: email.into(),
-            }),
+            }
+        }),
         attendees,
         reminders: value["reminderMinutesBeforeStart"]
             .as_i64()
             .map(|minutes_before| {
-                vec![EventReminder {
-                    id: None,
-                    method: ReminderMethod::Display,
-                    minutes_before,
-                }]
+                vec![EventReminder { id: None, method: ReminderMethod::Display, minutes_before }]
             })
             .unwrap_or_default(),
         sequence: 0,
@@ -484,18 +441,13 @@ fn graph_until(end_date: &str, timezone: &str, all_day: bool) -> Result<String, 
         return Ok(date.format("%Y%m%d").to_string());
     }
     let local = date.and_hms_opt(23, 59, 59).ok_or_else(invalid_end)?;
-    let timezone = timezone
-        .parse::<chrono_tz::Tz>()
-        .map_err(|_| invalid_end())?;
+    let timezone = timezone.parse::<chrono_tz::Tz>().map_err(|_| invalid_end())?;
     let instant = match timezone.from_local_datetime(&local) {
         LocalResult::Single(value) => value,
         LocalResult::Ambiguous(_, latest) => latest,
         LocalResult::None => return Err(invalid_end()),
     };
-    Ok(instant
-        .with_timezone(&Utc)
-        .format("%Y%m%dT%H%M%SZ")
-        .to_string())
+    Ok(instant.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string())
 }
 
 fn graph_day_code(day: &str) -> Option<&'static str> {
@@ -512,11 +464,7 @@ fn graph_day_code(day: &str) -> Option<&'static str> {
 }
 
 fn rrule_day(day: &str) -> Option<&'static str> {
-    match day
-        .trim()
-        .trim_start_matches(['+', '-'])
-        .trim_start_matches(char::is_numeric)
-    {
+    match day.trim().trim_start_matches(['+', '-']).trim_start_matches(char::is_numeric) {
         "MO" => Some("monday"),
         "TU" => Some("tuesday"),
         "WE" => Some("wednesday"),
@@ -597,19 +545,9 @@ fn recurrence_json(event: &CalendarEvent) -> Result<Option<Value>, ConnectorErro
         .filter_map(|part| part.split_once('='))
         .map(|(key, value)| (key.to_ascii_uppercase(), value.to_ascii_uppercase()))
         .collect::<std::collections::HashMap<_, _>>();
-    let supported = [
-        "FREQ",
-        "INTERVAL",
-        "COUNT",
-        "UNTIL",
-        "BYDAY",
-        "BYSETPOS",
-        "BYMONTHDAY",
-        "BYMONTH",
-    ];
-    if properties
-        .keys()
-        .any(|key| !supported.contains(&key.as_str()))
+    let supported =
+        ["FREQ", "INTERVAL", "COUNT", "UNTIL", "BYDAY", "BYSETPOS", "BYMONTHDAY", "BYMONTH"];
+    if properties.keys().any(|key| !supported.contains(&key.as_str()))
         || (properties.contains_key("COUNT") && properties.contains_key("UNTIL"))
     {
         return Err(error(
@@ -647,9 +585,7 @@ fn recurrence_json(event: &CalendarEvent) -> Result<Option<Value>, ConnectorErro
             pattern["type"] = json!("daily");
         }
         Some("WEEKLY") => {
-            if ["BYSETPOS", "BYMONTHDAY", "BYMONTH"]
-                .iter()
-                .any(|key| properties.contains_key(*key))
+            if ["BYSETPOS", "BYMONTHDAY", "BYMONTH"].iter().any(|key| properties.contains_key(*key))
             {
                 return Err(error(
                     ConnectorErrorKind::Permanent,
@@ -660,10 +596,7 @@ fn recurrence_json(event: &CalendarEvent) -> Result<Option<Value>, ConnectorErro
             pattern["type"] = json!("weekly");
             let days = if let Some(value) = properties.get("BYDAY") {
                 let raw = value.split(',').collect::<Vec<_>>();
-                let days = raw
-                    .iter()
-                    .filter_map(|day| rrule_day(day))
-                    .collect::<Vec<_>>();
+                let days = raw.iter().filter_map(|day| rrule_day(day)).collect::<Vec<_>>();
                 if days.len() != raw.len() || raw.iter().any(|day| day.len() != 2) {
                     return Err(error(
                         ConnectorErrorKind::Permanent,
@@ -712,14 +645,11 @@ fn recurrence_json(event: &CalendarEvent) -> Result<Option<Value>, ConnectorErro
                 pattern["index"] = json!(index);
             } else {
                 pattern["type"] = json!("absoluteMonthly");
-                let day = properties
-                    .get("BYMONTHDAY")
-                    .map(String::as_str)
-                    .unwrap_or_else(|| {
-                        // The provider requires an explicit day even when RFC 5545
-                        // implies the DTSTART day.
-                        ""
-                    });
+                let day = properties.get("BYMONTHDAY").map(String::as_str).unwrap_or_else(|| {
+                    // The provider requires an explicit day even when RFC 5545
+                    // implies the DTSTART day.
+                    ""
+                });
                 let day = if day.is_empty() {
                     start_date.day()
                 } else {
@@ -735,10 +665,7 @@ fn recurrence_json(event: &CalendarEvent) -> Result<Option<Value>, ConnectorErro
             }
         }
         Some("YEARLY") => {
-            if ["BYDAY", "BYSETPOS"]
-                .iter()
-                .any(|key| properties.contains_key(*key))
-            {
+            if ["BYDAY", "BYSETPOS"].iter().any(|key| properties.contains_key(*key)) {
                 return Err(error(
                     ConnectorErrorKind::Permanent,
                     "unsupported-recurrence",
@@ -778,7 +705,7 @@ fn recurrence_json(event: &CalendarEvent) -> Result<Option<Value>, ConnectorErro
                 ConnectorErrorKind::Permanent,
                 "unsupported-recurrence",
                 "Microsoft Calendar does not support this recurrence frequency",
-            ))
+            ));
         }
     }
     let mut range = json!({
@@ -796,10 +723,7 @@ fn recurrence_json(event: &CalendarEvent) -> Result<Option<Value>, ConnectorErro
         range["type"] = json!("numbered");
         range["numberOfOccurrences"] = json!(count);
     } else if let Some(until) = properties.get("UNTIL") {
-        let digits = until
-            .chars()
-            .filter(char::is_ascii_digit)
-            .collect::<String>();
+        let digits = until.chars().filter(char::is_ascii_digit).collect::<String>();
         if digits.len() < 8 {
             return Err(error(
                 ConnectorErrorKind::Permanent,
@@ -808,12 +732,7 @@ fn recurrence_json(event: &CalendarEvent) -> Result<Option<Value>, ConnectorErro
             ));
         }
         range["type"] = json!("endDate");
-        range["endDate"] = json!(format!(
-            "{}-{}-{}",
-            &digits[..4],
-            &digits[4..6],
-            &digits[6..8]
-        ));
+        range["endDate"] = json!(format!("{}-{}-{}", &digits[..4], &digits[4..6], &digits[6..8]));
     }
     Ok(Some(json!({ "pattern": pattern, "range": range })))
 }
@@ -968,21 +887,15 @@ impl CalendarConnector for MicrosoftConnector {
                     url = self.opaque_link(next)?;
                     continue;
                 }
-                let terminal = value["@odata.deltaLink"]
-                    .as_str()
-                    .map(str::to_string)
-                    .ok_or_else(|| {
+                let terminal =
+                    value["@odata.deltaLink"].as_str().map(str::to_string).ok_or_else(|| {
                         error(
                             ConnectorErrorKind::Permanent,
                             "delta-link-missing",
                             "Microsoft Graph did not return a terminal delta link",
                         )
                     })?;
-                return Ok(SyncBatch {
-                    changes,
-                    next_cursor: Some(terminal),
-                    ctag: None,
-                });
+                return Ok(SyncBatch { changes, next_cursor: Some(terminal), ctag: None });
             }
             if active_cursor.is_none() && restarted {
                 continue;
@@ -1028,11 +941,9 @@ impl CalendarConnector for MicrosoftConnector {
             })?;
         let base = format!("me/calendars/{}/events", urlencoding::encode(calendar_id));
         let (method, path, body) = match operation.kind {
-            OperationKind::Create => (
-                Method::POST,
-                base,
-                Some(graph_json(&event, Some(&operation.id), true)?),
-            ),
+            OperationKind::Create => {
+                (Method::POST, base, Some(graph_json(&event, Some(&operation.id), true)?))
+            }
             OperationKind::Update => (
                 Method::PATCH,
                 format!(
@@ -1054,7 +965,7 @@ impl CalendarConnector for MicrosoftConnector {
                     ConnectorErrorKind::Permanent,
                     "unsupported-operation",
                     "Invitation delivery uses explicit event writes",
-                ))
+                ));
             }
         };
         let (_, value, headers) = self
@@ -1066,31 +977,17 @@ impl CalendarConnector for MicrosoftConnector {
             )
             .await?;
         Ok(PushOutcome {
-            href: value["id"]
-                .as_str()
-                .map(str::to_string)
-                .or_else(|| event.provider_id.clone()),
-            provider_version: value["@odata.etag"]
-                .as_str()
-                .map(str::to_string)
-                .or_else(|| {
-                    headers
-                        .get(header::ETAG)
-                        .and_then(|value| value.to_str().ok())
-                        .map(str::to_string)
-                }),
+            href: value["id"].as_str().map(str::to_string).or_else(|| event.provider_id.clone()),
+            provider_version: value["@odata.etag"].as_str().map(str::to_string).or_else(|| {
+                headers.get(header::ETAG).and_then(|value| value.to_str().ok()).map(str::to_string)
+            }),
         })
     }
 
     async fn free_busy(&self, request: &FreeBusyRequest) -> Result<FreeBusyResult, ConnectorError> {
         let body = json!({ "schedules": request.attendees, "startTime": { "dateTime": request.range.start, "timeZone": "UTC" }, "endTime": { "dateTime": request.range.end, "timeZone": "UTC" }, "availabilityViewInterval": 30 });
         let (_, value, _) = self
-            .request(
-                Method::POST,
-                self.endpoint("me/calendar/getSchedule")?,
-                Some(&body),
-                None,
-            )
+            .request(Method::POST, self.endpoint("me/calendar/getSchedule")?, Some(&body), None)
             .await?;
         let mut intervals = Vec::new();
         let mut complete = true;
@@ -1109,10 +1006,7 @@ impl CalendarConnector for MicrosoftConnector {
                 }
             }
         }
-        Ok(FreeBusyResult {
-            intervals,
-            complete,
-        })
+        Ok(FreeBusyResult { intervals, complete })
     }
 }
 
@@ -1171,10 +1065,7 @@ mod tests {
         let value = graph_json(&event, None, false).unwrap();
         assert_eq!(value["recurrence"]["pattern"]["type"], "weekly");
         assert_eq!(value["recurrence"]["pattern"]["interval"], 2);
-        assert_eq!(
-            value["recurrence"]["pattern"]["daysOfWeek"],
-            json!(["monday", "wednesday"])
-        );
+        assert_eq!(value["recurrence"]["pattern"]["daysOfWeek"], json!(["monday", "wednesday"]));
         assert_eq!(value["recurrence"]["range"]["type"], "endDate");
         assert_eq!(value["recurrence"]["range"]["endDate"], "2026-12-31");
     }
@@ -1189,20 +1080,11 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(
-            incoming,
-            EventMoment::Timed {
-                utc: "2026-09-28T07:00:00Z".into()
-            }
-        );
+        assert_eq!(incoming, EventMoment::Timed { utc: "2026-09-28T07:00:00Z".into() });
 
         let mut event = graph_event(&recurring_graph_event(), "primary").unwrap();
-        event.start = EventMoment::Timed {
-            utc: "2026-09-28T07:00:00Z".into(),
-        };
-        event.end = EventMoment::Timed {
-            utc: "2026-09-28T08:00:00Z".into(),
-        };
+        event.start = EventMoment::Timed { utc: "2026-09-28T07:00:00Z".into() };
+        event.end = EventMoment::Timed { utc: "2026-09-28T08:00:00Z".into() };
         event.timezone = "Europe/Berlin".into();
         let outgoing = graph_json(&event, None, false).unwrap();
         assert_eq!(outgoing["start"]["dateTime"], "2026-09-28T09:00:00");
@@ -1212,12 +1094,7 @@ mod tests {
     #[test]
     fn rejects_recurrence_exceptions_graph_cannot_represent_without_loss() {
         let mut event = graph_event(&recurring_graph_event(), "primary").unwrap();
-        event
-            .recurrence
-            .as_mut()
-            .unwrap()
-            .excluded_dates
-            .push("2026-10-12T09:00:00Z".into());
+        event.recurrence.as_mut().unwrap().excluded_dates.push("2026-10-12T09:00:00Z".into());
         let error = graph_json(&event, None, false).unwrap_err();
         assert_eq!(error.code, "unsupported-recurrence");
     }
@@ -1244,10 +1121,7 @@ mod tests {
             .for_calendar("primary", None);
         let batch = connector.pull(None).await.unwrap();
         assert_eq!(batch.next_cursor.as_deref(), Some("/terminal-delta"));
-        assert!(batch
-            .changes
-            .iter()
-            .any(|change| matches!(change, RemoteChange::Delete { .. })));
+        assert!(batch.changes.iter().any(|change| matches!(change, RemoteChange::Delete { .. })));
         assert_eq!(server.paths().len(), 2);
     }
 
@@ -1258,9 +1132,6 @@ mod tests {
         let error = connector.discover().await.unwrap_err();
         assert_eq!(error.kind, ConnectorErrorKind::AuthRequired);
         assert_eq!(oauth_config().purpose, OAuthPurpose::Calendar);
-        assert!(oauth_config()
-            .scopes
-            .iter()
-            .all(|scope| !scope.starts_with("Mail.")));
+        assert!(oauth_config().scopes.iter().all(|scope| !scope.starts_with("Mail.")));
     }
 }

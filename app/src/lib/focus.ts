@@ -14,12 +14,18 @@ function isUnavailable(node: HTMLElement, container: HTMLElement): boolean {
   let current: HTMLElement | null = node;
   while (current) {
     if (
-      current.hidden
-      || current.hasAttribute("inert")
-      || current.getAttribute("aria-hidden") === "true"
-    ) return true;
+      current.hidden ||
+      current.hasAttribute("inert") ||
+      current.getAttribute("aria-hidden") === "true"
+    )
+      return true;
     const style = getComputedStyle(current);
-    if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") return true;
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.visibility === "collapse"
+    )
+      return true;
     if (current === container) break;
     current = current.parentElement;
   }
@@ -27,8 +33,9 @@ function isUnavailable(node: HTMLElement, container: HTMLElement): boolean {
 }
 
 export function focusableElements(container: HTMLElement): HTMLElement[] {
-  return [...container.querySelectorAll<HTMLElement>(FOCUSABLE)]
-    .filter((node) => !isUnavailable(node, container));
+  return [...container.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (node) => !isUnavailable(node, container),
+  );
 }
 
 export function containTabKey(event: KeyboardEvent, container: HTMLElement): void {

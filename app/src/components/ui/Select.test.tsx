@@ -26,14 +26,20 @@ describe("Select", () => {
       />,
     );
     const button = document.querySelector<HTMLButtonElement>('[aria-label="Security"]');
-    act(() => button?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    act(() =>
+      button?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })),
+    );
     await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
     expect(document.querySelector('[role="listbox"]')).not.toBeNull();
     const first = document.activeElement as HTMLButtonElement;
     act(() => first.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
     await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
     expect(document.activeElement?.textContent).toContain("None");
-    act(() => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    act(() =>
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      ),
+    );
     expect(onChange).toHaveBeenCalledWith("none");
   });
 
@@ -41,13 +47,24 @@ describe("Select", () => {
     const closeModal = vi.fn();
     renderTest(
       <Modal open onClose={closeModal} title="Account">
-        <Select ariaLabel="Security" value="ssl" onChange={vi.fn()} options={[{ value: "ssl", label: "SSL/TLS" }]} />
+        <Select
+          ariaLabel="Security"
+          value="ssl"
+          onChange={vi.fn()}
+          options={[{ value: "ssl", label: "SSL/TLS" }]}
+        />
       </Modal>,
     );
     const button = document.querySelector<HTMLButtonElement>('[aria-label="Security"]');
-    act(() => button?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    act(() =>
+      button?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })),
+    );
     await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-    act(() => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    act(() =>
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
 
     expect(document.querySelector('[role="listbox"]')).toBeNull();
     expect(document.querySelector('[role="dialog"]')).not.toBeNull();

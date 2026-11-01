@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 pub mod seed;
@@ -52,12 +52,9 @@ pub fn backup_before_migration(
         return Ok(None);
     }
 
-    let file_name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or_else(|| {
-            rusqlite::Error::InvalidParameterName("database path has no filename".into())
-        })?;
+    let file_name = path.file_name().and_then(|value| value.to_str()).ok_or_else(|| {
+        rusqlite::Error::InvalidParameterName("database path has no filename".into())
+    })?;
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%3fZ");
     let backup_path = path.with_file_name(format!("{file_name}.schema-{from}-to-{to}-{stamp}.db"));
     let backup_text = backup_path
@@ -170,19 +167,15 @@ pub struct Task {
 /// Transport security for a mail server connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum Security {
     /// Implicit TLS (IMAPS 993 / SMTPS 465).
+    #[default]
     Ssl,
     /// Upgrade a plaintext connection (IMAP 143 / submission 587).
     Starttls,
     /// No encryption (discouraged).
     None,
-}
-
-impl Default for Security {
-    fn default() -> Self {
-        Security::Ssl
-    }
 }
 
 impl Security {
@@ -248,17 +241,9 @@ pub struct AccountInfo {
     #[serde(rename = "displayName")]
     pub display_name: String,
     pub unread: u32,
-    #[serde(
-        rename = "lastSyncAt",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "lastSyncAt", default, skip_serializing_if = "Option::is_none")]
     pub last_sync_at: Option<i64>,
-    #[serde(
-        rename = "syncError",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "syncError", default, skip_serializing_if = "Option::is_none")]
     pub sync_error: Option<String>,
 }
 
@@ -330,9 +315,7 @@ impl Store {
         };
         backup_before_migration(&path, previous_version, SCHEMA_VERSION)?;
         let conn = Connection::open(path)?;
-        let store = Store {
-            conn: Mutex::new(conn),
-        };
+        let store = Store { conn: Mutex::new(conn) };
         store.migrate()?;
         store.seed_if_empty();
         Ok(store)
@@ -356,7 +339,7 @@ impl Store {
     /// `CREATE TABLE IF NOT EXISTS` allowed.
     fn migrate(&self) -> rusqlite::Result<()> {
         let mut guard = self.conn.lock().unwrap();
-        let conn: &mut Connection = &mut *guard;
+        let conn: &mut Connection = &mut guard;
         // Pragmas must run outside a transaction. WAL = concurrent readers + one
         // writer; foreign_keys enforces referential integrity (fresh installs).
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
@@ -420,8 +403,7 @@ impl Store {
         }
         let empty = {
             let conn = self.conn.lock().unwrap();
-            conn.query_row("SELECT COUNT(*) FROM threads", [], |r| r.get::<_, i64>(0))
-                .unwrap_or(0)
+            conn.query_row("SELECT COUNT(*) FROM threads", [], |r| r.get::<_, i64>(0)).unwrap_or(0)
                 == 0
         };
         if empty {
@@ -433,7 +415,7 @@ impl Store {
 
     pub fn upsert_thread(&self, t: &Thread) -> rusqlite::Result<()> {
         let mut guard = self.conn.lock().unwrap();
-        let conn: &mut Connection = &mut *guard;
+        let conn: &mut Connection = &mut guard;
         let now = chrono::Utc::now().timestamp();
         // Canonical ordering key: newest parsed message time, falling back to the
         // thread's display time. Fixes the previous bug where sort_ts was never
@@ -470,7 +452,8 @@ impl Store {
             )?;
         }
         // Replace (not append) the FTS row so re-syncing a thread can't duplicate it.
-        let body = t.messages.iter().map(|m| strip_html(&m.body_html)).collect::<Vec<_>>().join(" ");
+        let body =
+            t.messages.iter().map(|m| strip_html(&m.body_html)).collect::<Vec<_>>().join(" ");
         tx.execute("DELETE FROM search WHERE thread_id=?1", params![t.id])?;
         tx.execute(
             "INSERT INTO search (thread_id, subject, body) VALUES (?1,?2,?3)",
@@ -497,7 +480,10 @@ impl Store {
     pub fn tombstone_thread(&self, thread_id: &str) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().timestamp();
-        conn.execute("UPDATE threads SET deleted=1, views='[]', updated_at=?2 WHERE id=?1", params![thread_id, now])?;
+        conn.execute(
+            "UPDATE threads SET deleted=1, views='[]', updated_at=?2 WHERE id=?1",
+            params![thread_id, now],
+        )?;
         let _ = conn.execute("DELETE FROM search WHERE thread_id=?1", params![thread_id]);
         Ok(())
     }
@@ -506,7 +492,7 @@ impl Store {
     /// row). Atomic; the AFTER DELETE trigger also covers FTS/embeddings.
     pub fn delete_thread(&self, thread_id: &str) -> rusqlite::Result<()> {
         let mut guard = self.conn.lock().unwrap();
-        let conn: &mut Connection = &mut *guard;
+        let conn: &mut Connection = &mut guard;
         let tx = conn.transaction()?;
         tx.execute("DELETE FROM messages WHERE thread_id=?1", params![thread_id])?;
         tx.execute("DELETE FROM embeddings WHERE thread_id=?1", params![thread_id])?;
@@ -520,12 +506,21 @@ impl Store {
     /// only on FK cascade) so it is correct even on DBs created before FK enforcement.
     pub fn delete_account(&self, account_id: &str) -> rusqlite::Result<()> {
         let mut guard = self.conn.lock().unwrap();
-        let conn: &mut Connection = &mut *guard;
+        let conn: &mut Connection = &mut guard;
         let tx = conn.transaction()?;
         let in_threads = "(SELECT id FROM threads WHERE account_id=?1)";
-        tx.execute(&format!("DELETE FROM search WHERE thread_id IN {in_threads}"), params![account_id])?;
-        tx.execute(&format!("DELETE FROM embeddings WHERE thread_id IN {in_threads}"), params![account_id])?;
-        tx.execute(&format!("DELETE FROM messages WHERE thread_id IN {in_threads}"), params![account_id])?;
+        tx.execute(
+            &format!("DELETE FROM search WHERE thread_id IN {in_threads}"),
+            params![account_id],
+        )?;
+        tx.execute(
+            &format!("DELETE FROM embeddings WHERE thread_id IN {in_threads}"),
+            params![account_id],
+        )?;
+        tx.execute(
+            &format!("DELETE FROM messages WHERE thread_id IN {in_threads}"),
+            params![account_id],
+        )?;
         tx.execute("DELETE FROM threads WHERE account_id=?1", params![account_id])?;
         tx.execute("DELETE FROM outbox WHERE account_id=?1", params![account_id])?;
         tx.execute("DELETE FROM folders WHERE account_id=?1", params![account_id])?;
@@ -545,7 +540,12 @@ impl Store {
     }
 
     /// Persist AI-generated artifacts (summary / draft) for a thread.
-    pub fn set_ai_artifacts(&self, thread_id: &str, summary: Option<&str>, draft: Option<&str>) -> rusqlite::Result<()> {
+    pub fn set_ai_artifacts(
+        &self,
+        thread_id: &str,
+        summary: Option<&str>,
+        draft: Option<&str>,
+    ) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         if let Some(s) = summary {
             conn.execute("UPDATE threads SET ai_summary=?1 WHERE id=?2", params![s, thread_id])?;
@@ -557,10 +557,17 @@ impl Store {
     }
 
     /// Set a thread's labels and (when prioritized) ensure it shows in Priority.
-    pub fn set_triage(&self, thread_id: &str, labels: &[String], priority: bool) -> rusqlite::Result<()> {
+    pub fn set_triage(
+        &self,
+        thread_id: &str,
+        labels: &[String],
+        priority: bool,
+    ) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         let views: Vec<String> = conn
-            .query_row("SELECT views FROM threads WHERE id=?1", [thread_id], |r| r.get::<_, String>(0))
+            .query_row("SELECT views FROM threads WHERE id=?1", [thread_id], |r| {
+                r.get::<_, String>(0)
+            })
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
@@ -579,11 +586,17 @@ impl Store {
     /// and re-sync, unlike the previous local-only toggle).
     pub fn set_thread_read(&self, thread_id: &str, unread: bool) -> rusqlite::Result<()> {
         let mut guard = self.conn.lock().unwrap();
-        let conn: &mut Connection = &mut *guard;
+        let conn: &mut Connection = &mut guard;
         let now = chrono::Utc::now().timestamp();
         let tx = conn.transaction()?;
-        tx.execute("UPDATE threads SET unread=?1, updated_at=?2 WHERE id=?3", params![unread as i64, now, thread_id])?;
-        tx.execute("UPDATE messages SET seen=?1 WHERE thread_id=?2", params![(!unread) as i64, thread_id])?;
+        tx.execute(
+            "UPDATE threads SET unread=?1, updated_at=?2 WHERE id=?3",
+            params![unread as i64, now, thread_id],
+        )?;
+        tx.execute(
+            "UPDATE messages SET seen=?1 WHERE thread_id=?2",
+            params![(!unread) as i64, thread_id],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -635,7 +648,10 @@ impl Store {
     pub fn set_thread_flag(&self, thread_id: &str, flagged: bool) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         if flagged {
-            conn.execute("INSERT OR IGNORE INTO thread_flags (thread_id) VALUES (?1)", params![thread_id])?;
+            conn.execute(
+                "INSERT OR IGNORE INTO thread_flags (thread_id) VALUES (?1)",
+                params![thread_id],
+            )?;
         } else {
             conn.execute("DELETE FROM thread_flags WHERE thread_id=?1", params![thread_id])?;
         }
@@ -659,8 +675,10 @@ impl Store {
     /// background poller compares before/after a sync to detect newly-arrived mail.
     pub fn unread_count(&self) -> i64 {
         let conn = self.conn.lock().unwrap();
-        conn.query_row("SELECT COUNT(*) FROM threads WHERE unread=1 AND deleted=0", [], |r| r.get(0))
-            .unwrap_or(0)
+        conn.query_row("SELECT COUNT(*) FROM threads WHERE unread=1 AND deleted=0", [], |r| {
+            r.get(0)
+        })
+        .unwrap_or(0)
     }
 
     /// Threads that still need an AI summary (for incremental triage).
@@ -684,7 +702,13 @@ impl Store {
         .flatten()
     }
 
-    pub fn upsert_account(&self, id: &str, email: &str, provider: &str, name: &str) -> rusqlite::Result<()> {
+    pub fn upsert_account(
+        &self,
+        id: &str,
+        email: &str,
+        provider: &str,
+        name: &str,
+    ) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO accounts (id,email,provider,display_name) VALUES (?1,?2,?3,?4)
@@ -757,11 +781,9 @@ impl Store {
     /// A missing Keychain key in this state is recovery-required, not first run.
     pub fn has_encrypted_secrets(&self) -> rusqlite::Result<bool> {
         let conn = self.conn.lock().unwrap();
-        conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM secrets WHERE value LIKE 'v1:%')",
-            [],
-            |row| row.get::<_, bool>(0),
-        )
+        conn.query_row("SELECT EXISTS(SELECT 1 FROM secrets WHERE value LIKE 'v1:%')", [], |row| {
+            row.get::<_, bool>(0)
+        })
     }
 
     /// Delete an encrypted credential row. Callers must handle failures so a
@@ -774,7 +796,13 @@ impl Store {
 
     // ---- folders (mailboxes) ----
 
-    pub fn upsert_folder(&self, account_id: &str, name: &str, role: Option<&str>, special_use: bool) -> rusqlite::Result<()> {
+    pub fn upsert_folder(
+        &self,
+        account_id: &str,
+        name: &str,
+        role: Option<&str>,
+        special_use: bool,
+    ) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO folders (id, account_id, name, role, special_use) VALUES (?1,?2,?3,?4,?5)
@@ -792,7 +820,8 @@ impl Store {
             "UPDATE threads SET folder=?3 WHERE account_id=?1 AND folder=?2",
             params![account_id, from, to],
         );
-        let _ = conn.execute("DELETE FROM folders WHERE id=?1", params![format!("{account_id}:{from}")]);
+        let _ = conn
+            .execute("DELETE FROM folders WHERE id=?1", params![format!("{account_id}:{from}")]);
     }
 
     /// After an IMAP DELETE: the mailbox and its mail are gone on the server, so
@@ -800,11 +829,24 @@ impl Store {
     pub fn delete_folder_local(&self, account_id: &str, name: &str) {
         let conn = self.conn.lock().unwrap();
         let in_folder = "(SELECT id FROM threads WHERE account_id=?1 AND folder=?2)";
-        let _ = conn.execute(&format!("DELETE FROM search WHERE thread_id IN {in_folder}"), params![account_id, name]);
-        let _ = conn.execute(&format!("DELETE FROM embeddings WHERE thread_id IN {in_folder}"), params![account_id, name]);
-        let _ = conn.execute(&format!("DELETE FROM messages WHERE thread_id IN {in_folder}"), params![account_id, name]);
-        let _ = conn.execute("DELETE FROM threads WHERE account_id=?1 AND folder=?2", params![account_id, name]);
-        let _ = conn.execute("DELETE FROM folders WHERE id=?1", params![format!("{account_id}:{name}")]);
+        let _ = conn.execute(
+            &format!("DELETE FROM search WHERE thread_id IN {in_folder}"),
+            params![account_id, name],
+        );
+        let _ = conn.execute(
+            &format!("DELETE FROM embeddings WHERE thread_id IN {in_folder}"),
+            params![account_id, name],
+        );
+        let _ = conn.execute(
+            &format!("DELETE FROM messages WHERE thread_id IN {in_folder}"),
+            params![account_id, name],
+        );
+        let _ = conn.execute(
+            "DELETE FROM threads WHERE account_id=?1 AND folder=?2",
+            params![account_id, name],
+        );
+        let _ = conn
+            .execute("DELETE FROM folders WHERE id=?1", params![format!("{account_id}:{name}")]);
     }
 
     /// IMAP per-folder incremental cursor: the (UIDVALIDITY, UIDNEXT) observed at
@@ -830,8 +872,10 @@ impl Store {
     /// of which folder the message lives in.
     pub fn message_body_html(&self, message_id: &str) -> Option<String> {
         let conn = self.conn.lock().unwrap();
-        conn.query_row("SELECT body_html FROM messages WHERE id=?1", params![message_id], |r| r.get(0))
-            .ok()
+        conn.query_row("SELECT body_html FROM messages WHERE id=?1", params![message_id], |r| {
+            r.get(0)
+        })
+        .ok()
     }
 
     /// The IMAP folder a message lives in — so an attachment fetch SELECTs the
@@ -863,7 +907,13 @@ impl Store {
 
     /// Advance the IMAP incremental cursor for a folder (upserts the row so it
     /// works even before the folder list has been enumerated).
-    pub fn set_imap_folder_cursor(&self, account_id: &str, folder: &str, uid_validity: u32, uid_next: u32) -> rusqlite::Result<()> {
+    pub fn set_imap_folder_cursor(
+        &self,
+        account_id: &str,
+        folder: &str,
+        uid_validity: u32,
+        uid_next: u32,
+    ) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO folders (id, account_id, name, uid_validity, uid_next) VALUES (?1,?2,?3,?4,?5)
@@ -1011,7 +1061,8 @@ impl Store {
         // needs from/when/attachments; it was loading 100+ MB of HTML (2,000+
         // per-thread queries) on every refresh. Bodies load per conversation via
         // `thread()` when it is opened.
-        let mut by_thread: std::collections::HashMap<String, Vec<Message>> = std::collections::HashMap::new();
+        let mut by_thread: std::collections::HashMap<String, Vec<Message>> =
+            std::collections::HashMap::new();
         if let Ok(mut stmt) = conn.prepare(
             "SELECT m.thread_id, m.id, m.from_name, m.from_addr, m.to_json, m.ts, m.attachments, m.meta
              FROM messages m JOIN threads t ON t.id = m.thread_id
@@ -1034,7 +1085,12 @@ impl Store {
                 }
             }
         }
-        rows.into_iter().map(|mut t| { t.messages = by_thread.remove(&t.id).unwrap_or_default(); t }).collect()
+        rows.into_iter()
+            .map(|mut t| {
+                t.messages = by_thread.remove(&t.id).unwrap_or_default();
+                t
+            })
+            .collect()
     }
 
     /// One conversation WITH full message bodies — used when it is opened.
@@ -1082,8 +1138,15 @@ impl Store {
                 to: unjson_parties(r.get::<_, String>(3).unwrap_or_default()),
                 when: r.get(4)?,
                 body_html: r.get(5)?,
-                attachments: serde_json::from_str(&r.get::<_, String>(6).unwrap_or_else(|_| "[]".into())).unwrap_or_default(),
-                meta: r.get::<_, Option<String>>(7).ok().flatten().and_then(|s| serde_json::from_str(&s).ok()),
+                attachments: serde_json::from_str(
+                    &r.get::<_, String>(6).unwrap_or_else(|_| "[]".into()),
+                )
+                .unwrap_or_default(),
+                meta: r
+                    .get::<_, Option<String>>(7)
+                    .ok()
+                    .flatten()
+                    .and_then(|s| serde_json::from_str(&s).ok()),
             })
         })
         .map(|it| it.filter_map(Result::ok).collect())
@@ -1097,7 +1160,12 @@ impl Store {
             Err(_) => return Vec::new(),
         };
         stmt.query_map([], |r| {
-            Ok(Task { id: r.get(0)?, title: r.get(1)?, due: r.get(2)?, done: r.get::<_, i64>(3)? != 0 })
+            Ok(Task {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                due: r.get(2)?,
+                done: r.get::<_, i64>(3)? != 0,
+            })
         })
         .map(|it| it.filter_map(Result::ok).collect())
         .unwrap_or_default()
@@ -1133,7 +1201,9 @@ impl Store {
             return Vec::new();
         }
         let conn = self.conn.lock().unwrap();
-        let mut stmt = match conn.prepare("SELECT thread_id FROM search WHERE search MATCH ?1 ORDER BY rank LIMIT 50") {
+        let mut stmt = match conn
+            .prepare("SELECT thread_id FROM search WHERE search MATCH ?1 ORDER BY rank LIMIT 50")
+        {
             Ok(s) => s,
             Err(_) => return Vec::new(),
         };
@@ -1235,7 +1305,10 @@ impl Store {
     /// the background loop and a UI-triggered flush). Returns true if claimed.
     pub fn claim_outbox(&self, id: &str) -> rusqlite::Result<bool> {
         let conn = self.conn.lock().unwrap();
-        let n = conn.execute("UPDATE outbox SET status='sending' WHERE id=?1 AND status='queued'", params![id])?;
+        let n = conn.execute(
+            "UPDATE outbox SET status='sending' WHERE id=?1 AND status='queued'",
+            params![id],
+        )?;
         Ok(n > 0)
     }
 
@@ -1249,9 +1322,14 @@ impl Store {
     /// exponential-backoff retry (status back to `queued`) or, once the attempt
     /// budget is exhausted, moves the item to the dead-letter queue. Returns true
     /// if the item was dead-lettered.
-    pub fn mark_outbox_failure(&self, id: &str, error: &str, max_attempts: i64) -> rusqlite::Result<bool> {
+    pub fn mark_outbox_failure(
+        &self,
+        id: &str,
+        error: &str,
+        max_attempts: i64,
+    ) -> rusqlite::Result<bool> {
         let mut guard = self.conn.lock().unwrap();
-        let conn: &mut Connection = &mut *guard;
+        let conn: &mut Connection = &mut guard;
         let now = chrono::Utc::now().timestamp();
         let tx = conn.transaction()?;
         let attempts: i64 = tx
@@ -1298,7 +1376,7 @@ impl Store {
     /// e.g. a bad address). Keeps the full recipient set.
     pub fn requeue_dead_letter(&self, id: &str) -> rusqlite::Result<bool> {
         let mut guard = self.conn.lock().unwrap();
-        let conn: &mut Connection = &mut *guard;
+        let conn: &mut Connection = &mut guard;
         let tx = conn.transaction()?;
         let now = chrono::Utc::now().timestamp();
         let n = tx.execute(
@@ -1389,7 +1467,7 @@ impl Store {
         encrypted_secrets: &[(String, String)],
     ) -> rusqlite::Result<()> {
         let mut guard = self.conn.lock().unwrap();
-        let conn: &mut Connection = &mut *guard;
+        let conn: &mut Connection = &mut guard;
         let tx = conn.transaction()?;
         tx.execute(
             "INSERT INTO accounts (id,email,provider,display_name) VALUES (?1,?2,'imap',?3)
@@ -1696,14 +1774,20 @@ fn migrate_v5_secrets(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
 /// v6 — per-thread folder (mailbox) so the UI can browse Sent/Drafts/Trash/etc.
 fn migrate_v6_thread_folder(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
     let _ = tx.execute("ALTER TABLE threads ADD COLUMN folder TEXT NOT NULL DEFAULT 'INBOX'", []);
-    let _ = tx.execute("CREATE INDEX IF NOT EXISTS idx_threads_folder ON threads(account_id, folder)", []);
+    let _ = tx.execute(
+        "CREATE INDEX IF NOT EXISTS idx_threads_folder ON threads(account_id, folder)",
+        [],
+    );
     Ok(())
 }
 
 /// v7 — durable user settings (theme, density, font, locale, …) so UI prefs live
 /// in the app's data model rather than only the webview's localStorage.
 fn migrate_v7_settings(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
-    let _ = tx.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)", []);
+    let _ = tx.execute(
+        "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        [],
+    );
     Ok(())
 }
 
@@ -1743,7 +1827,8 @@ fn migrate_v10_rebuild_previews(tx: &rusqlite::Transaction) -> rusqlite::Result<
                  (SELECT m.body_html FROM messages m WHERE m.thread_id = t.id ORDER BY m.rowid DESC LIMIT 1), '')
              FROM threads t",
         )?;
-        let mapped = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        let mapped =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
         mapped.filter_map(Result::ok).collect()
     };
     for (id, body) in rows {
@@ -1765,7 +1850,8 @@ fn migrate_v12_backfill_inline_attachments(tx: &rusqlite::Transaction) -> rusqli
         let mut stmt = tx.prepare(
             "SELECT id, body_html FROM messages WHERE attachments = '[]' AND body_html LIKE '%;base64,%'",
         )?;
-        let mapped = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        let mapped =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
         mapped.filter_map(Result::ok).collect()
     };
     for (id, body) in rows {
@@ -1792,7 +1878,8 @@ fn migrate_v13_rededup_inline_attachments(tx: &rusqlite::Transaction) -> rusqlit
             "SELECT id, body_html FROM messages \
              WHERE (attachments = '[]' OR attachments LIKE '%inline-%') AND body_html LIKE '%;base64,%'",
         )?;
-        let mapped = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        let mapped =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
         mapped.filter_map(Result::ok).collect()
     };
     for (id, body) in rows {
@@ -2005,7 +2092,7 @@ fn migrate_v16_sent_folder_special_use(tx: &rusqlite::Transaction) -> rusqlite::
 /// with no network round-trip. Tiny blobs (<8 KB: tracking pixels, signature
 /// logos, spacer GIFs) are skipped so they don't pollute the attachment list.
 pub(crate) fn inline_data_attachments(html: &str) -> Vec<(String, String, Vec<u8>)> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     use std::collections::HashSet;
     use std::hash::{Hash, Hasher};
     let bytes = html.as_bytes();
@@ -2037,13 +2124,17 @@ pub(crate) fn inline_data_attachments(html: &str) -> Vec<(String, String, Vec<u8
                 || mime.starts_with("audio/")
                 || mime.starts_with("video/"));
         if is_file_mime {
-            if let Ok(decoded) = STANDARD.decode(html[data_start..end].as_bytes()) {
+            if let Ok(decoded) = STANDARD.decode(&html[data_start..end]) {
                 if decoded.len() >= 8_000 {
                     let mut h = std::collections::hash_map::DefaultHasher::new();
                     decoded.hash(&mut h);
                     if seen.insert(h.finish()) {
                         idx += 1;
-                        out.push((format!("inline-{idx}.{}", mime_extension(mime)), mime.to_string(), decoded));
+                        out.push((
+                            format!("inline-{idx}.{}", mime_extension(mime)),
+                            mime.to_string(),
+                            decoded,
+                        ));
                     }
                 }
             }
@@ -2156,9 +2247,7 @@ fn f32_to_blob(v: &[f32]) -> Vec<u8> {
 }
 
 fn blob_to_f32(b: &[u8]) -> Vec<f32> {
-    b.chunks_exact(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect()
+    b.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
 }
 
 fn row_to_outbox(r: &rusqlite::Row) -> rusqlite::Result<OutboxItem> {
@@ -2169,7 +2258,8 @@ fn row_to_outbox(r: &rusqlite::Row) -> rusqlite::Result<OutboxItem> {
         to: r.get(3)?,
         subject: r.get(4)?,
         body: r.get(5)?,
-        attachments: serde_json::from_str(&r.get::<_, String>(6).unwrap_or_else(|_| "[]".into())).unwrap_or_default(),
+        attachments: serde_json::from_str(&r.get::<_, String>(6).unwrap_or_else(|_| "[]".into()))
+            .unwrap_or_default(),
         scheduled_ts: r.get(7)?,
         status: r.get(8)?,
         // cc/bcc are appended columns; SELECTs that omit them (e.g. dead_letters) default to empty.
@@ -2216,12 +2306,18 @@ pub fn strip_quoted(text: &str) -> String {
     for line in text.lines() {
         let l = line.trim();
         let ll = l.to_lowercase();
-        let is_divider = l.chars().count() >= 8 && l.chars().all(|c| matches!(c, '_' | '-' | '–' | '—' | ' '));
+        let is_divider =
+            l.chars().count() >= 8 && l.chars().all(|c| matches!(c, '_' | '-' | '–' | '—' | ' '));
         if ll.starts_with('>')
-            || ll.starts_with("from:") || ll.starts_with("von:") || ll.starts_with("da:")
-            || ll.starts_with("-----original") || ll.starts_with("________")
+            || ll.starts_with("from:")
+            || ll.starts_with("von:")
+            || ll.starts_with("da:")
+            || ll.starts_with("-----original")
+            || ll.starts_with("________")
             || (ll.starts_with("on ") && ll.ends_with("wrote:"))
-            || ll.ends_with("schrieb:") || ll.ends_with("ha scritto:") || ll.ends_with("a écrit :")
+            || ll.ends_with("schrieb:")
+            || ll.ends_with("ha scritto:")
+            || ll.ends_with("a écrit :")
             || is_divider
         {
             break;
@@ -2281,10 +2377,7 @@ mod tests {
         assert_eq!(store.schema_version().unwrap(), 16);
         assert!(store.table_exists("calendar_events").unwrap());
         assert_eq!(
-            store
-                .settings()
-                .get("calendar-migration-marker")
-                .map(String::as_str),
+            store.settings().get("calendar-migration-marker").map(String::as_str),
             Some("preserved")
         );
 
@@ -2308,9 +2401,7 @@ mod tests {
     #[test]
     fn local_event_commits_without_a_remote_operation() {
         let store = Store::in_memory().unwrap();
-        let calendar = store
-            .create_local_calendar("Personal", "#6f8df6", "Europe/Berlin")
-            .unwrap();
+        let calendar = store.create_local_calendar("Personal", "#6f8df6", "Europe/Berlin").unwrap();
         let event = store
             .create_calendar_event(EventMutation {
                 calendar_id: calendar.id,
@@ -2319,12 +2410,8 @@ mod tests {
                 location: String::new(),
                 conference_url: None,
                 source_thread_id: None,
-                start: EventMoment::Timed {
-                    utc: "2026-09-25T12:00:00Z".into(),
-                },
-                end: EventMoment::Timed {
-                    utc: "2026-09-25T13:00:00Z".into(),
-                },
+                start: EventMoment::Timed { utc: "2026-09-25T12:00:00Z".into() },
+                end: EventMoment::Timed { utc: "2026-09-25T13:00:00Z".into() },
                 timezone: "Europe/Berlin".into(),
                 recurrence: None,
                 status: EventStatus::Confirmed,
@@ -2350,12 +2437,8 @@ mod tests {
             location: String::new(),
             conference_url: None,
             source_thread_id: Some("thread-1".into()),
-            start: EventMoment::Timed {
-                utc: "2026-10-07T13:00:00Z".into(),
-            },
-            end: EventMoment::Timed {
-                utc: "2026-10-07T14:00:00Z".into(),
-            },
+            start: EventMoment::Timed { utc: "2026-10-07T13:00:00Z".into() },
+            end: EventMoment::Timed { utc: "2026-10-07T14:00:00Z".into() },
             timezone: "Europe/Berlin".into(),
             recurrence: None,
             status: EventStatus::Confirmed,
@@ -2373,7 +2456,7 @@ mod tests {
             reminders: Vec::new(),
         };
         let outbox = OutboxItem {
-        error: None,
+            error: None,
             id: "calendar-reply-1".into(),
             account_id: "account-1".into(),
             thread_id: Some("thread-1".into()),
@@ -2440,12 +2523,8 @@ mod tests {
                     location: String::new(),
                     conference_url: None,
                     source_thread_id: None,
-                    start: EventMoment::Timed {
-                        utc: "2026-09-25T12:00:00Z".into(),
-                    },
-                    end: EventMoment::Timed {
-                        utc: "2026-09-25T13:00:00Z".into(),
-                    },
+                    start: EventMoment::Timed { utc: "2026-09-25T12:00:00Z".into() },
+                    end: EventMoment::Timed { utc: "2026-09-25T13:00:00Z".into() },
                     timezone: "Europe/Berlin".into(),
                     recurrence: None,
                     status: EventStatus::Confirmed,
@@ -2537,10 +2616,21 @@ mod tests {
         // FK: the embedding's thread must exist first.
         s.upsert_account("a1", "x@y.z", "gmail", "X").unwrap();
         s.upsert_thread(&Thread {
-            id: "t1".into(), account_id: "a1".into(), subject: "s".into(), preview: "p".into(),
-            participants: vec![], last_time: "".into(), unread: false, labels: vec![],
-            view: vec![], folder: "INBOX".into(), ai_summary: None, ai_draft: None, messages: vec![],
-        }).unwrap();
+            id: "t1".into(),
+            account_id: "a1".into(),
+            subject: "s".into(),
+            preview: "p".into(),
+            participants: vec![],
+            last_time: "".into(),
+            unread: false,
+            labels: vec![],
+            view: vec![],
+            folder: "INBOX".into(),
+            ai_summary: None,
+            ai_draft: None,
+            messages: vec![],
+        })
+        .unwrap();
         s.upsert_embedding("t1", &[1.0, 2.0, 3.0]).unwrap();
         assert_eq!(s.embedding_count(), 1);
         let all = s.all_embeddings();
@@ -2552,11 +2642,29 @@ mod tests {
         let s = Store::in_memory().unwrap();
         s.upsert_account("a1", "x@y.z", "gmail", "X").unwrap();
         s.upsert_thread(&Thread {
-            id: "t1".into(), account_id: "a1".into(), subject: "Hi".into(), preview: "p".into(),
-            participants: vec!["A".into()], last_time: "now".into(), unread: true,
-            labels: vec![], view: vec!["inbox".into()], folder: "INBOX".into(), ai_summary: None, ai_draft: None,
-            messages: vec![Message { id: "m1".into(), from: Party { name: "A".into(), address: "a@b.c".into() }, to: vec![], when: "t".into(), body_html: "<p>hey</p>".into(), attachments: vec![], meta: None }],
-        }).unwrap();
+            id: "t1".into(),
+            account_id: "a1".into(),
+            subject: "Hi".into(),
+            preview: "p".into(),
+            participants: vec!["A".into()],
+            last_time: "now".into(),
+            unread: true,
+            labels: vec![],
+            view: vec!["inbox".into()],
+            folder: "INBOX".into(),
+            ai_summary: None,
+            ai_draft: None,
+            messages: vec![Message {
+                id: "m1".into(),
+                from: Party { name: "A".into(), address: "a@b.c".into() },
+                to: vec![],
+                when: "t".into(),
+                body_html: "<p>hey</p>".into(),
+                attachments: vec![],
+                meta: None,
+            }],
+        })
+        .unwrap();
         let got = s.threads();
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].messages.len(), 1);
@@ -2567,12 +2675,7 @@ mod tests {
     fn repeated_provider_identity_does_not_duplicate_accounts() {
         let store = Store::in_memory().unwrap();
         store
-            .upsert_account(
-                "gmail:person@example.test",
-                "person@example.test",
-                "gmail",
-                "Person",
-            )
+            .upsert_account("gmail:person@example.test", "person@example.test", "gmail", "Person")
             .unwrap();
         store
             .upsert_account(
@@ -2592,10 +2695,19 @@ mod tests {
     fn imap_account_roundtrip() {
         let s = Store::in_memory().unwrap();
         let acct = ImapAccount {
-        sent_folder: None,
-            account_id: "imap1".into(), email: "me@host.de".into(), display_name: "Me".into(),
-            imap_host: "imap.host.de".into(), imap_port: 993, imap_security: Security::Ssl, imap_username: "me@host.de".into(),
-            smtp_host: "smtp.host.de".into(), smtp_port: 587, smtp_security: Security::Starttls, smtp_username: "me@host.de".into(), same_credentials: false,
+            sent_folder: None,
+            account_id: "imap1".into(),
+            email: "me@host.de".into(),
+            display_name: "Me".into(),
+            imap_host: "imap.host.de".into(),
+            imap_port: 993,
+            imap_security: Security::Ssl,
+            imap_username: "me@host.de".into(),
+            smtp_host: "smtp.host.de".into(),
+            smtp_port: 587,
+            smtp_security: Security::Starttls,
+            smtp_username: "me@host.de".into(),
+            same_credentials: false,
         };
         s.upsert_imap_account(&acct).unwrap();
         let got = s.imap_account("imap1").unwrap();
@@ -2609,10 +2721,19 @@ mod tests {
     fn imap_account_and_prepared_secrets_commit_together() {
         let s = Store::in_memory().unwrap();
         let acct = ImapAccount {
-        sent_folder: None,
-            account_id: "imap:me@host.de".into(), email: "me@host.de".into(), display_name: "Me".into(),
-            imap_host: "imap.host.de".into(), imap_port: 993, imap_security: Security::Ssl, imap_username: "me@host.de".into(),
-            smtp_host: "smtp.host.de".into(), smtp_port: 587, smtp_security: Security::Starttls, smtp_username: "me@host.de".into(), same_credentials: true,
+            sent_folder: None,
+            account_id: "imap:me@host.de".into(),
+            email: "me@host.de".into(),
+            display_name: "Me".into(),
+            imap_host: "imap.host.de".into(),
+            imap_port: 993,
+            imap_security: Security::Ssl,
+            imap_username: "me@host.de".into(),
+            smtp_host: "smtp.host.de".into(),
+            smtp_port: 587,
+            smtp_security: Security::Starttls,
+            smtp_username: "me@host.de".into(),
+            same_credentials: true,
         };
         let secrets = vec![
             ("imap-pass".into(), "v1:encrypted-imap".into()),
@@ -2650,10 +2771,19 @@ mod tests {
         s.migrate().unwrap(); // drops the stale table and recreates the new shape
         // A fresh account now saves and reads back with the new columns.
         let acct = ImapAccount {
-        sent_folder: None,
-            account_id: "new".into(), email: "n@x.de".into(), display_name: "New".into(),
-            imap_host: "imap.x.de".into(), imap_port: 993, imap_security: Security::Ssl, imap_username: "n@x.de".into(),
-            smtp_host: "smtp.x.de".into(), smtp_port: 465, smtp_security: Security::Ssl, smtp_username: "n@x.de".into(), same_credentials: true,
+            sent_folder: None,
+            account_id: "new".into(),
+            email: "n@x.de".into(),
+            display_name: "New".into(),
+            imap_host: "imap.x.de".into(),
+            imap_port: 993,
+            imap_security: Security::Ssl,
+            imap_username: "n@x.de".into(),
+            smtp_host: "smtp.x.de".into(),
+            smtp_port: 465,
+            smtp_security: Security::Ssl,
+            smtp_username: "n@x.de".into(),
+            same_credentials: true,
         };
         s.upsert_imap_account(&acct).unwrap();
         assert_eq!(s.imap_account("new").unwrap().display_name, "New");
@@ -2661,12 +2791,26 @@ mod tests {
 
     fn thread_with(id: &str, date: &str, body: &str) -> Thread {
         Thread {
-            id: id.into(), account_id: "a1".into(), subject: format!("subj {id}"), preview: "p".into(),
-            participants: vec!["A".into()], last_time: date.into(), unread: true, labels: vec![],
-            view: vec!["inbox".into()], folder: "INBOX".into(), ai_summary: None, ai_draft: None,
+            id: id.into(),
+            account_id: "a1".into(),
+            subject: format!("subj {id}"),
+            preview: "p".into(),
+            participants: vec!["A".into()],
+            last_time: date.into(),
+            unread: true,
+            labels: vec![],
+            view: vec!["inbox".into()],
+            folder: "INBOX".into(),
+            ai_summary: None,
+            ai_draft: None,
             messages: vec![Message {
-                id: format!("m-{id}"), from: Party { name: "A".into(), address: "a@b.c".into() },
-                to: vec![], when: date.into(), body_html: format!("<p>{body}</p>"), attachments: vec![], meta: None,
+                id: format!("m-{id}"),
+                from: Party { name: "A".into(), address: "a@b.c".into() },
+                to: vec![],
+                when: date.into(),
+                body_html: format!("<p>{body}</p>"),
+                attachments: vec![],
+                meta: None,
             }],
         }
     }
@@ -2738,27 +2882,16 @@ mod tests {
     fn account_info_reports_latest_successful_sync() {
         let store = Store::in_memory().unwrap();
         store
-            .upsert_account(
-                "imap:test@example.test",
-                "test@example.test",
-                "imap",
-                "Test",
-            )
+            .upsert_account("imap:test@example.test", "test@example.test", "imap", "Test")
             .unwrap();
         assert_eq!(store.accounts()[0].last_sync_at, None);
         assert_eq!(store.accounts()[0].sync_error, None);
 
-        store
-            .record_sync_failure("imap:test@example.test", "Authentication required")
-            .unwrap();
+        store.record_sync_failure("imap:test@example.test", "Authentication required").unwrap();
         assert_eq!(store.accounts()[0].sync_error.as_deref(), Some("Authentication required"));
 
-        store
-            .record_sync_success("imap:test@example.test", "INBOX", 1_700_000_000)
-            .unwrap();
-        store
-            .record_sync_success("imap:test@example.test", "Archive", 1_700_000_100)
-            .unwrap();
+        store.record_sync_success("imap:test@example.test", "INBOX", 1_700_000_000).unwrap();
+        store.record_sync_success("imap:test@example.test", "Archive", 1_700_000_100).unwrap();
 
         assert_eq!(store.accounts()[0].last_sync_at, Some(1_700_000_100));
         assert_eq!(store.accounts()[0].sync_error, None);
@@ -2793,18 +2926,25 @@ mod tests {
     fn outbox_retries_then_dead_letters() {
         let s = Store::in_memory().unwrap();
         let item = OutboxItem {
-        error: None,
-            id: "o1".into(), account_id: "a1".into(), thread_id: None,
-            to: "x@y.z".into(), cc: String::new(), bcc: String::new(),
-            subject: "hi".into(), body: "b".into(),
-            attachments: vec![], scheduled_ts: 0, status: "queued".into(),
+            error: None,
+            id: "o1".into(),
+            account_id: "a1".into(),
+            thread_id: None,
+            to: "x@y.z".into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: "hi".into(),
+            body: "b".into(),
+            attachments: vec![],
+            scheduled_ts: 0,
+            status: "queued".into(),
         };
         s.enqueue_outbox(&item).unwrap();
         // 4 failures stay in the queue (retry); the 5th exhausts the budget.
         for _ in 0..4 {
-            assert_eq!(s.mark_outbox_failure("o1", "smtp timeout", 5).unwrap(), false);
+            assert!(!s.mark_outbox_failure("o1", "smtp timeout", 5).unwrap());
         }
-        assert_eq!(s.mark_outbox_failure("o1", "smtp timeout", 5).unwrap(), true);
+        assert!(s.mark_outbox_failure("o1", "smtp timeout", 5).unwrap());
         assert!(s.list_outbox().is_empty());
         assert_eq!(s.dead_letters().len(), 1);
     }
