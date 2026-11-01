@@ -206,3 +206,26 @@ describe("undo send", () => {
     expect(useApp.getState().undo).toBeNull();
   });
 });
+
+describe("message bodies across list refreshes", () => {
+  it("an open conversation keeps its body when scrolling loads older mail", async () => {
+    const full = await api.listThreads();
+    const target = full.find((t) => t.messages.some((m) => m.bodyHtml))!;
+    // The desktop core lists conversations without bodies and serves them per thread.
+    const bodiless = () => full.map((t) => ({ ...t, messages: t.messages.map((m) => ({ ...m, bodyHtml: "" })) }));
+    vi.spyOn(api, "listThreads").mockImplementation(async () => bodiless());
+    const getThread = vi.spyOn(api, "getThread").mockImplementation(async (id) => full.find((t) => t.id === id) ?? null);
+    vi.spyOn(api, "loadOlder").mockResolvedValue(0);
+    useApp.setState({ threads: [], selectedThreadId: null, loadingOlder: false, reachedEnd: false });
+    useApp.getState().applyThreads(bodiless()); // fresh launch: nothing loaded yet
+
+    useApp.getState().selectThread(target.id);
+    await vi.waitFor(() => expect(getThread).toHaveBeenCalledWith(target.id));
+    const body = () => useApp.getState().threads.find((t) => t.id === target.id)!.messages[0].bodyHtml;
+    await vi.waitFor(() => expect(body()).toBe(target.messages[0].bodyHtml));
+
+    await useApp.getState().loadOlder(); // list refresh with body-less threads
+    expect(body()).toBe(target.messages[0].bodyHtml);
+    expect(getThread).toHaveBeenCalledTimes(1); // no refetch for a body already loaded
+  });
+});

@@ -5,10 +5,15 @@ import { api, listenMail } from "@/lib/bridge";
 import { SEND } from "@/config";
 import { loadFont, applyFont, loadLocale, applyLocale } from "@/lib/prefs";
 import { resolveSendAccountId } from "@/lib/accountIdentity";
+import { keepLoadedBodies, messageSignature, needsBodies } from "@/lib/threadMerge";
 
 /** Fire a desktop notification for newly-arrived mail, but only when the window
  *  is in the background (no point notifying about mail you're looking at). Uses
  *  the Web Notification API the webview already exposes — no extra OS plugin. */
+// Which message set of a thread was last hydrated, and fetches in flight.
+const hydratedSignatures = new Map<string, string>();
+const hydrating = new Set<string>();
+
 function notifyNewMail(count: number): void {
   try {
     if (typeof Notification === "undefined" || !document.hidden) return;
@@ -34,6 +39,8 @@ interface AppState {
   setView: (v: View) => void;
   /** Load full message bodies for one conversation (the list is metadata-only). */
   hydrateThread: (id: string) => Promise<void>;
+  /** Every list refresh goes through here so loaded message bodies survive it. */
+  applyThreads: (fresh: Thread[]) => void;
   /** Permanently failed sends + per-account send warnings, shown in a banner. */
   deadLetters: Awaited<ReturnType<typeof api.listDeadLetters>>;
   sendWarnings: Record<string, string>;
@@ -270,10 +277,27 @@ export const useApp = create<AppState>((set, get) => ({
   setView: (v) => set({ view: v, selectedFolder: null, selectedThreadId: null, selectedMessageId: null, composeOpen: false, drawerOpen: false, mobileStage: false }),
   hydrateThread: async (id) => {
     const current = get().threads.find((t) => t.id === id);
-    if (!current || current.messages.some((m) => m.bodyHtml)) return; // already has bodies
-    const full = await api.getThread(id);
-    if (!full) return;
-    set({ threads: get().threads.map((t) => (t.id === id ? { ...full, unread: t.unread } : t)) });
+    if (!current || !needsBodies(current)) return;
+    // A message can legitimately have an empty body (attachment-only mail), so
+    // fetch once per message set, not on every render or refresh.
+    const signature = messageSignature(current);
+    if (hydratedSignatures.get(id) === signature || hydrating.has(id)) return;
+    hydrating.add(id);
+    try {
+      const full = await api.getThread(id);
+      if (!full) return;
+      hydratedSignatures.set(id, signature);
+      // Fill bodies into the thread as it is NOW: a refresh may have updated its
+      // flags or messages while the fetch was in flight.
+      set({ threads: get().threads.map((t) => (t.id === id ? keepLoadedBodies([t], [full])[0] : t)) });
+    } finally {
+      hydrating.delete(id);
+    }
+  },
+  applyThreads: (fresh) => {
+    set({ threads: keepLoadedBodies(fresh, get().threads) });
+    const open = get().selectedThreadId;
+    if (open) void get().hydrateThread(open); // a new message in the open thread needs its body
   },
   deadLetters: [],
   sendWarnings: {},
@@ -387,13 +411,13 @@ export const useApp = create<AppState>((set, get) => ({
     await api.renameFolder(accountId, from, to);
     if (get().selectedFolder === from) set({ selectedFolder: to });
     await get().loadFolders(accountId);
-    set({ threads: await api.listThreads() });
+    get().applyThreads(await api.listThreads());
   },
   deleteFolder: async (accountId, name) => {
     await api.deleteFolder(accountId, name);
     if (get().selectedFolder === name) set({ selectedFolder: null });
     await get().loadFolders(accountId);
-    set({ threads: await api.listThreads() });
+    get().applyThreads(await api.listThreads());
   },
   liveSyncStarted: false,
   startLiveSync: async () => {
@@ -404,7 +428,8 @@ export const useApp = create<AppState>((set, get) => ({
         // New mail (or any server change) landed in the local store — refresh the
         // visible list and the folder counts without the user pressing Sync.
         const [threads, accounts] = await Promise.all([api.listThreads(), api.listAccounts()]);
-        set({ threads, accounts });
+        get().applyThreads(threads);
+        set({ accounts });
         const acct = get().selectedAccountId;
         if (acct) void get().loadFolders(acct);
         void get().loadDeadLetters();
@@ -425,7 +450,8 @@ export const useApp = create<AppState>((set, get) => ({
       failure = cause;
     } finally {
       const [threads, accounts] = await Promise.all([api.listThreads(), api.listAccounts()]);
-      set({ threads, accounts });
+      get().applyThreads(threads);
+      set({ accounts });
       if (get().selectedAccountId === accountId) await get().loadFolders(accountId);
     }
     if (failure) throw failure;
@@ -451,7 +477,7 @@ export const useApp = create<AppState>((set, get) => ({
       } catch {
         /* surfaced via folder counts / empty list */
       }
-      set({ threads: await api.listThreads() });
+      get().applyThreads(await api.listThreads());
       await get().loadFolders(acct);
     }
   },
@@ -469,7 +495,8 @@ export const useApp = create<AppState>((set, get) => ({
       try { stored += await api.loadOlder(a.id, folder, PAGE, groupConversations); } catch { /* per-account; ignore non-IMAP */ }
     }
     // Nothing older came back across every account → we've hit the bottom.
-    set({ threads: await api.listThreads(), loadingOlder: false, reachedEnd: stored === 0 });
+    get().applyThreads(await api.listThreads());
+    set({ loadingOlder: false, reachedEnd: stored === 0 });
     return stored;
   },
 
@@ -487,7 +514,8 @@ export const useApp = create<AppState>((set, get) => ({
       }
     }
     const [threads, accounts] = await Promise.all([api.listThreads(), api.listAccounts()]);
-    set({ threads, accounts, syncing: false });
+    get().applyThreads(threads);
+    set({ accounts, syncing: false });
     // Keep the focused account's folder list fresh on a global sync too.
     const focused = get().selectedAccountId;
     if (focused) void get().refreshFolders(focused);
@@ -496,8 +524,8 @@ export const useApp = create<AppState>((set, get) => ({
   removeAccount: async (id) => {
     await api.removeAccount(id);
     const [threads, accounts] = await Promise.all([api.listThreads(), api.listAccounts()]);
+    get().applyThreads(threads);
     set({
-      threads,
       accounts,
       selectedAccountId: get().selectedAccountId === id ? null : get().selectedAccountId,
     });
@@ -575,7 +603,8 @@ export const useApp = create<AppState>((set, get) => ({
     // Union server-synced flags (\Flagged) with any optimistic local flags.
     const mergedFlags = Array.from(new Set([...get().flaggedIds, ...serverFlagged]));
     persistPref("flaggedIds", JSON.stringify(mergedFlags));
-    set({ threads, tasks, ai, accounts, flaggedIds: mergedFlags, loaded: true });
+    get().applyThreads(threads);
+    set({ tasks, ai, accounts, flaggedIds: mergedFlags, loaded: true });
     // Organize anything that arrived while away (no-op without a model configured).
     if (get().autoOrganize) void get().triageInbox();
   },
@@ -666,12 +695,12 @@ export const useApp = create<AppState>((set, get) => ({
   },
   connectGmail: async () => {
     const accountId = await api.connectGmail(); // throws in browser preview
-    set({ threads: await api.listThreads() });
+    get().applyThreads(await api.listThreads());
     return accountId;
   },
   connectMicrosoft: async () => {
     const accountId = await api.connectMicrosoft();
-    set({ threads: await api.listThreads() });
+    get().applyThreads(await api.listThreads());
     return accountId;
   },
   createTask: async (title, sourceThreadId) => {
@@ -840,7 +869,7 @@ export const useApp = create<AppState>((set, get) => ({
     set({ triaging: true });
     try {
       const n = await api.triageInbox();
-      if (n > 0) set({ threads: await api.listThreads() });
+      if (n > 0) get().applyThreads(await api.listThreads());
       return n;
     } finally {
       set({ triaging: false });
