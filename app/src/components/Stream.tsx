@@ -159,6 +159,9 @@ export function Stream() {
   const [selectionMsg, setSelectionMsg] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set());
+  // Read by the document-level key handler, whose closure would otherwise be stale.
+  const selectedCountRef = useRef(0);
+  selectedCountRef.current = selectedThreadIds.size;
   const selectionAnchorId = useRef<string | null>(null);
   const [ctx, setCtx] = useState<{ x: number; y: number; t: Thread; ids: string[]; opener: HTMLElement } | null>(null);
   const [ctxSub, setCtxSub] = useState<null | "move">(null);
@@ -302,12 +305,20 @@ export function Stream() {
     setSelectedThreadIds(new Set(visibleThreadIds));
     selectionAnchorId.current = visibleThreadIds[0] ?? null;
   };
-  // ⌘A / Ctrl+A selects rows (not page text) unless the user is typing.
+  // ⌘A / Ctrl+A selects rows (not page text) and Escape clears the selection,
+  // unless the user is typing or another layer (menu, dialog) handled the key.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "a") return;
+      if (e.defaultPrevented) return;
       const el = e.target as HTMLElement | null;
-      if (el && (["INPUT", "TEXTAREA"].includes(el.tagName) || el.isContentEditable)) return;
+      if (el && (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable)) return;
+      if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (selectedCountRef.current === 0) return;
+        e.preventDefault();
+        clearThreadSelection();
+        return;
+      }
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "a") return;
       if (visibleThreadIds.length === 0) return;
       e.preventDefault();
       selectAllVisible();
@@ -316,10 +327,48 @@ export function Stream() {
     return () => document.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleThreadKey]);
-  // Drag-select (Gmail/Outlook style): press a row checkbox, sweep across rows.
-  const dragSelecting = useRef(false);
+  // Drag-select (Gmail/Finder style): pressing a row checkbox selects or
+  // deselects that row at once (the opposite of its current state), and every
+  // row the pointer sweeps over gets the same treatment until release.
+  const dragMode = useRef<"add" | "remove" | null>(null);
+  // The press already toggled this row, so the click that follows must not undo it.
+  const pressedRowId = useRef<string | null>(null);
+  const applySelection = (id: string, mode: "add" | "remove") => {
+    setSelectedThreadIds((current) => {
+      if (current.has(id) === (mode === "add")) return current;
+      const next = new Set(current);
+      if (mode === "add") next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+  const beginDragSelect = (id: string, event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey) return; // click handles ranges
+    event.preventDefault(); // no text selection or focus jump while sweeping
+    const mode = selectedThreadIds.has(id) ? "remove" : "add";
+    dragMode.current = mode;
+    pressedRowId.current = id;
+    selectionAnchorId.current = id;
+    applySelection(id, mode);
+    document.body.classList.add("drag-selecting");
+  };
+  const sweepSelect = (id: string) => {
+    if (dragMode.current) applySelection(id, dragMode.current);
+  };
+  const onRowCheckbox = (id: string, event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (pressedRowId.current === id) {
+      pressedRowId.current = null;
+      return;
+    }
+    toggleThreadSelection(id, event);
+  };
   useEffect(() => {
-    const end = () => { dragSelecting.current = false; document.body.classList.remove("drag-selecting"); };
+    const end = () => {
+      dragMode.current = null;
+      document.body.classList.remove("drag-selecting");
+      // A click (if any) is dispatched right after mouseup; forget the press after it.
+      window.setTimeout(() => { pressedRowId.current = null; }, 0);
+    };
     window.addEventListener("mouseup", end);
     return () => window.removeEventListener("mouseup", end);
   }, []);
@@ -543,9 +592,9 @@ export function Stream() {
                   onToggleExpand={count > 1 ? () => toggleConvo(r.t.id) : undefined}
                   active={selectedThreadId === r.t.id}
                   checked={selectedThreadIds.has(r.t.id)}
-                  onSelect={(event) => toggleThreadSelection(r.t.id, event)}
-                  onSelectStart={() => { dragSelecting.current = true; document.body.classList.add("drag-selecting"); }}
-                  onSelectSweep={() => { if (dragSelecting.current) setSelectedThreadIds((cur) => (cur.has(r.t.id) ? cur : new Set(cur).add(r.t.id))); }}
+                  onSelect={(event) => onRowCheckbox(r.t.id, event)}
+                  onSelectStart={(event) => beginDragSelect(r.t.id, event)}
+                  onSelectSweep={() => sweepSelect(r.t.id)}
                   onOpen={(event) => activateThread(r.t.id, () => selectThread(r.t.id, r.m.id), event)}
                   onArchive={() => archiveThread(r.t.id)}
                   onSnooze={() => snoozeThread(r.t.id)}
@@ -685,7 +734,7 @@ function MailRow({
   active: boolean;
   checked: boolean;
   onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void;
-  onSelectStart?: () => void;
+  onSelectStart?: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onSelectSweep?: () => void;
   onOpen: (event?: Pick<ReactMouseEvent, "shiftKey" | "metaKey" | "ctrlKey">) => void;
   onArchive: () => void;
@@ -750,7 +799,7 @@ function MailRow({
           aria-label={`${checked ? "Deselect" : "Select"} ${t.subject}`}
           aria-pressed={checked}
           onClick={onSelect}
-          onMouseDown={(e) => { if (e.button === 0) onSelectStart?.(); }}
+          onMouseDown={onSelectStart}
         >
           {checked && <span aria-hidden>✓</span>}
         </button>
