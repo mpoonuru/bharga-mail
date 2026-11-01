@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn unflagged_sent_folders_pick_the_one_in_use() {
-        // The real pjtelesoft layout: no SPECIAL-USE, two sent folders, history
+        // A real hosted-mail layout: no SPECIAL-USE, two sent folders, history
         // in "Sent Messages". Alphabetical order used to pick "INBOX.Sent".
         let folders = vec![
             folder("INBOX.Sent", Some("sent"), false),
