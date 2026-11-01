@@ -6,6 +6,8 @@ pub mod ai;
 pub mod calendar;
 pub mod store;
 pub mod sync;
+#[cfg(target_os = "macos")]
+mod webview_tuning;
 
 use std::sync::{Arc, Mutex};
 
@@ -1679,6 +1681,25 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 calendar::reminders::run(reminder_app, reminder_store).await;
             });
+
+            // The main window is built here, after state is managed, instead of
+            // from tauri.conf.json ("create": false): on macOS the web view must be
+            // created with our configuration for the 60 fps cap to be lifted.
+            let window_config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|w| w.label == "main")
+                .cloned()
+                .ok_or("main window missing from tauri.conf.json")?;
+            let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &window_config)?;
+            #[cfg(target_os = "macos")]
+            let builder = {
+                let mtm = objc2::MainThreadMarker::new().ok_or("setup must run on the main thread")?;
+                builder.with_webview_configuration(webview_tuning::configuration(mtm))
+            };
+            builder.build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

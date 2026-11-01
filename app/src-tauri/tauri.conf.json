@@ -12,6 +12,8 @@
   "app": {
     "windows": [
       {
+        "label": "main",
+        "create": false,
         "title": "Bharga Mail",
         "width": 1280,
         "height": 820,
