@@ -477,8 +477,7 @@ pub fn move_thread(
 
     let mut moved = 0usize;
     for mid in &msg_ids {
-        // Strip any stray quotes/angle brackets are kept — search by the raw id.
-        let query = format!("HEADER MESSAGE-ID \"{}\"", mid.replace('"', ""));
+        let Some(query) = message_id_search(mid) else { continue };
         let uids = session.uid_search(&query).unwrap_or_default();
         if uids.is_empty() {
             continue;
@@ -553,7 +552,7 @@ pub fn flag_thread(
 
     let query = if flagged { "+FLAGS (\\Flagged)" } else { "-FLAGS (\\Flagged)" };
     for mid in &msg_ids {
-        let search = format!("HEADER MESSAGE-ID \"{}\"", mid.replace('"', ""));
+        let Some(search) = message_id_search(mid) else { continue };
         let uids = session.uid_search(&search).unwrap_or_default();
         if uids.is_empty() {
             continue;
@@ -628,7 +627,7 @@ pub fn set_read(
 
     let query = seen_flag_query(unread);
     for mid in &msg_ids {
-        let search = format!("HEADER MESSAGE-ID \"{}\"", mid.replace('"', ""));
+        let Some(search) = message_id_search(mid) else { continue };
         let uids = session.uid_search(&search).unwrap_or_default();
         if uids.is_empty() {
             continue;
@@ -663,6 +662,18 @@ pub async fn set_read_async(
 /// direction mapping is unit-testable without a live IMAP connection.
 fn seen_flag_query(unread: bool) -> &'static str {
     if unread { r"-FLAGS (\Seen)" } else { r"+FLAGS (\Seen)" }
+}
+
+/// IMAP `SEARCH` key matching a Message-ID header. The id comes from mail anyone
+/// can send, so it must not be able to leave the quoted string and inject further
+/// IMAP commands: ids with control characters (CR/LF, NUL, …) or non-ASCII bytes
+/// are refused with `None`, and `\` and `"` are escaped per RFC 3501 quoted-string.
+fn message_id_search(message_id: &str) -> Option<String> {
+    let id = message_id.trim();
+    if id.is_empty() || id.len() > 998 || !id.bytes().all(|b| (0x20..0x7f).contains(&b)) {
+        return None;
+    }
+    Some(format!("HEADER MESSAGE-ID \"{}\"", id.replace('\\', r"\\").replace('"', r#"\""#)))
 }
 
 /// Fetch a single attachment's decoded bytes by Message-ID + filename. IMAP has
@@ -711,7 +722,8 @@ pub fn fetch_attachment(
     // Stored message ids are account-scoped ("account\u{1}<real-message-id>"); the
     // server only knows the real Message-ID, so strip the prefix before searching.
     let real_id = message_id.rsplit('\u{1}').next().unwrap_or(message_id);
-    let query = format!("HEADER Message-ID \"{real_id}\"");
+    let query = message_id_search(real_id)
+        .ok_or_else(|| SyncError::Transient("message id can't be searched on the server".into()))?;
     let seqs = session.search(query).map_err(|e| SyncError::Transient(e.to_string()))?;
     let seq = seqs
         .into_iter()
@@ -1136,6 +1148,30 @@ mod tests {
     fn seen_flag_query_maps_read_and_unread() {
         assert_eq!(seen_flag_query(false), r"+FLAGS (\Seen)");
         assert_eq!(seen_flag_query(true), r"-FLAGS (\Seen)");
+    }
+
+    #[test]
+    fn message_id_search_quotes_and_refuses_injection() {
+        assert_eq!(
+            message_id_search(" <abc.123@mail.example> ").as_deref(),
+            Some(r#"HEADER MESSAGE-ID "<abc.123@mail.example>""#)
+        );
+        assert_eq!(
+            message_id_search(r#"<a"b\c@x>"#).as_deref(),
+            Some(r#"HEADER MESSAGE-ID "<a\"b\\c@x>""#)
+        );
+        for hostile in [
+            "<x@y>\"\r\nA1 DELETE INBOX\r\n",
+            "<x@y>\nA1 LOGOUT",
+            "<x\0@y>",
+            "<x\u{7f}@y>",
+            "<ä@y>",
+            "",
+            "   ",
+        ] {
+            assert_eq!(message_id_search(hostile), None, "{hostile:?}");
+        }
+        assert_eq!(message_id_search(&format!("<{}@y>", "a".repeat(1000))), None);
     }
 
     #[test]
