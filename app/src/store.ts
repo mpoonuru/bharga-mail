@@ -208,6 +208,9 @@ interface AppState {
   /** Pinned folders, keyed `${accountId}${folder}`. Shown at the top; persisted to DB. */
   pinnedFolders: string[];
   togglePinFolder: (accountId: string, folder: string) => void;
+  /** Manual per-account dot colors, keyed by account id (missing = "auto"). */
+  accountColors: Record<string, string>;
+  setAccountColor: (accountId: string, key: string) => void;
   triageInbox: () => Promise<number>;
 }
 
@@ -284,6 +287,22 @@ function loadDensity(): Density {
 }
 // Persist a UI pref to both the instant localStorage cache and the durable core
 // settings store (so it lives in the app's data model, not just the webview).
+/** Parse the saved per-account color map; anything that isn't a plain object of
+ *  strings (null, array, corrupt JSON) is treated as "no choices made". */
+function parseAccountColors(raw: string | null | undefined): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(raw || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
 function persistPref(name: string, value: string) {
   try {
     localStorage.setItem(`bharga.${name}`, value);
@@ -682,6 +701,8 @@ export const useApp = create<AppState>((set, get) => ({
         /* keep */
       }
       persistPref("pinnedFolders", JSON.stringify(pinnedFolders));
+      const accountColors = parseAccountColors(pick("accountColors"));
+      persistPref("accountColors", JSON.stringify(accountColors));
       set({
         theme,
         density,
@@ -696,6 +717,7 @@ export const useApp = create<AppState>((set, get) => ({
         sidebarCollapsed,
         accountOrder,
         pinnedFolders,
+        accountColors,
       });
 
       // Signatures: DB is the source of truth; fall back to the local cache.
@@ -1007,6 +1029,18 @@ export const useApp = create<AppState>((set, get) => ({
     const next = cur.includes(key) ? cur.filter((x) => x !== key) : [...cur, key];
     persistPref("pinnedFolders", JSON.stringify(next));
     set({ pinnedFolders: next });
+  },
+  accountColors: (() => {
+    try {
+      return parseAccountColors(localStorage.getItem("bharga.accountColors"));
+    } catch {
+      return {};
+    }
+  })(),
+  setAccountColor: (accountId, key) => {
+    const next = { ...get().accountColors, [accountId]: key };
+    persistPref("accountColors", JSON.stringify(next));
+    set({ accountColors: next });
   },
   snoozeThread: (id) => {
     set({

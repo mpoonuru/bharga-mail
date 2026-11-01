@@ -7,7 +7,7 @@ import { MeasuredDisclosure } from "@/components/ui/MeasuredDisclosure";
 import { Modal } from "@/components/ui/Modal";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { titlebarDoubleClick } from "@/lib/bridge";
-import { accountColor } from "@/lib/colors";
+import { resolveAccountColor } from "@/lib/colors";
 import { MOTION, MOTION_EASE } from "@/lib/motion";
 import { useApp } from "@/store";
 import type { Account, View } from "@/types";
@@ -137,6 +137,7 @@ function AccountRow({
     renameAccount,
     syncOneFolder,
     markFolderRead,
+    accountColors,
   } = useApp();
   const controls = useDragControls();
   const [busy, setBusy] = useState(false);
@@ -254,7 +255,10 @@ function AccountRow({
             title={a.email}
           >
             <span className="ic">
-              <span className="acct-dot" style={{ background: accountColor(a.id) }} />
+              <span
+                className="acct-dot"
+                style={{ background: resolveAccountColor(a.id, accountColors[a.id]) }}
+              />
             </span>
             <span className="acct-email">{a.displayName?.trim() || a.email}</span>
             <span className="acct-caret" aria-hidden="true">
@@ -654,6 +658,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
     pinnedFolders,
     togglePinFolder,
     openAccountConnector,
+    accountColors,
   } = useApp();
   const [reordering, setReordering] = useState(false);
   const [orderEditing, setOrderEditing] = useState(false);
@@ -821,7 +826,10 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                     title={`${acc.email} · ${folder}`}
                   >
                     <span className="ic">
-                      <span className="acct-dot" style={{ background: accountColor(accId) }} />
+                      <span
+                        className="acct-dot"
+                        style={{ background: resolveAccountColor(accId, accountColors[accId]) }}
+                      />
                     </span>
                     <span className="acct-email">
                       {folder === "INBOX" ? "Inbox" : folder.replace(/^INBOX[./]/, "")}
@@ -882,7 +890,10 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                 title={a.email}
               >
                 <span className="ic">
-                  <span className="acct-dot" style={{ background: accountColor(a.id) }} />
+                  <span
+                    className="acct-dot"
+                    style={{ background: resolveAccountColor(a.id, accountColors[a.id]) }}
+                  />
                 </span>
               </button>
             ))}

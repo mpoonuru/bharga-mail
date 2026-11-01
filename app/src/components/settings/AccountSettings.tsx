@@ -4,6 +4,7 @@ import { type KeyboardEvent, useRef, useState } from "react";
 import { AccountForm } from "@/components/AccountForm";
 import { Icon } from "@/components/icons";
 import { AccountRemovalDialog } from "@/components/settings/AccountRemovalDialog";
+import { ColorSwatchPicker } from "@/components/ui/ColorSwatchPicker";
 import { Modal } from "@/components/ui/Modal";
 import { api, type ImapAccountInput } from "@/lib/bridge";
 import { relativeUnixTime } from "@/lib/date";
@@ -31,6 +32,8 @@ export function AccountSettings() {
   const load = useApp((state) => state.load);
   const openAccountConnector = useApp((state) => state.openAccountConnector);
   const groupConversations = useApp((state) => state.groupConversations);
+  const accountColors = useApp((state) => state.accountColors);
+  const setAccountColor = useApp((state) => state.setAccountColor);
   const [operations, setOperations] = useState<Record<string, AccountOperation>>({});
   const [menuAccountId, setMenuAccountId] = useState<string | null>(null);
   const [editAccount, setEditAccount] = useState<{
@@ -184,6 +187,14 @@ export function AccountSettings() {
                           ? `Last synced ${relativeUnixTime(account.lastSyncAt)}`
                           : "Not synced yet")}
                     </span>
+                  </div>
+                  <div className="account-color-row">
+                    <span className="account-color-label">Color</span>
+                    <ColorSwatchPicker
+                      value={accountColors[account.id]}
+                      onChange={(key) => setAccountColor(account.id, key)}
+                      label={`Color for ${account.displayName?.trim() || account.email}`}
+                    />
                   </div>
                   {accountOperation && (
                     <div

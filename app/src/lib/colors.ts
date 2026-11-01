@@ -3,16 +3,54 @@ import { AVATAR_GRADIENT_ANGLE, AVATAR_TINTS } from "@/constants/avatarTints";
 // Per-account colors in OKLCH. All swatches share the same lightness/chroma and
 // differ only in hue, so they're perceptually even and harmonious — exactly what
 // OKLCH is good at. Each account is mapped to a stable color by hashing its id.
-
-const ACCOUNT_HUES = [268, 330, 18, 70, 152, 200, 300, 120];
 const L = 0.7;
 const C = 0.15;
+
+/** Named presets for the manual per-account color picker (enterprise swatch
+ *  pattern). The eight hues are ~45° apart so neighbours stay distinguishable
+ *  at dot size, and each name matches what its swatch actually looks like. */
+export interface AccountColorChoice {
+  /** Stable key persisted in settings; "auto" keeps the deterministic hash. */
+  key: string;
+  name: string;
+  /** OKLCH hue, or null for "auto". */
+  hue: number | null;
+}
+
+export const ACCOUNT_COLOR_CHOICES: readonly AccountColorChoice[] = [
+  { key: "auto", name: "Auto", hue: null },
+  { key: "red", name: "Red", hue: 25 },
+  { key: "amber", name: "Amber", hue: 70 },
+  { key: "lime", name: "Lime", hue: 115 },
+  { key: "emerald", name: "Emerald", hue: 155 },
+  { key: "teal", name: "Teal", hue: 200 },
+  { key: "blue", name: "Blue", hue: 245 },
+  { key: "violet", name: "Violet", hue: 295 },
+  { key: "rose", name: "Rose", hue: 335 },
+];
+
+/** The eight manual hues — also the auto-hash buckets, so manual and automatic
+ *  colors come from the exact same set. */
+const ACCOUNT_HUES = ACCOUNT_COLOR_CHOICES.filter((choice) => choice.hue !== null).map(
+  (choice) => choice.hue as number,
+);
+
+export function accountColorFromHue(hue: number, alpha = 1): string {
+  return alpha < 1 ? `oklch(${L} ${C} ${hue} / ${alpha})` : `oklch(${L} ${C} ${hue})`;
+}
 
 export function accountColor(id: string, alpha = 1): string {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  const hue = ACCOUNT_HUES[h % ACCOUNT_HUES.length];
-  return alpha < 1 ? `oklch(${L} ${C} ${hue} / ${alpha})` : `oklch(${L} ${C} ${hue})`;
+  return accountColorFromHue(ACCOUNT_HUES[h % ACCOUNT_HUES.length], alpha);
+}
+
+/** Resolve an account dot color from a persisted choice key; missing/unknown/"auto"
+ *  falls back to the stable hash so every account always has a color. */
+export function resolveAccountColor(id: string, choiceKey: string | undefined): string {
+  if (!choiceKey || choiceKey === "auto") return accountColor(id);
+  const choice = ACCOUNT_COLOR_CHOICES.find((c) => c.key === choiceKey);
+  return choice && choice.hue !== null ? accountColorFromHue(choice.hue) : accountColor(id);
 }
 
 /** A subtle gradient for avatars, derived from the account's hue. */
