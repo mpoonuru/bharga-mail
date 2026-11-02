@@ -172,7 +172,7 @@ export function EmailBody({
   mark[data-kind=negative]{background:linear-gradient(120deg,rgba(239,68,68,.18),rgba(239,68,68,.06));box-shadow:inset 0 -2px rgba(239,68,68,.25);}
   mark[data-kind=positive]{background:linear-gradient(120deg,rgba(16,185,129,.18),rgba(16,185,129,.06));box-shadow:inset 0 -2px rgba(16,185,129,.25);}
   @keyframes hlin{from{opacity:.35;}to{opacity:1;}}
-</style></head><body>${body}</body></html>`;
+</style>${processed.headStyles}</head><body${processed.bodyAttrs}>${body}</body></html>`;
 
   const restoreLinkFocus = (opener = linkOpenerRef.current) => {
     window.setTimeout(() => {

@@ -73,3 +73,68 @@ describe("processEmail navigation isolation", () => {
     expect(doc.querySelector('a[href="https://evil.test/svg"]')).toBeNull();
   });
 });
+
+describe("processEmail whole-document styling", () => {
+  const newsletter =
+    "<!doctype html><html><head><style>body{color:#ffffff;font-family:Menlo,monospace}.card{background-color:#131313}</style></head>" +
+    '<body class="body" bgcolor="#050305" onload="alert(1)" background="https://track.test/bg.png"><table class="card" bgcolor="#131313"><tr><td>Connect your app</td></tr></table></body></html>';
+
+  it("keeps the message's <head> stylesheet", () => {
+    const { headStyles, html } = processEmail(newsletter, { showImages: true, highlight: false });
+    expect(headStyles).toContain("color:#ffffff");
+    expect(headStyles).toContain(".card{background-color:#131313}");
+    expect(html).toContain("Connect your app");
+  });
+
+  it("carries only safe <body> attributes", () => {
+    const { bodyAttrs } = processEmail(newsletter, { showImages: true, highlight: false });
+    expect(bodyAttrs).toBe(' class="body" bgcolor="#050305"');
+  });
+
+  it("escapes body attribute values", () => {
+    const { bodyAttrs } = processEmail(
+      `<html><body class='a" onload="x' style="color:red"><p>x</p></body></html>`,
+      { showImages: true, highlight: false },
+    );
+    expect(bodyAttrs).toBe(' class="a&quot; onload=&quot;x" style="color:red"');
+  });
+
+  it("blocks remote images referenced from a stylesheet", () => {
+    const { headStyles, blocked } = processEmail(
+      "<html><head><style>.hero{background-image:url('https://track.test/p.gif')}</style></head><body><div class='hero'>x</div></body></html>",
+      { showImages: false, highlight: false },
+    );
+    expect(headStyles).not.toContain("track.test");
+    expect(blocked).toBe(1);
+  });
+
+  it("adapts head stylesheet colours in dark mode", () => {
+    const { headStyles } = processEmail(
+      "<html><head><style>p{color:#222222}</style></head><body><p>x</p></body></html>",
+      { showImages: true, highlight: false, dark: true },
+    );
+    expect(headStyles).toContain("color: #e7e8ec");
+  });
+});
+
+describe("processEmail dark-designed messages", () => {
+  it("leaves brand colours alone when the message paints its own dark canvas", () => {
+    const sent =
+      "<html><head><style>body{background-color:#050305;color:#fff}.eyebrow{color:#ea2845}</style></head><body><p class='eyebrow'>x</p><p style='color:#333333'>y</p></body></html>";
+    const { headStyles, html } = processEmail(sent, {
+      showImages: true,
+      highlight: false,
+      dark: true,
+    });
+    expect(headStyles).toContain(".eyebrow{color:#ea2845}");
+    expect(html).toContain("color:#333333");
+  });
+
+  it("detects a dark canvas from the body bgcolor attribute", () => {
+    const { html } = processEmail(
+      '<html><body bgcolor="#000000"><p style="color:#ea2845">x</p></body></html>',
+      { showImages: true, highlight: false, dark: true },
+    );
+    expect(html).toContain("color:#ea2845");
+  });
+});

@@ -35,6 +35,30 @@ export function sanitizeEmail(html: string): string {
   return DOMPurify.sanitize(html, SANITIZE_OPTS) as unknown as string;
 }
 
+// Messages are sanitized as whole documents so the <head> <style> block survives:
+// most newsletters keep their text colours, fonts and layout there, and dropping
+// it leaves only the inline table backgrounds — dark text on a dark card.
+const SANITIZE_DOC_OPTS: Config = { ...SANITIZE_OPTS, WHOLE_DOCUMENT: true };
+
+// <body> attributes a message may carry into the reader frame. Everything else
+// (event handlers, the `background` image URL) stays behind.
+const BODY_ATTRS = ["class", "style", "bgcolor", "text", "link", "vlink", "alink", "dir", "lang"];
+
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function bodyAttributes(body: HTMLElement): string {
+  return BODY_ATTRS.map((name) => {
+    const value = body.getAttribute(name);
+    return value === null ? "" : ` ${name}="${escapeAttr(value)}"`;
+  }).join("");
+}
+
 // Ordered so the `data-kind` maps to the capture-group index.
 const KINDS = ["money", "percent", "date", "urgent", "negative", "positive"] as const;
 const PATTERNS: RegExp[] = [
@@ -115,11 +139,21 @@ function blockRemoteInDoc(doc: Document): number {
       blocked++;
     }
   });
+  const remoteUrl = /url\(\s*['"]?https?:[^)]*\)/gi;
   doc.querySelectorAll<HTMLElement>("[style*='url(']").forEach((el) => {
     const style = el.getAttribute("style") ?? "";
     if (/url\(\s*['"]?https?:/i.test(style)) {
-      el.setAttribute("style", style.replace(/url\(\s*['"]?https?:[^)]*\)/gi, "none"));
+      el.setAttribute("style", style.replace(remoteUrl, "none"));
       blocked++;
+    }
+  });
+  // Stylesheets can pull remote images too (background-image in a <style> block).
+  doc.querySelectorAll("style").forEach((el) => {
+    const css = el.textContent ?? "";
+    const hits = css.match(remoteUrl)?.length ?? 0;
+    if (hits > 0) {
+      el.textContent = css.replace(remoteUrl, "none");
+      blocked += hits;
     }
   });
   return blocked;
@@ -206,7 +240,31 @@ function adaptCssText(css: string): string {
   return css;
 }
 
+/** True when the message paints its own dark canvas (body bgcolor, body inline
+ *  style, or a `body`/`html` rule in a stylesheet). Such emails are already designed
+ *  for dark, so their colours — brand reds, blues — must be left exactly as sent. */
+function declaresDarkCanvas(doc: Document): boolean {
+  const isDark = (raw: string | null | undefined) => {
+    const c = raw ? parseColor(raw) : null;
+    return !!c && c[3] !== 0 && relLum(c) < 0.2;
+  };
+  const body = doc.body;
+  if (isDark(body.getAttribute("bgcolor"))) return true;
+  const inline = /background(?:-color)?\s*:\s*([^;!]+)/i.exec(body.getAttribute("style") ?? "");
+  if (isDark(inline?.[1])) return true;
+  for (const style of doc.querySelectorAll("style")) {
+    for (const rule of (style.textContent ?? "").matchAll(
+      /(?:^|[}\s,])(?:html|body)\s*\{([^}]*)\}/gi,
+    )) {
+      const bg = /background(?:-color)?\s*:\s*([^;!}]+)/i.exec(rule[1]);
+      if (isDark(bg?.[1])) return true;
+    }
+  }
+  return false;
+}
+
 function adaptForDark(doc: Document): void {
+  if (declaresDarkCanvas(doc)) return;
   doc.querySelectorAll("style").forEach((s) => {
     if (s.textContent) s.textContent = adaptCssText(s.textContent);
   });
@@ -298,8 +356,17 @@ export function processEmail(
     sender?: string;
     trimQuote?: boolean;
   },
-): { html: string; blocked: number; links: LinkAssessment[] } {
-  const doc = new DOMParser().parseFromString(sanitizeEmail(html), "text/html");
+): {
+  html: string;
+  /** The message's own <head> <style> blocks, to place after the reader's base CSS. */
+  headStyles: string;
+  /** Safe attributes of the message's <body>, serialized for the reader's <body> tag. */
+  bodyAttrs: string;
+  blocked: number;
+  links: LinkAssessment[];
+} {
+  const sanitized = DOMPurify.sanitize(html, SANITIZE_DOC_OPTS) as unknown as string;
+  const doc = new DOMParser().parseFromString(sanitized, "text/html");
   if (opts.trimQuote) {
     try {
       trimQuotedTail(doc);
@@ -328,5 +395,14 @@ export function processEmail(
     /* never let link-scan break rendering */
   }
   const blocked = opts.showImages ? 0 : blockRemoteInDoc(doc);
-  return { html: doc.body.innerHTML, blocked, links };
+  const headStyles = Array.from(doc.head.querySelectorAll("style"))
+    .map((style) => style.outerHTML)
+    .join("");
+  return {
+    html: doc.body.innerHTML,
+    headStyles,
+    bodyAttrs: bodyAttributes(doc.body),
+    blocked,
+    links,
+  };
 }
