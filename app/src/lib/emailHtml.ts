@@ -395,9 +395,13 @@ export function processEmail(
     /* never let link-scan break rendering */
   }
   const blocked = opts.showImages ? 0 : blockRemoteInDoc(doc);
-  const headStyles = Array.from(doc.head.querySelectorAll("style"))
-    .map((style) => style.outerHTML)
-    .join("");
+  // Collect every stylesheet the message carries. They normally live in <head>,
+  // but a parser is allowed to hoist a <style> into <body>; scanning the whole
+  // document means the reader still gets them after its base CSS. Strip them
+  // from the body afterwards so the frame injects exactly one copy.
+  const styleEls = Array.from(doc.querySelectorAll("style"));
+  const headStyles = styleEls.map((style) => style.outerHTML).join("");
+  for (const style of styleEls) style.remove();
   return {
     html: doc.body.innerHTML,
     headStyles,

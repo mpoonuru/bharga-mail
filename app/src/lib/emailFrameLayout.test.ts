@@ -79,4 +79,28 @@ describe("email canvas sizing", () => {
     expect(style().whiteSpace).toBe("nowrap");
     expect(cell.textContent).toBe("10000.50");
   });
+
+  it("preserves a message's designed max-width instead of stretching it", () => {
+    const viewport = document.createElement("div");
+    const frame = document.createElement("iframe");
+    viewport.appendChild(frame);
+    document.body.appendChild(viewport);
+    Object.defineProperty(viewport, "clientWidth", { configurable: true, value: 900 });
+    const doc = frame.contentDocument!;
+    doc.body.innerHTML =
+      '<style>.card{width:100%;max-width:560px}</style><table class="card"><tr><td>hi</td></tr></table>';
+    Object.defineProperty(doc.body, "scrollWidth", { configurable: true, value: 900 });
+    Object.defineProperty(doc.body, "scrollHeight", { configurable: true, value: 400 });
+    Object.defineProperty(doc.body, "offsetHeight", { configurable: true, value: 400 });
+    const range = doc.createRange();
+    Object.defineProperty(range, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(0, 0, 900, 400),
+    });
+    vi.spyOn(doc, "createRange").mockReturnValue(range);
+    const binding = bindEmailFrameLayout(frame, viewport, { layout: "fit", zoom: 100 }, () => {});
+    cleanup.push(binding.dispose);
+    const card = doc.querySelector<HTMLTableElement>(".card")!;
+    expect(doc.defaultView!.getComputedStyle(card).maxWidth).toBe("560px");
+  });
 });

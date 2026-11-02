@@ -13,9 +13,14 @@ export interface EmailFrameLayout {
   dispose: () => void;
 }
 
+// Note: max-width is intentionally NOT !important. A blanket
+// `max-width:100%!important` would outrank the message's own designed
+// constraints (e.g. a 560px card) and stretch narrow layouts to the full pane.
+// Without !important the message's max-width wins on specificity, while wide
+// content (which has no max-width of its own) is still capped at 100%.
 const FIT_STYLE = `
   body{width:auto!important;min-width:0!important;max-width:100%!important;word-break:break-word;overflow-wrap:anywhere;}
-  *{min-width:0!important;max-width:100%!important;box-sizing:border-box;}
+  *{min-width:0!important;max-width:100%;box-sizing:border-box;}
   img{max-width:100%;height:auto;}
   table{max-width:100%;table-layout:auto!important;}
   td,th{white-space:normal!important;word-break:normal;overflow-wrap:normal;}

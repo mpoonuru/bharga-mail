@@ -138,3 +138,26 @@ describe("processEmail dark-designed messages", () => {
     expect(html).toContain("color:#ea2845");
   });
 });
+
+describe("processEmail stylesheet capture", () => {
+  it("captures a stylesheet the parser hoists into the body", () => {
+    const { headStyles, html } = processEmail(
+      '<html><body><style>body{color:#ffffff}</style><p>hi</p></body></html>',
+      { showImages: true, highlight: false, dark: true },
+    );
+    expect(headStyles).toContain("body{color:#ffffff}");
+    expect(html).not.toContain("<style");
+  });
+
+  it("keeps the newsletter body colour in light mode", () => {
+    const sent =
+      '<html><head><style>body{background-color:#050305;color:#ffffff}</style></head><body class="body" bgcolor="#050305"><p>hi</p></body></html>';
+    const { headStyles, bodyAttrs } = processEmail(sent, {
+      showImages: true,
+      highlight: false,
+      dark: false,
+    });
+    expect(headStyles).toContain("color:#ffffff");
+    expect(bodyAttrs).toBe(' class="body" bgcolor="#050305"');
+  });
+});

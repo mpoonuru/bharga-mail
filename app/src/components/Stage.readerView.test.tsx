@@ -90,4 +90,28 @@ describe("message display controls", () => {
     expect(button(host, "Message layout").textContent).toBe("Fit width");
     expect(button(host, "Message zoom").textContent).toBe("100%");
   });
+
+  it("injects the message's own stylesheet into the reader frame", () => {
+    const thread = {
+      ...threads[0],
+      messages: [
+        {
+          ...threads[0].messages[0],
+          bodyHtml:
+            '<html><head><style>.brand{color:#ea2845}</style></head><body class="body" bgcolor="#050305"><p class="brand">hi</p></body></html>',
+        },
+      ],
+    };
+    useApp.setState({
+      accounts: [account],
+      threads: [thread],
+      selectedThreadId: thread.id,
+      selectedMessageId: null,
+    });
+    const rendered = renderTest(<Stage />);
+    mounted.push(rendered);
+    const frame = rendered.host.querySelector<HTMLIFrameElement>("iframe")!;
+    expect(frame.srcdoc).toContain(".brand{color:#ea2845}");
+    expect(frame.srcdoc).toContain('<body class="body" bgcolor="#050305">');
+  });
 });
