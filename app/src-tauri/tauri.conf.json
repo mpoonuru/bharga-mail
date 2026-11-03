@@ -25,8 +25,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-src 'self' data: blob:; object-src 'self' data:; connect-src 'self' https://api.openai.com https://api.anthropic.com https://*.googleapis.com https://graph.microsoft.com https://login.microsoftonline.com http://localhost:11434",
-      "dangerousDisableAssetCspModification": ["style-src"]
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-src 'self' data: blob:; object-src 'self' data:; connect-src 'self' https://api.openai.com https://api.anthropic.com https://*.googleapis.com https://graph.microsoft.com https://login.microsoftonline.com http://localhost:11434"
     }
   },
   "bundle": {

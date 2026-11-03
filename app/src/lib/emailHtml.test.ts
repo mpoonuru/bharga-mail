@@ -142,7 +142,7 @@ describe("processEmail dark-designed messages", () => {
 describe("processEmail stylesheet capture", () => {
   it("captures a stylesheet the parser hoists into the body", () => {
     const { headStyles, html } = processEmail(
-      '<html><body><style>body{color:#ffffff}</style><p>hi</p></body></html>',
+      "<html><body><style>body{color:#ffffff}</style><p>hi</p></body></html>",
       { showImages: true, highlight: false, dark: true },
     );
     expect(headStyles).toContain("body{color:#ffffff}");
@@ -159,5 +159,33 @@ describe("processEmail stylesheet capture", () => {
     });
     expect(headStyles).toContain("color:#ffffff");
     expect(bodyAttrs).toBe(' class="body" bgcolor="#050305"');
+  });
+});
+
+describe("processEmail stylesheets with markup-like text", () => {
+  it("keeps a stylesheet whose CSS comment mentions a tag", () => {
+    const { headStyles } = processEmail(
+      "<html><head><style>h1{color:#ffffff}/* Gmail turns the doctype into the <u> wrapper */.card{background:#131313}</style></head><body><h1>x</h1></body></html>",
+      { showImages: true, highlight: false },
+    );
+    expect(headStyles).toContain("h1{color:#ffffff}");
+    expect(headStyles).toContain(".card{background:#131313}");
+    expect(headStyles).not.toContain("<u>");
+  });
+
+  it("keeps a stylesheet wrapped in legacy <!-- --> markers", () => {
+    const { headStyles } = processEmail(
+      "<html><head><style><!-- p{color:#ea2845} --></style></head><body><p>x</p></body></html>",
+      { showImages: true, highlight: false },
+    );
+    expect(headStyles).toContain("p{color:#ea2845}");
+  });
+
+  it("still drops a stylesheet that tries to break out of <style>", () => {
+    const { headStyles, html } = processEmail(
+      "<html><head><style>p{color:red}</style><style>x{}</sty<img src=x onerror=alert(1)>le></style></head><body><p>y</p></body></html>",
+      { showImages: true, highlight: false },
+    );
+    expect(headStyles + html).not.toContain("onerror");
   });
 });

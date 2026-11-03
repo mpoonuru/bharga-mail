@@ -40,6 +40,19 @@ export function sanitizeEmail(html: string): string {
 // it leaves only the inline table backgrounds — dark text on a dark card.
 const SANITIZE_DOC_OPTS: Config = { ...SANITIZE_OPTS, WHOLE_DOCUMENT: true };
 
+// DOMPurify deletes any element whose text looks like markup (`<u`, `<!--`), and a
+// <style> is no exception — so one CSS comment such as "/* … the <u> wrapper … */"
+// or the legacy `<!-- … -->` wrapper around a newsletter's rules discards the whole
+// stylesheet. Both are ignorable in CSS, so drop them from style blocks first; any
+// other markup-like text still makes DOMPurify remove the block.
+function stripStyleMarkupNoise(html: string): string {
+  return html.replace(
+    /(<style\b[^>]*>)([\s\S]*?)(<\/style)/gi,
+    (_match, open: string, css: string, close: string) =>
+      `${open}${css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--|-->/g, "")}${close}`,
+  );
+}
+
 // <body> attributes a message may carry into the reader frame. Everything else
 // (event handlers, the `background` image URL) stays behind.
 const BODY_ATTRS = ["class", "style", "bgcolor", "text", "link", "vlink", "alink", "dir", "lang"];
@@ -365,7 +378,10 @@ export function processEmail(
   blocked: number;
   links: LinkAssessment[];
 } {
-  const sanitized = DOMPurify.sanitize(html, SANITIZE_DOC_OPTS) as unknown as string;
+  const sanitized = DOMPurify.sanitize(
+    stripStyleMarkupNoise(html),
+    SANITIZE_DOC_OPTS,
+  ) as unknown as string;
   const doc = new DOMParser().parseFromString(sanitized, "text/html");
   if (opts.trimQuote) {
     try {
