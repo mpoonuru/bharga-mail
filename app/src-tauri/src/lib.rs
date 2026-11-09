@@ -1523,7 +1523,7 @@ mod mail_account_command_tests {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -1697,7 +1697,18 @@ pub fn run() {
             download_attachment,
             preview_attachment,
             open_external_url,
-        ])
+        ]);
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .on_page_load(|_, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                webview_tuning::page_loaded();
+            }
+        })
+        .on_web_content_process_terminate(webview_tuning::renderer_terminated);
+
+    builder
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // macOS convention: the red "close" button hides the window and
@@ -1719,8 +1730,13 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = _event {
                 if let Some(window) = _app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                    if let Err(error) = window.show() {
+                        log::error!("window: could not show main window on reopen: {error}");
+                    }
+                    webview_tuning::reload_on_reopen(&window);
+                    if let Err(error) = window.set_focus() {
+                        log::error!("window: could not focus main window on reopen: {error}");
+                    }
                 }
             }
         });

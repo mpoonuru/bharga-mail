@@ -59,7 +59,8 @@ function dateBucket(when: string, now: dayjs.Dayjs): string {
 type Row = { t: Thread; m: Message };
 
 /** The newest message in a thread (by parsed date — `when` is RFC 2822, not sortable). */
-function latestMessage(t: Thread): Message {
+function latestMessage(t: Thread): Message | null {
+  if (t.messages.length === 0) return null;
   return t.messages.reduce((a, b) => (whenMs(b.when) > whenMs(a.when) ? b : a), t.messages[0]);
 }
 
@@ -381,7 +382,10 @@ export function Stream() {
   // by its NEWEST message. Multi-message threads carry a count badge + a disclosure
   // chevron and expand inline into their messages (newest→oldest).
   const rows: Row[] = sortRows(
-    filtered.map((t) => ({ t, m: latestMessage(t) })),
+    filtered.flatMap((t) => {
+      const m = latestMessage(t);
+      return m ? [{ t, m }] : [];
+    }),
     sortMode,
   );
   const visibleThreadIds = rows.map((row) => row.t.id);

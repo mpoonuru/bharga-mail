@@ -70,9 +70,10 @@
   --brand-ambient: radial-gradient(90% 180% at 0% 0%, rgb(72 105 220 / 0.13), transparent 62%);
 }
 [data-theme="light"] {
+  --accent: #405fca; --accent-soft: rgb(64 95 202 / 0.12);
   --bg: #f1f3f7; --bg-2: #f8f9fc; --surface: #ffffff; --surface-2: #eef1f6;
   --border: rgba(18,22,40,0.09); --border-2: rgba(18,22,40,0.16);
-  --text: #161922; --text-2: #4c5263; --text-3: #697181;
+  --text: #161922; --text-2: #4c5263; --text-3: #646c7a;
   --hover-surface: #f1f3f8;
   --selected-surface: #e8edff;
   --selected-border: #b8c5f5;
@@ -105,6 +106,10 @@
   /* Window shell: a full-width title bar on top, the column grid filling the rest. */
   .shell { @apply flex flex-col h-screen min-h-0; }
   .app { @apply grid flex-1 min-h-0; grid-template-columns: 234px 366px 1fr; grid-template-rows: minmax(0, 1fr); transition: grid-template-columns var(--motion-structural) var(--ease); }
+  .error-shell { @apply grid h-screen place-items-center bg-bg px-6; }
+  .error-panel { @apply w-full max-w-[440px] rounded-2xl border border-border-2 bg-surface p-6; box-shadow: var(--shadow-card); }
+  .error-panel h1 { @apply text-[20px] leading-[1.25] font-semibold; }
+  .error-panel p { @apply mt-2 mb-5 text-[13.5px] leading-[1.55] text-text-2; }
   /* The solid top bar — whole strip drags the window; left padding clears the
      macOS traffic-light controls in the overlay title bar. */
   .topbar { @apply flex items-center justify-between gap-3 h-[44px] shrink-0 border-b border-border bg-bg-2 pr-3 select-none; padding-left: 80px; background-image: var(--brand-ambient); }

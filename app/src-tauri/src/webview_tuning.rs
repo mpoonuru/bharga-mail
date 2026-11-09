@@ -1,4 +1,4 @@
-//! macOS web view tuning applied before the first page load.
+//! macOS web view tuning and renderer recovery.
 //!
 //! WebKit caps page rendering at ~60 fps by default ("Prefer Page Rendering
 //! Updates near 60fps"), even on 120 Hz ProMotion displays. Native apps scroll
@@ -8,11 +8,61 @@
 //! the configuration the web view is created with; setting it later, reloading
 //! or navigating does not take effect.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, Bool};
 use objc2::{MainThreadMarker, msg_send, sel};
 use objc2_foundation::NSString;
 use objc2_web_kit::WKWebViewConfiguration;
+
+struct RecoveryState {
+    pending: AtomicBool,
+}
+
+impl RecoveryState {
+    const fn new() -> Self {
+        Self { pending: AtomicBool::new(false) }
+    }
+
+    fn renderer_terminated(&self) {
+        self.pending.store(true, Ordering::Release);
+    }
+
+    fn page_loaded(&self) -> bool {
+        self.pending.swap(false, Ordering::AcqRel)
+    }
+
+    fn needs_reload(&self) -> bool {
+        self.pending.load(Ordering::Acquire)
+    }
+}
+
+static RECOVERY: RecoveryState = RecoveryState::new();
+
+pub fn renderer_terminated<R: tauri::Runtime>(webview: &tauri::Webview<R>) {
+    RECOVERY.renderer_terminated();
+    log::error!("webview: renderer terminated; reloading frontend");
+    if let Err(error) = webview.reload() {
+        log::error!("webview: renderer recovery reload failed: {error}");
+    }
+}
+
+pub fn page_loaded() {
+    if RECOVERY.page_loaded() {
+        log::info!("webview: frontend loaded; renderer recovery complete");
+    }
+}
+
+pub fn reload_on_reopen(window: &tauri::WebviewWindow) {
+    if !RECOVERY.needs_reload() {
+        return;
+    }
+    log::warn!("webview: reopening with renderer recovery pending; reloading frontend");
+    if let Err(error) = window.reload() {
+        log::error!("webview: reopen recovery reload failed: {error}");
+    }
+}
 
 const FRAME_CAP_FEATURE: &str = "PreferPageRenderingUpdatesNear60FPSEnabled";
 
@@ -59,5 +109,24 @@ fn disable_frame_cap(config: &WKWebViewConfiguration) -> Result<(), &'static str
             }
         }
         Err("feature not found in this WebKit version")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RecoveryState;
+
+    #[test]
+    fn recovery_stays_pending_until_a_page_loads() {
+        let state = RecoveryState::new();
+        assert!(!state.needs_reload());
+
+        state.renderer_terminated();
+        assert!(state.needs_reload());
+        assert!(state.needs_reload(), "a failed reload must remain retryable");
+
+        assert!(state.page_loaded());
+        assert!(!state.needs_reload());
+        assert!(!state.page_loaded(), "an ordinary page load is not a recovery");
     }
 }

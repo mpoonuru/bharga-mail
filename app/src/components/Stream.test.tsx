@@ -73,6 +73,20 @@ describe("Stream row motion", () => {
 });
 
 describe("Stream row keyboard behavior", () => {
+  it("skips an incomplete thread without messages instead of crashing the list", () => {
+    const incomplete = {
+      ...threads[0],
+      id: "incomplete",
+      subject: "Incomplete thread",
+      messages: [],
+    };
+    const { container } = renderStream([incomplete, threads[1]]);
+
+    expect(container.querySelectorAll(".mail-open")).toHaveLength(1);
+    expect(container.textContent).toContain(threads[1].subject);
+    expect(container.textContent).not.toContain("Incomplete thread");
+  });
+
   it("gives the mail search field an accessible name", () => {
     const { container } = renderStream();
     const search = container.querySelector<HTMLInputElement>(".search-box input");

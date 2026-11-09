@@ -1090,6 +1090,13 @@ impl Store {
                 t.messages = by_thread.remove(&t.id).unwrap_or_default();
                 t
             })
+            .filter(|thread| {
+                if thread.messages.is_empty() {
+                    log::warn!("store: omitting thread {} because it has no messages", thread.id);
+                    return false;
+                }
+                true
+            })
             .collect()
     }
 
@@ -2865,6 +2872,20 @@ mod tests {
         let full = s.thread("t1").expect("thread exists");
         assert_eq!(full.messages[0].body_html, "<p>big body</p>");
         assert!(s.thread("missing").is_none());
+    }
+
+    #[test]
+    fn thread_list_omits_threads_without_messages() {
+        let s = Store::in_memory().unwrap();
+        s.upsert_account("a1", "x@y.z", "gmail", "X").unwrap();
+        let mut incomplete = thread_with("empty", "Fri, 29 May 2026 10:00:00 +0000", "");
+        incomplete.messages.clear();
+        s.upsert_thread(&incomplete).unwrap();
+        s.upsert_thread(&thread_with("valid", "Fri, 29 May 2026 10:00:00 +0000", "body")).unwrap();
+
+        let listed = s.threads();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "valid");
     }
 
     #[test]
