@@ -239,16 +239,53 @@ describe("processEmail smart highlights", () => {
     expect(marks(html, "urgent")).toEqual([]);
   });
 
-  it("stays fast on long hostile runs of address-like text", () => {
-    const started = performance.now();
-    for (const unit of ["a.", "a+", "a-", "+1 ", "invoice "]) run(`<p>${unit.repeat(40000)}</p>`);
-    expect(performance.now() - started).toBeLessThan(1500);
-  });
-
   it("still highlights a bare forward, which has no text of its own", () => {
     const html = run(
       "<div>From: a@example.org Sent: Monday Subject: Hi</div><div>Reach me at b@example.org</div>",
     );
     expect(marks(html, "email")).toEqual(["a@example.org", "b@example.org"]);
+  });
+});
+
+describe("processEmail on hostile input", () => {
+  // Each of these took seconds to minutes before the patterns were bounded
+  // ("from: sent: " needed 96 s at a fifth of this size).
+  const units = ["a.", "a+", "a-", "1.", "+1 ", "invoice ", "on ", "am ", "from: ", "from: sent: "];
+  for (const unit of units) {
+    it(`stays fast on a long run of "${unit}"`, () => {
+      const started = performance.now();
+      processEmail(`<p>hello</p><p>${unit.repeat(20000)}</p>`, {
+        showImages: false,
+        highlight: true,
+        dark: true,
+        trimQuote: true,
+      });
+      expect(performance.now() - started).toBeLessThan(1500);
+    });
+  }
+
+  it("stays fast on unclosed style tags", () => {
+    const started = performance.now();
+    processEmail(`${"<style ".repeat(20000)}<p>x</p>`, { showImages: false, highlight: true });
+    expect(performance.now() - started).toBeLessThan(1500);
+  });
+
+  it("still trims a reply header in each supported language", () => {
+    for (const header of [
+      "On Mon, 3 Nov 2026 Max wrote:",
+      "Am 03.11.2026 um 10:00 schrieb Max:",
+      "Il giorno 3 nov 2026 Max ha scritto:",
+      "Le 3 nov. 2026 Max a écrit :",
+      "El 3 nov 2026 Max escribió:",
+      "From: Max Sent: Monday Subject: Hi",
+    ]) {
+      const { html } = processEmail(`<p>My answer</p><p>${header}</p><p>old text</p>`, {
+        showImages: true,
+        highlight: false,
+        trimQuote: true,
+      });
+      expect(html).toContain("My answer");
+      expect(html).not.toContain("old text");
+    }
   });
 });

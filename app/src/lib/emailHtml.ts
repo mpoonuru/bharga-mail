@@ -48,7 +48,7 @@ const SANITIZE_DOC_OPTS: Config = { ...SANITIZE_OPTS, WHOLE_DOCUMENT: true };
 // other markup-like text still makes DOMPurify remove the block.
 function stripStyleMarkupNoise(html: string): string {
   return html.replace(
-    /(<style\b[^>]*>)([\s\S]*?)(<\/style)/gi,
+    /(<style\b[^>]{0,2000}>)([\s\S]*?)(<\/style)/gi,
     (_match, open: string, css: string, close: string) =>
       `${open}${css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--|-->/g, "")}${close}`,
   );
@@ -96,7 +96,7 @@ const PATTERNS: RegExp[] = [
   /\+\d[\d\s()./-]{6,24}\d/,
   // IPv4 addresses, and labelled reference numbers ("Invoice no. 2026-0042").
   /\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:invoice|order|ticket|case|reference|ref|tracking|booking|customer|rechnungs?|bestell|auftrags?|kunden|vorgangs?)[\s-]?(?:no\.?|nr\.?|number|nummer|id)?\s?[:#]?\s?(?=[a-z0-9-]{0,40}\d)[a-z0-9][a-z0-9-]{3,40}\b/i,
-  /(?:[$€£]\s?\d[\d.,]*)|(?:\b\d[\d.,]*\s?(?:eur|usd|gbp)\b)/i,
+  /(?:[$€£]\s?\d[\d.,]{0,24})|(?:\b\d[\d.,]{0,24}\s?(?:eur|usd|gbp)\b)/i,
   /\b\d+(?:\.\d+)?\s?%/,
   /\b(?:today|tomorrow|tonight|yesterday|(?:mon|tues?|wed(?:nes)?|thurs?|fri|satur?|sun)(?:day)?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/i,
   /\b(?:urgent|asap|immediately|deadline|critical|overdue|action required|dringend|sofort|frist|fällig)\b/i,
@@ -361,10 +361,42 @@ function scanLinksInDoc(doc: Document, senderDomain?: string): LinkAssessment[] 
 // quote container or header, and never strips when there's no new content above.
 const TRIM_CONTAINERS =
   ".gmail_quote, blockquote[type='cite'], .moz-cite-prefix, .yahoo_quoted, #divRplyFwdMsg, #appendonsend, #x_divRplyFwdMsg, #x_appendonsend";
-const TRIM_FWD =
-  /\b(from|von|da):.*\b(sent|gesendet|inviato|date):.*(subject|betreff|oggetto|objet|asunto):/i;
-const TRIM_REPLY =
-  /\bon\b.+\bwrote:|am\b.+\bschrieb.*:|il\b.+\bha\s+scritto:|le\b.+\ba\s+écrit\s*:|el\b.+\bescribió\s*:/i;
+// Reply and forward headers, as steps that must match one after the other. They
+// are searched step by step (see matchesInOrder) rather than as one `a.*b.*c`
+// expression: on hostile text such as "from: sent: from: sent: …" a single
+// expression retries every combination and stalls the reader for minutes.
+const TRIM_FWD_STEPS = [
+  /\b(?:from|von|da):/gi,
+  /\b(?:sent|gesendet|inviato|date):/gi,
+  /(?:subject|betreff|oggetto|objet|asunto):/gi,
+];
+const TRIM_REPLY_STEPS = [
+  [/\bon\b/gi, /\bwrote:/gi],
+  [/am\b/gi, /\bschrieb/gi, /:/gi],
+  [/il\b/gi, /\bha\s+scritto:/gi],
+  [/le\b/gi, /\ba\s+écrit\s*:/gi],
+  [/el\b/gi, /\bescribió\s*:/gi],
+];
+
+/** True when every step matches, each one after the end of the one before. One
+ *  pass over the text per step, so the cost stays linear in its length. */
+function matchesInOrder(text: string, steps: RegExp[]): boolean {
+  let from = 0;
+  for (const step of steps) {
+    step.lastIndex = from;
+    const match = step.exec(text);
+    if (!match) return false;
+    from = match.index + match[0].length;
+  }
+  return true;
+}
+
+function isQuoteHeader(text: string): boolean {
+  return (
+    TRIM_REPLY_STEPS.some((steps) => matchesInOrder(text, steps)) ||
+    matchesInOrder(text, TRIM_FWD_STEPS)
+  );
+}
 
 /** First element of the quoted tail, or null when there is none or when nothing
  *  new stands above it (a bare forward is the message, not history). */
@@ -373,7 +405,7 @@ function quotedTailStart(doc: Document): Element | null {
   if (!b) {
     for (const el of doc.body.querySelectorAll("p,div,blockquote,td,font,pre")) {
       const t = (el.textContent ?? "").replace(/\s+/g, " ").trim();
-      if (t && (TRIM_REPLY.test(t) || TRIM_FWD.test(t))) {
+      if (t && isQuoteHeader(t)) {
         b = el;
         break;
       }
