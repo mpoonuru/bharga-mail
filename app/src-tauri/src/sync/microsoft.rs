@@ -218,7 +218,10 @@ pub async fn set_read(
     let access = valid_token(account_id).await?;
     let client = reqwest::Client::new();
     let body = serde_json::json!({ "isRead": !unread });
-    for_each_message(&access, conversation_id, "Microsoft mark read", |id| {
+    // Only touch messages not already in the wanted state: a bulk "mark read"
+    // over mostly-read mail then sends a handful of writes instead of hundreds.
+    let filter = format!("{} and isRead eq {}", conversation_filter(conversation_id), unread);
+    for_each_message(&access, conversation_id, &filter, "Microsoft mark read", |id| {
         client.patch(format!("{GRAPH}/me/messages/{id}")).bearer_auth(&access).json(&body)
     })
     .await
@@ -234,7 +237,8 @@ pub async fn move_conversation(
     let access = valid_token(account_id).await?;
     let client = reqwest::Client::new();
     let body = serde_json::json!({ "destinationId": destination });
-    for_each_message(&access, conversation_id, "Microsoft move", |id| {
+    let filter = conversation_filter(conversation_id);
+    for_each_message(&access, conversation_id, &filter, "Microsoft move", |id| {
         client.post(format!("{GRAPH}/me/messages/{id}/move")).bearer_auth(&access).json(&body)
     })
     .await
@@ -246,11 +250,12 @@ pub async fn move_conversation(
 async fn for_each_message(
     access: &str,
     conversation_id: &str,
+    filter: &str,
     operation: &str,
     request: impl Fn(&str) -> reqwest::RequestBuilder,
 ) -> Result<(), SyncError> {
     let mut first_error: Option<SyncError> = None;
-    for id in message_ids(access, conversation_id).await? {
+    for id in message_ids(access, filter).await? {
         let error = match send_throttled(request(&id)).await {
             Ok(resp) if resp.status().is_success() => continue,
             Ok(resp) => super::http_status_error(resp.status(), operation),
@@ -304,13 +309,14 @@ fn conversation_filter(conversation_id: &str) -> String {
     format!("conversationId eq '{}'", conversation_id.replace('\'', "''"))
 }
 
-/// Resolve the Graph message ids that belong to a conversation.
-async fn message_ids(access: &str, conversation_id: &str) -> Result<Vec<String>, SyncError> {
+/// Resolve the Graph message ids matching an OData filter (built from
+/// `conversation_filter`, which escapes the id).
+async fn message_ids(access: &str, filter: &str) -> Result<Vec<String>, SyncError> {
     let resp = send_throttled(
         reqwest::Client::new()
             .get(format!(
                 "{GRAPH}/me/messages?$filter={}&$select=id&$top=50",
-                urlencoding::encode(&conversation_filter(conversation_id))
+                urlencoding::encode(filter)
             ))
             .bearer_auth(access),
     )

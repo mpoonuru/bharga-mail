@@ -1,7 +1,7 @@
 // Verifies routine inbox rendering is stable instead of replaying row entrances.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { Stream } from "@/components/Stream";
 import { account, threads } from "@/data/mock";
 import { useApp } from "@/store";
@@ -196,7 +196,7 @@ describe("Stream row keyboard behavior", () => {
 });
 
 describe("Stream conversation selection", () => {
-  it("changes Select all into Deselect all and clears the selection", () => {
+  it("changes Select all into Unselect all and clears the selection", () => {
     const { container } = renderStream([threads[0], threads[1]]);
     act(() => container.querySelector<HTMLButtonElement>(".mail-select")?.click());
 
@@ -204,11 +204,35 @@ describe("Stream conversation selection", () => {
       container.querySelector<HTMLButtonElement>('button[title="Select all (⌘A)"]')?.click(),
     );
     expect(container.querySelectorAll(".mail.multi-sel")).toHaveLength(2);
-    const deselect = container.querySelector<HTMLButtonElement>('button[title="Deselect all"]');
+    const deselect = container.querySelector<HTMLButtonElement>('button[title="Unselect all"]');
+    expect(deselect?.textContent).toBe("Unselect all");
     expect(deselect?.disabled).toBe(false);
 
     act(() => deselect?.click());
     expect(container.querySelectorAll(".mail.multi-sel")).toHaveLength(0);
+    expect(container.querySelector(".selection-bar")).toBeNull();
+  });
+
+  it("keeps the selection bar usable while a bulk read is still syncing", () => {
+    // A server write that never finishes (slow or throttled provider).
+    const setThreadsRead = vi.fn(() => new Promise<{ updated: number; failed: number }>(() => {}));
+    const originalSetThreadsRead = useApp.getState().setThreadsRead;
+    act(() => useApp.setState({ setThreadsRead }));
+    onTestFinished(() => useApp.setState({ setThreadsRead: originalSetThreadsRead }));
+    const { container } = renderStream([threads[0], threads[1]]);
+    act(() => container.querySelector<HTMLButtonElement>(".mail-select")?.click());
+    act(() =>
+      container.querySelector<HTMLButtonElement>('button[title="Select all (⌘A)"]')?.click(),
+    );
+
+    act(() =>
+      container.querySelector<HTMLButtonElement>('button[title="Mark selected as read"]')?.click(),
+    );
+    expect(setThreadsRead).toHaveBeenCalledTimes(1);
+
+    const unselect = container.querySelector<HTMLButtonElement>('button[title="Unselect all"]');
+    expect(unselect?.disabled).toBe(false);
+    act(() => unselect?.click());
     expect(container.querySelector(".selection-bar")).toBeNull();
   });
 

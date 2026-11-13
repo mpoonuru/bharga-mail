@@ -205,7 +205,6 @@ export function Stream() {
   const [sortMsg, setSortMsg] = useState("");
   const [syncMsg, setSyncMsg] = useState("");
   const [selectionMsg, setSelectionMsg] = useState("");
-  const [bulkBusy, setBulkBusy] = useState(false);
   const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set());
   // Read by the document-level key handler, whose closure would otherwise be stale.
   const selectedCountRef = useRef(0);
@@ -541,18 +540,17 @@ export function Stream() {
   };
 
   const selectedIdsInView = () => visibleThreadIds.filter((id) => selectedThreadIds.has(id));
-  const applySelectedReadState = async (read: boolean, ids = selectedIdsInView()) => {
-    if (bulkBusy || ids.length === 0) return;
-    setBulkBusy(true);
-    setSelectionMsg("");
-    const result = await setThreadsRead(ids, read);
-    setBulkBusy(false);
+  // The list updates at once (setThreadsRead is optimistic); the server writes
+  // run in the background, so a slow or throttled provider never locks the
+  // selection bar. Failures are rolled back by the store and reported here.
+  const applySelectedReadState = (read: boolean, ids = selectedIdsInView()) => {
+    if (ids.length === 0) return;
     const verb = read ? "read" : "unread";
-    setSelectionMsg(
-      result.failed > 0
-        ? `${result.updated} marked ${verb}; ${result.failed} could not be updated`
-        : `${result.updated} marked ${verb}`,
-    );
+    setSelectionMsg(`${ids.length} marked ${verb}`);
+    void setThreadsRead(ids, read).then((result) => {
+      if (result.failed > 0)
+        setSelectionMsg(`${result.updated} marked ${verb}; ${result.failed} could not be updated`);
+    });
   };
 
   const archiveSelected = (ids = selectedIdsInView()) => {
@@ -631,16 +629,14 @@ export function Stream() {
             <div className="selection-actions">
               <button
                 type="button"
-                onClick={() => void applySelectedReadState(true)}
-                disabled={bulkBusy}
+                onClick={() => applySelectedReadState(true)}
                 title="Mark selected as read"
               >
                 <Icon name="envelopeOpen" size={14} /> <span>Read</span>
               </button>
               <button
                 type="button"
-                onClick={() => void applySelectedReadState(false)}
-                disabled={bulkBusy}
+                onClick={() => applySelectedReadState(false)}
                 title="Mark selected as unread"
               >
                 <Icon name="envelope" size={14} /> <span>Unread</span>
@@ -648,7 +644,6 @@ export function Stream() {
               <button
                 type="button"
                 onClick={() => archiveSelected()}
-                disabled={bulkBusy}
                 title="Archive selected"
               >
                 <Icon name="archive" size={14} /> <span>Archive</span>
@@ -660,14 +655,13 @@ export function Stream() {
                     ? clearThreadSelection
                     : selectAllVisible
                 }
-                disabled={bulkBusy}
                 title={
-                  selectedCount === visibleThreadIds.length ? "Deselect all" : "Select all (⌘A)"
+                  selectedCount === visibleThreadIds.length ? "Unselect all" : "Select all (⌘A)"
                 }
               >
                 <span>
                   {selectedCount === visibleThreadIds.length
-                    ? "Clear all"
+                    ? "Unselect all"
                     : `Select all (${visibleThreadIds.length})`}
                 </span>
               </button>
@@ -675,7 +669,6 @@ export function Stream() {
                 type="button"
                 className="selection-clear"
                 onClick={clearThreadSelection}
-                disabled={bulkBusy}
                 title="Clear selection"
                 aria-label="Clear selection"
               >
@@ -913,7 +906,7 @@ export function Stream() {
                       type="button"
                       role="menuitem"
                       onClick={run(() => {
-                        void applySelectedReadState(true, contextIds);
+                        applySelectedReadState(true, contextIds);
                       })}
                     >
                       <Icon name="envelopeOpen" size={14} /> Mark as read
@@ -922,7 +915,7 @@ export function Stream() {
                       type="button"
                       role="menuitem"
                       onClick={run(() => {
-                        void applySelectedReadState(false, contextIds);
+                        applySelectedReadState(false, contextIds);
                       })}
                     >
                       <Icon name="envelope" size={14} /> Mark as unread
