@@ -12,6 +12,12 @@ use crate::store::{Message, Party, Store, Thread};
 
 const GRAPH: &str = "https://graph.microsoft.com/v1.0";
 
+/// Graph allows only 4 concurrent requests per app per mailbox; bulk actions
+/// (select all → mark read) fire one command per thread at once. Stay below it.
+static GRAPH_SLOTS: std::sync::LazyLock<tokio::sync::Semaphore> =
+    std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(3));
+const GRAPH_MAX_ATTEMPTS: u32 = 4;
+
 fn config() -> OAuthConfig {
     OAuthConfig {
         auth_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".into(),
@@ -20,7 +26,8 @@ fn config() -> OAuthConfig {
         scopes: vec![
             "offline_access".into(),
             "User.Read".into(),
-            "Mail.Read".into(),
+            // ReadWrite (not Read): mark-read and move PATCH/POST messages.
+            "Mail.ReadWrite".into(),
             "Mail.Send".into(),
         ],
         purpose: OAuthPurpose::Mail,
@@ -210,15 +217,11 @@ pub async fn set_read(
 ) -> Result<(), SyncError> {
     let access = valid_token(account_id).await?;
     let client = reqwest::Client::new();
-    for id in message_ids(&access, conversation_id).await? {
-        let _ = client
-            .patch(format!("{GRAPH}/me/messages/{id}"))
-            .bearer_auth(&access)
-            .json(&serde_json::json!({ "isRead": !unread }))
-            .send()
-            .await;
-    }
-    Ok(())
+    let body = serde_json::json!({ "isRead": !unread });
+    for_each_message(&access, conversation_id, "Microsoft mark read", |id| {
+        client.patch(format!("{GRAPH}/me/messages/{id}")).bearer_auth(&access).json(&body)
+    })
+    .await
 }
 
 /// Move a conversation to a well-known folder ("deleteditems" for trash,
@@ -230,31 +233,93 @@ pub async fn move_conversation(
 ) -> Result<(), SyncError> {
     let access = valid_token(account_id).await?;
     let client = reqwest::Client::new();
-    for id in message_ids(&access, conversation_id).await? {
-        let _ = client
-            .post(format!("{GRAPH}/me/messages/{id}/move"))
-            .bearer_auth(&access)
-            .json(&serde_json::json!({ "destinationId": destination }))
-            .send()
-            .await;
+    let body = serde_json::json!({ "destinationId": destination });
+    for_each_message(&access, conversation_id, "Microsoft move", |id| {
+        client.post(format!("{GRAPH}/me/messages/{id}/move")).bearer_auth(&access).json(&body)
+    })
+    .await
+}
+
+/// Send one request per message of a conversation. Every refused or failed
+/// request is logged; the first failure is returned so callers never see a
+/// silent success.
+async fn for_each_message(
+    access: &str,
+    conversation_id: &str,
+    operation: &str,
+    request: impl Fn(&str) -> reqwest::RequestBuilder,
+) -> Result<(), SyncError> {
+    let mut first_error: Option<SyncError> = None;
+    for id in message_ids(access, conversation_id).await? {
+        let error = match send_throttled(request(&id)).await {
+            Ok(resp) if resp.status().is_success() => continue,
+            Ok(resp) => super::http_status_error(resp.status(), operation),
+            Err(e) => SyncError::Transient(format!("{operation}: {e}")),
+        };
+        log::warn!("{operation} failed for a message in {conversation_id}: {error}");
+        first_error.get_or_insert(error);
     }
-    Ok(())
+    first_error.map_or(Ok(()), Err)
+}
+
+/// Send a Graph write/lookup while holding one of the shared concurrency slots.
+/// A 429/503 is retried after the server's `Retry-After` (bounded), so a bulk
+/// action is slowed down instead of half-applied.
+async fn send_throttled(request: reqwest::RequestBuilder) -> reqwest::Result<reqwest::Response> {
+    let _slot = GRAPH_SLOTS.acquire().await.expect("Graph semaphore is never closed");
+    let mut attempt = 1;
+    loop {
+        // JSON/empty bodies always clone; fall back to a single plain send if not.
+        let Some(this_try) = request.try_clone() else { return request.send().await };
+        let resp = this_try.send().await?;
+        let status = resp.status();
+        let throttled = status == reqwest::StatusCode::TOO_MANY_REQUESTS
+            || status == reqwest::StatusCode::SERVICE_UNAVAILABLE;
+        if !throttled || attempt >= GRAPH_MAX_ATTEMPTS {
+            return Ok(resp);
+        }
+        let wait = retry_delay(
+            resp.headers().get(reqwest::header::RETRY_AFTER).and_then(|v| v.to_str().ok()),
+            attempt,
+        );
+        log::info!("Microsoft Graph HTTP {status}; retrying in {}s", wait.as_secs());
+        tokio::time::sleep(wait).await;
+        attempt += 1;
+    }
+}
+
+/// Seconds from `Retry-After` when present, else exponential (2, 4, 8 s);
+/// capped at 30 s so a UI action never hangs for minutes.
+fn retry_delay(retry_after: Option<&str>, attempt: u32) -> std::time::Duration {
+    let secs = retry_after
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or_else(|| 2u64.saturating_pow(attempt));
+    std::time::Duration::from_secs(secs.clamp(1, 30))
+}
+
+/// OData `$filter` for one conversation. Single quotes are doubled (OData
+/// string-literal escaping) so an id can never break out of the literal; the
+/// caller percent-encodes it so `+`, `/` and `=` are percent-encoded.
+fn conversation_filter(conversation_id: &str) -> String {
+    format!("conversationId eq '{}'", conversation_id.replace('\'', "''"))
 }
 
 /// Resolve the Graph message ids that belong to a conversation.
 async fn message_ids(access: &str, conversation_id: &str) -> Result<Vec<String>, SyncError> {
-    let url = format!(
-        "{GRAPH}/me/messages?$filter=conversationId eq '{conversation_id}'&$select=id&$top=50"
-    );
-    let v: Value = reqwest::Client::new()
-        .get(url)
-        .bearer_auth(access)
-        .send()
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?
-        .json()
-        .await
-        .map_err(|e| SyncError::Transient(e.to_string()))?;
+    let resp = send_throttled(
+        reqwest::Client::new()
+            .get(format!(
+                "{GRAPH}/me/messages?$filter={}&$select=id&$top=50",
+                urlencoding::encode(&conversation_filter(conversation_id))
+            ))
+            .bearer_auth(access),
+    )
+    .await
+    .map_err(|e| SyncError::Transient(e.to_string()))?;
+    if !resp.status().is_success() {
+        return Err(super::http_status_error(resp.status(), "Microsoft conversation lookup"));
+    }
+    let v: Value = resp.json().await.map_err(|e| SyncError::Transient(e.to_string()))?;
     Ok(v["value"]
         .as_array()
         .map(|a| a.iter().filter_map(|m| m["id"].as_str().map(String::from)).collect())
@@ -336,5 +401,30 @@ mod tests {
         assert_eq!(t.subject, "Quote");
         assert!(t.unread);
         assert_eq!(t.messages[0].from.address, "sam@contoso.com");
+    }
+
+    #[test]
+    fn conversation_filter_escapes_quotes() {
+        assert_eq!(conversation_filter("AAQk+/="), "conversationId eq 'AAQk+/='");
+        assert_eq!(
+            conversation_filter("x' or subject eq 'y"),
+            "conversationId eq 'x'' or subject eq ''y'"
+        );
+    }
+
+    #[test]
+    fn retry_delay_honours_retry_after_with_bounds() {
+        assert_eq!(retry_delay(Some("5"), 1).as_secs(), 5);
+        assert_eq!(retry_delay(Some("600"), 1).as_secs(), 30);
+        assert_eq!(retry_delay(Some("0"), 1).as_secs(), 1);
+        assert_eq!(retry_delay(None, 1).as_secs(), 2);
+        assert_eq!(retry_delay(Some("soon"), 3).as_secs(), 8);
+    }
+
+    #[test]
+    fn requests_write_scope_for_read_and_move() {
+        let scopes = config().scopes;
+        assert!(scopes.iter().any(|s| s == "Mail.ReadWrite"));
+        assert!(!scopes.iter().any(|s| s == "Mail.Read"));
     }
 }
