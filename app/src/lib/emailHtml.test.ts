@@ -239,6 +239,12 @@ describe("processEmail smart highlights", () => {
     expect(marks(html, "urgent")).toEqual([]);
   });
 
+  it("stays fast on long hostile runs of address-like text", () => {
+    const started = performance.now();
+    for (const unit of ["a.", "a+", "a-", "+1 ", "invoice "]) run(`<p>${unit.repeat(40000)}</p>`);
+    expect(performance.now() - started).toBeLessThan(1500);
+  });
+
   it("still highlights a bare forward, which has no text of its own", () => {
     const html = run(
       "<div>From: a@example.org Sent: Monday Subject: Hi</div><div>Reach me at b@example.org</div>",

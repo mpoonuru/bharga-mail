@@ -89,11 +89,13 @@ const KINDS = [
   "negative",
   "positive",
 ] as const;
+// Every quantifier over mail text is bounded: the text is the sender's, and an
+// open-ended one makes a long run of "a.a.a.…" take quadratic time.
 const PATTERNS: RegExp[] = [
-  /\b[a-z0-9][a-z0-9._%+-]*@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/i,
-  /\+\d[\d\s()./-]{6,}\d/,
+  /\b[a-z0-9][a-z0-9._%+-]{0,63}@[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){0,8}\.[a-z]{2,24}\b/i,
+  /\+\d[\d\s()./-]{6,24}\d/,
   // IPv4 addresses, and labelled reference numbers ("Invoice no. 2026-0042").
-  /\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:invoice|order|ticket|case|reference|ref|tracking|booking|customer|rechnungs?|bestell|auftrags?|kunden|vorgangs?)[\s-]?(?:no\.?|nr\.?|number|nummer|id)?\s?[:#]?\s?(?=[a-z0-9-]*\d)[a-z0-9][a-z0-9-]{3,}\b/i,
+  /\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:invoice|order|ticket|case|reference|ref|tracking|booking|customer|rechnungs?|bestell|auftrags?|kunden|vorgangs?)[\s-]?(?:no\.?|nr\.?|number|nummer|id)?\s?[:#]?\s?(?=[a-z0-9-]{0,40}\d)[a-z0-9][a-z0-9-]{3,40}\b/i,
   /(?:[$€£]\s?\d[\d.,]*)|(?:\b\d[\d.,]*\s?(?:eur|usd|gbp)\b)/i,
   /\b\d+(?:\.\d+)?\s?%/,
   /\b(?:today|tomorrow|tonight|yesterday|(?:mon|tues?|wed(?:nes)?|thurs?|fri|satur?|sun)(?:day)?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/i,
