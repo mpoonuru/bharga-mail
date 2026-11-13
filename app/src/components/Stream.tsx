@@ -166,6 +166,7 @@ export function Stream() {
     selectedThreadId,
     selectedMessageId,
     selectThread,
+    previewThread,
     triageInbox,
     setView,
     archiveThread,
@@ -391,6 +392,18 @@ export function Stream() {
   const visibleThreadKey = visibleThreadIds.join("\u0001");
   const selectedCount = selectedThreadIds.size;
 
+  // The reader is never left empty while the list has mail: at startup, after a
+  // view or folder change, and after archiving the open one, show the top
+  // conversation. A preview only — it stays unread until the person opens it.
+  const topRow = rows[0];
+  const topThreadId = topRow?.t.id;
+  const topMessageId = topRow?.m.id;
+  // Empty means what the reader means by it: no loaded conversation has the open
+  // id (it starts as a placeholder id, and is null after a view change).
+  const readerEmpty = !threads.some((t) => t.id === selectedThreadId);
+  useEffect(() => {
+    if (readerEmpty && topThreadId) previewThread(topThreadId, topMessageId);
+  }, [readerEmpty, topThreadId, topMessageId, previewThread]);
   // Select every visible conversation (⌘A / "Select all" button).
   const selectAllVisible = () => {
     setSelectedThreadIds(new Set(visibleThreadIds));
@@ -641,11 +654,7 @@ export function Stream() {
               >
                 <Icon name="envelope" size={14} /> <span>Unread</span>
               </button>
-              <button
-                type="button"
-                onClick={() => archiveSelected()}
-                title="Archive selected"
-              >
+              <button type="button" onClick={() => archiveSelected()} title="Archive selected">
                 <Icon name="archive" size={14} /> <span>Archive</span>
               </button>
               <button

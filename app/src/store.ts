@@ -65,6 +65,8 @@ interface AppState {
   discardDeadLetter: (id: string) => Promise<void>;
   dismissSendWarning: (accountId: string) => Promise<void>;
   selectThread: (id: string, messageId?: string) => void;
+  /** Show a conversation in the reader without marking it read. */
+  previewThread: (id: string, messageId?: string) => void;
 
   // chrome state
   theme: Theme;
@@ -413,6 +415,10 @@ export const useApp = create<AppState>((set, get) => ({
         Object.entries(get().sendWarnings).filter(([k]) => k !== accountId),
       ),
     });
+  },
+  previewThread: (id, messageId) => {
+    set({ selectedThreadId: id, selectedMessageId: messageId ?? null });
+    void get().hydrateThread(id);
   },
   selectThread: (id, messageId) => {
     set({ selectedThreadId: id, selectedMessageId: messageId ?? null, mobileStage: true });

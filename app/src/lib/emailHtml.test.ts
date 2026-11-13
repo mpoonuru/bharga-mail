@@ -189,3 +189,60 @@ describe("processEmail stylesheets with markup-like text", () => {
     expect(headStyles + html).not.toContain("onerror");
   });
 });
+
+describe("processEmail smart highlights", () => {
+  const marks = (html: string, kind: string) => {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    return Array.from(doc.querySelectorAll(`mark[data-kind="${kind}"]`)).map((m) => m.textContent);
+  };
+  const run = (source: string) => processEmail(source, { showImages: true, highlight: true }).html;
+
+  it("marks email addresses, phone numbers, IP addresses and reference numbers", () => {
+    const html = run(
+      "<p>Write to abuse@example.org or call +49 30 1234567 about 192.168.1.10, Invoice no. 2026-0042.</p>",
+    );
+    expect(marks(html, "email")).toEqual(["abuse@example.org"]);
+    expect(marks(html, "phone")).toEqual(["+49 30 1234567"]);
+    expect(marks(html, "ref")).toEqual(["192.168.1.10", "Invoice no. 2026-0042"]);
+    expect(marks(html, "date")).toEqual([]);
+  });
+
+  it("marks privacy and security terms ahead of plain sentiment", () => {
+    const html = run(
+      "<p>Never share your password. We saw phishing and unauthorized access, sorry.</p><p>See our Privacy Policy.</p>",
+    );
+    expect(marks(html, "sensitive")).toEqual(["password"]);
+    expect(marks(html, "security")).toEqual(["phishing", "unauthorized"]);
+    expect(marks(html, "negative")).toEqual(["sorry"]);
+  });
+
+  it("flags a mailto link as an address", () => {
+    const html = run('<p>Contact <a href="mailto:privacy@example.org">privacy@example.org</a></p>');
+    expect(html).toContain('data-hl="email"');
+  });
+
+  it("leaves quoted history alone", () => {
+    const html = run(
+      '<p>Please reply to new@example.org</p><div class="gmail_quote">On Mon, old@example.org wrote:<blockquote>urgent: <a href="mailto:old@example.org">old</a></blockquote></div>',
+    );
+    expect(marks(html, "email")).toEqual(["new@example.org"]);
+    expect(marks(html, "urgent")).toEqual([]);
+    expect(html).not.toContain("data-hl");
+  });
+
+  it("leaves a plain-text reply header and what follows it alone", () => {
+    const html = run(
+      "<div>Done, see ticket 48213.</div><div>On 3 Nov 2026 Max &lt;max@example.org&gt; wrote:</div><div>urgent problem</div>",
+    );
+    expect(marks(html, "ref")).toEqual(["ticket 48213"]);
+    expect(marks(html, "email")).toEqual([]);
+    expect(marks(html, "urgent")).toEqual([]);
+  });
+
+  it("still highlights a bare forward, which has no text of its own", () => {
+    const html = run(
+      "<div>From: a@example.org Sent: Monday Subject: Hi</div><div>Reach me at b@example.org</div>",
+    );
+    expect(marks(html, "email")).toEqual(["a@example.org", "b@example.org"]);
+  });
+});

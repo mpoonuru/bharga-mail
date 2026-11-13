@@ -4,8 +4,9 @@ import { assessLink, type LinkAssessment } from "@/lib/linkRisk";
 /**
  * Email HTML pipeline (the standard mail-client approach):
  *   1. sanitize() — strip scripts, handlers, javascript: URIs, meta-refresh, forms.
- *   2. highlightEntities() — AI-inbox flourish: wrap dates, percentages, money, and
- *      urgency/sentiment words in <mark data-kind> so they get a soft gradient.
+ *   2. highlightEntities() — AI-inbox flourish: wrap addresses, phone and reference
+ *      numbers, dates, percentages, money, and urgency/privacy/security/sentiment
+ *      words of the message's own text (not quoted history) in <mark data-kind>.
  *   3. block remote images — privacy (tracking pixels), opt-in via "Load images".
  * Steps 2–3 run on a single parsed document; the body is then rendered inside a
  * sandboxed, CSP-locked iframe.
@@ -72,16 +73,42 @@ function bodyAttributes(body: HTMLElement): string {
   }).join("");
 }
 
-// Ordered so the `data-kind` maps to the capture-group index.
-const KINDS = ["money", "percent", "date", "urgent", "negative", "positive"] as const;
+// Ordered so the `data-kind` maps to the capture-group index. Specific shapes
+// (addresses, numbers) come before word lists, so "192.168.1.10" is an address
+// and not a date, and "fraud" is a security term rather than plain sentiment.
+const KINDS = [
+  "email",
+  "phone",
+  "ref",
+  "money",
+  "percent",
+  "date",
+  "urgent",
+  "sensitive",
+  "security",
+  "negative",
+  "positive",
+] as const;
 const PATTERNS: RegExp[] = [
+  /\b[a-z0-9][a-z0-9._%+-]*@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/i,
+  /\+\d[\d\s()./-]{6,}\d/,
+  // IPv4 addresses, and labelled reference numbers ("Invoice no. 2026-0042").
+  /\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:invoice|order|ticket|case|reference|ref|tracking|booking|customer|rechnungs?|bestell|auftrags?|kunden|vorgangs?)[\s-]?(?:no\.?|nr\.?|number|nummer|id)?\s?[:#]?\s?(?=[a-z0-9-]*\d)[a-z0-9][a-z0-9-]{3,}\b/i,
   /(?:[$€£]\s?\d[\d.,]*)|(?:\b\d[\d.,]*\s?(?:eur|usd|gbp)\b)/i,
   /\b\d+(?:\.\d+)?\s?%/,
   /\b(?:today|tomorrow|tonight|yesterday|(?:mon|tues?|wed(?:nes)?|thurs?|fri|satur?|sun)(?:day)?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/i,
-  /\b(?:urgent|asap|immediately|deadline|critical|overdue|action required)\b/i,
+  /\b(?:urgent|asap|immediately|deadline|critical|overdue|action required|dringend|sofort|frist|fällig)\b/i,
+  // Privacy: credentials and personal data the reader should handle with care.
+  /\b(?:passwords?|passwort|kennwort|passcode|otp|one[- ]time (?:code|password)|verification code|security code|2fa|api key|confidential|vertraulich|do not (?:share|forward)|personal data|gdpr|dsgvo|datenschutz|data protection|privacy(?! policy| notice| statement| settings)|iban|credit card|kreditkarte|passport|social security)\b/i,
+  // Abuse and security: reports, threats and account or legal trouble.
+  /\b(?:abuse|spam|phishing|scam|fraud(?:ulent)?|malware|ransomware|virus|hack(?:ed|ing)?|compromised|unauthori[sz]ed|suspicious|data breach|breach|leak(?:ed)?|suspend(?:ed|sion)?|blocked|blacklist(?:ed)?|takedown|violations?|infring(?:ement|ing|es?)|legal action|lawsuit|chargeback|betrug|missbrauch|gesperrt|abmahnung|mahnung)\b/i,
   /\b(?:issue|problem|delay(?:ed|s)?|not happy|unhappy|complaint|fail(?:ed|ure|s)?|cannot|can't|unable|sorry|apologi[sz]e)\b/i,
   /\b(?:thanks|thank you|great|happy|appreciate|excellent|perfect|confirmed|approved|welcome|congrat)\b/i,
 ];
+
+// Quoted history is someone else's earlier mail: highlighting it again buries
+// what is new in this message.
+const QUOTE_ANCESTORS = "blockquote, .gmail_quote, .yahoo_quoted, .moz-cite-prefix";
 
 function highlightEntities(doc: Document) {
   const combined = new RegExp(PATTERNS.map((re) => `(${re.source})`).join("|"), "gi");
@@ -97,9 +124,24 @@ function highlightEntities(doc: Document) {
     "TEXTAREA",
     "BUTTON",
   ]);
+  // The quoted tail (reply/forward header and everything after it), when the
+  // message also has text of its own.
+  const quoted = new Set<Element>();
+  for (let el = quotedTailStart(doc); el; el = el.nextElementSibling) quoted.add(el);
+  const inQuote = (el: Element | null) => {
+    if (el?.closest(QUOTE_ANCESTORS)) return true;
+    for (let cur = el; cur; cur = cur.parentElement) if (quoted.has(cur)) return true;
+    return false;
+  };
+  // Addresses usually arrive as mailto: links, whose text the walker skips.
+  doc.querySelectorAll("a[href]").forEach((a) => {
+    if (/^mailto:/i.test(a.getAttribute("href") ?? "") && !inQuote(a))
+      a.setAttribute("data-hl", "email");
+  });
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       let el = node.parentElement;
+      if (inQuote(el)) return NodeFilter.FILTER_REJECT;
       while (el) {
         if (skip.has(el.tagName)) return NodeFilter.FILTER_REJECT;
         el = el.parentElement;
@@ -322,7 +364,9 @@ const TRIM_FWD =
 const TRIM_REPLY =
   /\bon\b.+\bwrote:|am\b.+\bschrieb.*:|il\b.+\bha\s+scritto:|le\b.+\ba\s+écrit\s*:|el\b.+\bescribió\s*:/i;
 
-function trimQuotedTail(doc: Document): void {
+/** First element of the quoted tail, or null when there is none or when nothing
+ *  new stands above it (a bare forward is the message, not history). */
+function quotedTailStart(doc: Document): Element | null {
   let b: Element | null = doc.body.querySelector(TRIM_CONTAINERS);
   if (!b) {
     for (const el of doc.body.querySelectorAll("p,div,blockquote,td,font,pre")) {
@@ -333,7 +377,7 @@ function trimQuotedTail(doc: Document): void {
       }
     }
   }
-  if (!b?.parentNode) return;
+  if (!b?.parentNode) return null;
   // Pull preceding dividers/empties so the separator doesn't linger.
   let s: Element = b;
   for (
@@ -350,10 +394,16 @@ function trimQuotedTail(doc: Document): void {
     const r = doc.createRange();
     r.setStart(doc.body, 0);
     r.setEndBefore(s);
-    if (r.toString().replace(/\s+/g, "").length < 3) return;
+    if (r.toString().replace(/\s+/g, "").length < 3) return null;
   } catch {
-    return;
+    return null;
   }
+  return s;
+}
+
+function trimQuotedTail(doc: Document): void {
+  const s = quotedTailStart(doc);
+  if (!s) return;
   const parent = s.parentNode;
   if (!parent) return;
   while (s.nextSibling) parent.removeChild(s.nextSibling);

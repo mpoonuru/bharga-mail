@@ -101,7 +101,10 @@ export function AppearanceSettings() {
         <div className="settings-row">
           <div>
             <b>Smart highlights</b>
-            <p>Highlight dates, amounts, percentages, and urgency in mail.</p>
+            <p>
+              Highlight dates, amounts, email addresses, phone and reference numbers, and urgency,
+              privacy and security terms in a message's own text, not in quoted history.
+            </p>
           </div>
           <BinaryChoice label="Smart highlights" value={highlights} onChange={setHighlights} />
         </div>

@@ -168,6 +168,11 @@ export function EmailBody({
   mark[data-kind=date]{background:linear-gradient(120deg,rgba(37,99,235,.16),rgba(37,99,235,.06));box-shadow:inset 0 -2px rgba(37,99,235,.22);}
   mark[data-kind=percent]{background:linear-gradient(120deg,rgba(139,92,246,.18),rgba(139,92,246,.06));box-shadow:inset 0 -2px rgba(139,92,246,.22);}
   mark[data-kind=money]{background:linear-gradient(120deg,rgba(16,185,129,.18),rgba(16,185,129,.06));box-shadow:inset 0 -2px rgba(16,185,129,.22);}
+  mark[data-kind=email],a[data-hl=email]{border-radius:4px;padding:0 3px;background:linear-gradient(120deg,rgba(14,165,233,.18),rgba(14,165,233,.06));box-shadow:inset 0 -2px rgba(14,165,233,.28);}
+  mark[data-kind=phone]{background:linear-gradient(120deg,rgba(20,184,166,.18),rgba(20,184,166,.06));box-shadow:inset 0 -2px rgba(20,184,166,.26);}
+  mark[data-kind=ref]{background:linear-gradient(120deg,rgba(100,116,139,.2),rgba(100,116,139,.07));box-shadow:inset 0 -2px rgba(100,116,139,.3);}
+  mark[data-kind=sensitive]{background:linear-gradient(120deg,rgba(236,72,153,.18),rgba(236,72,153,.06));box-shadow:inset 0 -2px rgba(236,72,153,.28);}
+  mark[data-kind=security]{background:linear-gradient(120deg,rgba(220,38,38,.22),rgba(220,38,38,.08));box-shadow:inset 0 -2px rgba(220,38,38,.38);}
   mark[data-kind=urgent]{background:linear-gradient(120deg,rgba(245,158,11,.22),rgba(245,158,11,.08));box-shadow:inset 0 -2px rgba(245,158,11,.3);}
   mark[data-kind=negative]{background:linear-gradient(120deg,rgba(239,68,68,.18),rgba(239,68,68,.06));box-shadow:inset 0 -2px rgba(239,68,68,.25);}
   mark[data-kind=positive]{background:linear-gradient(120deg,rgba(16,185,129,.18),rgba(16,185,129,.06));box-shadow:inset 0 -2px rgba(16,185,129,.25);}

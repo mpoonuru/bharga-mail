@@ -14,9 +14,10 @@ const roots: ReturnType<typeof createRoot>[] = [];
 const containers: HTMLDivElement[] = [];
 const originalScrollTo = HTMLElement.prototype.scrollTo;
 
-function renderStream(streamThreads = [threads[1]]) {
+function renderStream(streamThreads = [threads[1]], selectedThreadId: string | null = null) {
   HTMLElement.prototype.scrollTo = () => undefined;
   const selectThread = vi.fn();
+  const previewThread = vi.fn();
   const container = document.createElement("div");
   document.body.append(container);
   containers.push(container);
@@ -28,16 +29,17 @@ function renderStream(streamThreads = [threads[1]]) {
     view: "inbox",
     selectedAccountId: null,
     selectedFolder: null,
-    selectedThreadId: null,
+    selectedThreadId,
     selectedMessageId: null,
     selectThread,
+    previewThread,
     reachedEnd: true,
     folders: [],
     flaggedIds: [],
   });
 
   act(() => root.render(<Stream />));
-  return { container, selectThread };
+  return { container, selectThread, previewThread };
 }
 
 afterEach(() => {
@@ -211,6 +213,33 @@ describe("Stream conversation selection", () => {
     act(() => deselect?.click());
     expect(container.querySelectorAll(".mail.multi-sel")).toHaveLength(0);
     expect(container.querySelector(".selection-bar")).toBeNull();
+  });
+
+  it("previews the top conversation when the reader is empty, without marking it read", () => {
+    const { container, selectThread, previewThread } = renderStream([threads[0], threads[1]]);
+    expect(previewThread).toHaveBeenCalledTimes(1);
+    const top = container.querySelector<HTMLElement>(".mail");
+    expect(top?.textContent).toContain(
+      threads.find((t) => t.id === previewThread.mock.calls[0][0])?.subject,
+    );
+    expect(selectThread).not.toHaveBeenCalled();
+  });
+
+  it("previews the top conversation when the open id matches no loaded conversation", () => {
+    const { previewThread } = renderStream([threads[0], threads[1]], "t1-placeholder");
+    expect(previewThread).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves an open conversation alone", () => {
+    const previewThread = vi.fn();
+    act(() => useApp.setState({ previewThread }));
+    const { container } = renderStream([threads[0], threads[1]], threads[1].id);
+    act(() => container.querySelector<HTMLButtonElement>(".mail-select")?.click());
+    act(() =>
+      container.querySelector<HTMLButtonElement>('button[title="Clear selection"]')?.click(),
+    );
+    expect(container.querySelector(".selection-bar")).toBeNull();
+    expect(previewThread).not.toHaveBeenCalled();
   });
 
   it("keeps the selection bar usable while a bulk read is still syncing", () => {
