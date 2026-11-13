@@ -196,6 +196,22 @@ describe("Stream row keyboard behavior", () => {
 });
 
 describe("Stream conversation selection", () => {
+  it("changes Select all into Deselect all and clears the selection", () => {
+    const { container } = renderStream([threads[0], threads[1]]);
+    act(() => container.querySelector<HTMLButtonElement>(".mail-select")?.click());
+
+    act(() =>
+      container.querySelector<HTMLButtonElement>('button[title="Select all (⌘A)"]')?.click(),
+    );
+    expect(container.querySelectorAll(".mail.multi-sel")).toHaveLength(2);
+    const deselect = container.querySelector<HTMLButtonElement>('button[title="Deselect all"]');
+    expect(deselect?.disabled).toBe(false);
+
+    act(() => deselect?.click());
+    expect(container.querySelectorAll(".mail.multi-sel")).toHaveLength(0);
+    expect(container.querySelector(".selection-bar")).toBeNull();
+  });
+
   it("keeps the opened conversation highlighted when a concrete message is displayed", () => {
     const thread = threads[0];
     const { container } = renderStream([thread]);

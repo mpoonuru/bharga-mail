@@ -655,11 +655,21 @@ export function Stream() {
               </button>
               <button
                 type="button"
-                onClick={selectAllVisible}
-                disabled={bulkBusy || selectedCount === visibleThreadIds.length}
-                title="Select all (⌘A)"
+                onClick={
+                  selectedCount === visibleThreadIds.length
+                    ? clearThreadSelection
+                    : selectAllVisible
+                }
+                disabled={bulkBusy}
+                title={
+                  selectedCount === visibleThreadIds.length ? "Deselect all" : "Select all (⌘A)"
+                }
               >
-                <span>Select all ({visibleThreadIds.length})</span>
+                <span>
+                  {selectedCount === visibleThreadIds.length
+                    ? "Clear all"
+                    : `Select all (${visibleThreadIds.length})`}
+                </span>
               </button>
               <button
                 type="button"

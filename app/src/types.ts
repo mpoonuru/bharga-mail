@@ -8,6 +8,7 @@ export type View =
   | "awaiting"
   | "newsletters"
   | "receipts"
+  | "drafts"
   | "calendar"
   | "tasks"
   | "settings";
@@ -97,17 +98,23 @@ export interface Message {
 
 export type Label = "urgent" | "ai-draft" | "meeting" | "receipt" | "newsletter";
 
-/** A send that failed permanently and was dead-lettered. */
-export interface DeadLetter {
+export interface OutgoingMessage {
   id: string;
   accountId: string;
+  threadId?: string;
   to: string;
   cc?: string;
   bcc?: string;
   subject: string;
+  body: string;
+  attachments: { name: string; mime: string; dataB64: string }[];
+  scheduledTs: number;
+  status: string;
   error?: string;
   failedAt?: number;
 }
+
+export type DeadLetter = OutgoingMessage;
 
 export interface Thread {
   id: string;

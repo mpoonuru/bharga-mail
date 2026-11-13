@@ -12,6 +12,7 @@ import type {
   AiRole,
   FolderInfo,
   SaveAiProviderInput,
+  OutgoingMessage,
   Task,
   Thread,
   View,
@@ -53,10 +54,13 @@ interface AppState {
   hydrateThread: (id: string) => Promise<void>;
   /** Every list refresh goes through here so loaded message bodies survive it. */
   applyThreads: (fresh: Thread[]) => void;
-  /** Permanently failed sends + per-account send warnings, shown in a banner. */
+  /** Pending and permanently failed sends, plus per-account send warnings. */
+  outbox: OutgoingMessage[];
   deadLetters: Awaited<ReturnType<typeof api.listDeadLetters>>;
   sendWarnings: Record<string, string>;
   loadDeadLetters: () => Promise<void>;
+  openDraft: (draft: OutgoingMessage) => void;
+  completeDraft: (draft: OutgoingMessage) => Promise<void>;
   retryDeadLetter: (id: string) => Promise<void>;
   discardDeadLetter: (id: string) => Promise<void>;
   dismissSendWarning: (accountId: string) => Promise<void>;
@@ -69,6 +73,7 @@ interface AppState {
   cmdOpen: boolean;
   modelPickerOpen: boolean;
   composeOpen: boolean;
+  composeDraft: OutgoingMessage | null;
   accountConnectorOpen: boolean;
   accountConnectorOpener: HTMLElement | null;
   // responsive: on narrow layouts, whether the Stage (reading pane) is shown
@@ -150,6 +155,7 @@ interface AppState {
      *  thread's account / focused account / first account when omitted. */
     accountId?: string;
     attachments?: { name: string; mime: string; dataB64: string }[];
+    skipSignature?: boolean;
     /** Absolute epoch-seconds to send at (scheduled send). Omit for immediate. */
     sendAt?: number;
   }) => Promise<void>;
@@ -333,6 +339,7 @@ export const useApp = create<AppState>((set, get) => ({
       selectedThreadId: null,
       selectedMessageId: null,
       composeOpen: false,
+      composeDraft: null,
       drawerOpen: false,
       mobileStage: false,
     }),
@@ -362,15 +369,33 @@ export const useApp = create<AppState>((set, get) => ({
     const open = get().selectedThreadId;
     if (open) void get().hydrateThread(open); // a new message in the open thread needs its body
   },
+  outbox: [],
   deadLetters: [],
   sendWarnings: {},
   loadDeadLetters: async () => {
-    const [deadLetters, settings] = await Promise.all([api.listDeadLetters(), api.getSettings()]);
+    const [outbox, deadLetters, settings] = await Promise.all([
+      api.listOutbox(),
+      api.listDeadLetters(),
+      api.getSettings(),
+    ]);
     const sendWarnings: Record<string, string> = {};
     for (const [k, v] of Object.entries(settings)) {
       if (k.startsWith("send_warning:") && v) sendWarnings[k.slice("send_warning:".length)] = v;
     }
-    set({ deadLetters, sendWarnings });
+    set({ outbox: outbox.filter((item) => item.status !== "sent"), deadLetters, sendWarnings });
+  },
+  openDraft: (composeDraft) => {
+    set({ composeDraft, composeOpen: true, selectedThreadId: null, selectedMessageId: null });
+  },
+  completeDraft: async (draft) => {
+    if (draft.status === "sending") throw new Error("This message is already being sent.");
+    if (draft.status === "dead") {
+      await api.discardDeadLetter(draft.id);
+    } else {
+      const removed = await api.cancelSend(draft.id);
+      if (!removed) throw new Error("This draft is no longer waiting to be sent.");
+    }
+    await get().loadDeadLetters();
   },
   retryDeadLetter: async (id) => {
     await api.retryDeadLetter(id);
@@ -407,6 +432,7 @@ export const useApp = create<AppState>((set, get) => ({
   cmdOpen: false,
   modelPickerOpen: false,
   composeOpen: false,
+  composeDraft: null,
   accountConnectorOpen: false,
   accountConnectorOpener: null,
   mobileStage: false,
@@ -425,7 +451,7 @@ export const useApp = create<AppState>((set, get) => ({
   toggleFocus: () => set({ focusMode: !get().focusMode }),
   setCmd: (cmdOpen) => set({ cmdOpen }),
   setModelPicker: (modelPickerOpen) => set({ modelPickerOpen }),
-  setCompose: (composeOpen) => set({ composeOpen }),
+  setCompose: (composeOpen) => set({ composeOpen, composeDraft: null }),
   openAccountConnector: (accountConnectorOpener = null) =>
     set({
       accountConnectorOpen: true,
@@ -506,20 +532,19 @@ export const useApp = create<AppState>((set, get) => ({
   startLiveSync: async () => {
     if (get().liveSyncStarted) return;
     set({ liveSyncStarted: true });
+    const refresh = async () => {
+      if (document.hidden) return;
+      const [threads, accounts] = await Promise.all([api.listThreads(), api.listAccounts()]);
+      get().applyThreads(threads);
+      set({ accounts });
+      const acct = get().selectedAccountId;
+      if (acct) void get().loadFolders(acct);
+      void get().loadDeadLetters();
+      if (get().autoOrganize) void get().triageInbox();
+    };
+    document.addEventListener("visibilitychange", refresh);
     await listenMail({
-      onSync: async () => {
-        // New mail (or any server change) landed in the local store — refresh the
-        // visible list and the folder counts without the user pressing Sync.
-        const [threads, accounts] = await Promise.all([api.listThreads(), api.listAccounts()]);
-        get().applyThreads(threads);
-        set({ accounts });
-        const acct = get().selectedAccountId;
-        if (acct) void get().loadFolders(acct);
-        void get().loadDeadLetters();
-        // Auto-organize newly-arrived mail (summarize + triage). Incremental and
-        // a no-op without a model, so it's cheap when nothing's new.
-        if (get().autoOrganize) void get().triageInbox();
-      },
+      onSync: refresh,
       onNew: (count) => notifyNewMail(count),
     });
   },
@@ -1153,10 +1178,11 @@ export const useApp = create<AppState>((set, get) => ({
     threadId,
     accountId: fromId,
     attachments,
+    skipSignature,
     sendAt,
   }) => {
     const def = get().signatures.find((s) => s.id === get().defaultSignatureId);
-    const fullBody = def?.html ? `${body}<br><br>--<br>${def.html}` : body;
+    const fullBody = !skipSignature && def?.html ? `${body}<br><br>--<br>${def.html}` : body;
     // Route from the right account: an explicit From (Compose picker) wins, else a
     // reply uses the thread's account, else the focused / first connected one.
     const thread = threadId ? get().threads.find((t) => t.id === threadId) : null;
@@ -1183,6 +1209,7 @@ export const useApp = create<AppState>((set, get) => ({
       ? `Scheduled for ${dayjs((sendAt as number) * 1000).format("ddd, MMM D · HH:mm")}`
       : `Sending to ${to || "recipient"}…`;
     set({ undo: { id, label } });
+    void get().loadDeadLetters();
     // Keep the cancel toast visible long enough to undo. Scheduled sends get a
     // longer window since there's no rush; immediate sends use the undo window.
     const visibleMs = (scheduled ? 8 : SEND.undoWindowSeconds) * 1000;
@@ -1192,7 +1219,12 @@ export const useApp = create<AppState>((set, get) => ({
   },
   cancelUndo: () => {
     const u = get().undo;
-    if (u) void api.cancelSend(u.id);
+    if (u) {
+      void api
+        .cancelSend(u.id)
+        .then(() => get().loadDeadLetters())
+        .catch((error) => console.error("Could not cancel outgoing message", error));
+    }
     set({ undo: null });
   },
 }));

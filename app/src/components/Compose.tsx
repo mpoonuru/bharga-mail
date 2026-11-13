@@ -17,26 +17,36 @@ export function Compose() {
   const crossfadeTransition = useMotionTransition(THREAD_CROSSFADE);
   const setCompose = useApp((s) => s.setCompose);
   const queueSend = useApp((s) => s.queueSend);
+  const completeDraft = useApp((s) => s.completeDraft);
+  const draft = useApp((s) => s.composeDraft);
   const accounts = useApp((s) => s.accounts);
   const selectedAccountId = useApp((s) => s.selectedAccountId);
   const threads = useApp((s) => s.threads);
   const defaultSig = useApp((s) => s.signatures.find((x) => x.id === s.defaultSignatureId));
   // "From" account — defaults to the focused account, else the first connected one.
-  const [from, setFrom] = useState(selectedAccountId ?? accounts[0]?.id ?? "");
-  const [to, setTo] = useState("");
-  const [cc, setCc] = useState("");
-  const [bcc, setBcc] = useState("");
-  const [showCc, setShowCc] = useState(false);
-  const [subject, setSubject] = useState("");
-  const [files, setFiles] = useState<Attach[]>([]);
+  const [from, setFrom] = useState(draft?.accountId ?? selectedAccountId ?? accounts[0]?.id ?? "");
+  const [to, setTo] = useState(draft?.to ?? "");
+  const [cc, setCc] = useState(draft?.cc ?? "");
+  const [bcc, setBcc] = useState(draft?.bcc ?? "");
+  const [showCc, setShowCc] = useState(Boolean(draft?.cc || draft?.bcc));
+  const [subject, setSubject] = useState(draft?.subject ?? "");
+  const [files, setFiles] = useState<Attach[]>(
+    (draft?.attachments ?? []).map((attachment) => ({
+      name: attachment.name,
+      mime: attachment.mime,
+      dataB64: attachment.dataB64,
+      size: Math.floor((attachment.dataB64.length * 3) / 4),
+    })),
+  );
   const [drafting, setDrafting] = useState(false);
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(draft?.error ?? "");
   const [fileDragActive, setFileDragActive] = useState(false);
   const [dragFileCount, setDragFileCount] = useState(0);
   const fileDragDepth = useRef(0);
   const editorRef = useRef<RichTextHandle>(null);
-  const initialHtml = defaultSig?.html ? `<p></p><p>--<br>${defaultSig.html}</p>` : "";
+  const initialHtml =
+    draft?.body ?? (defaultSig?.html ? `<p></p><p>--<br>${defaultSig.html}</p>` : "");
   const validFrom = accounts.some((account) => account.id === from);
 
   // Account state can change while the composer is open (for example after an
@@ -87,6 +97,10 @@ export function Compose() {
       setError("Choose a connected account before sending.");
       return;
     }
+    if (draft?.status === "sending") {
+      setError("This message is already being sent.");
+      return;
+    }
     setSending(true);
     setError("");
     try {
@@ -99,7 +113,9 @@ export function Compose() {
         body: editorRef.current?.getHtml() ?? "",
         sendAt: atTs,
         attachments: files.map(({ name, mime, dataB64 }) => ({ name, mime, dataB64 })),
+        skipSignature: Boolean(draft),
       });
+      if (draft) await completeDraft(draft);
       setCompose(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The message could not be queued.");

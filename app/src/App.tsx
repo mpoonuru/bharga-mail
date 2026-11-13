@@ -5,6 +5,7 @@ import { AccountConnectorDialog } from "@/components/accounts/AccountConnectorDi
 import { CalendarView } from "@/components/CalendarView";
 import { CommandBar } from "@/components/CommandBar";
 import { Compose } from "@/components/Compose";
+import { DraftsView } from "@/components/DraftsView";
 import { Icon } from "@/components/icons";
 import { ModelPicker } from "@/components/ModelPicker";
 import { Settings } from "@/components/Settings";
@@ -169,7 +170,7 @@ export function App() {
 }
 
 function isFull(view: string) {
-  return view === "calendar" || view === "tasks" || view === "settings";
+  return view === "calendar" || view === "tasks" || view === "settings" || view === "drafts";
 }
 
 // A thin draggable column divider. Reports the new width (clamped) as you drag.
@@ -400,11 +401,15 @@ function NarrowLayout() {
 
 function FullPage() {
   const view = useApp((s) => s.view);
+  const composeOpen = useApp((s) => s.composeOpen);
+  const composeDraft = useApp((s) => s.composeDraft);
   return (
     <div className="page" style={{ gridColumn: "2 / 4" }}>
       {view === "calendar" && <CalendarView />}
       {view === "tasks" && <TasksView />}
       {view === "settings" && <Settings />}
+      {view === "drafts" &&
+        (composeOpen ? <Compose key={composeDraft?.id ?? "new"} /> : <DraftsView />)}
     </div>
   );
 }

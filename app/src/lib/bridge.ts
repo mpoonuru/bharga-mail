@@ -30,6 +30,7 @@ import type {
   InvitationInspection,
   InvitationResponseInput,
   MailProviderCapability,
+  OutgoingMessage,
   RemoteCalendar,
   SaveAiProviderInput,
   SaveCalDavSourceInput,
@@ -599,6 +600,12 @@ export const api = {
     } catch {
       return mockThreads.find((t) => t.id === id) ?? null;
     }
+  },
+
+  /** Pending outgoing messages, including retry state and full draft content. */
+  async listOutbox(): Promise<OutgoingMessage[]> {
+    if (!inTauri) return [];
+    return invoke<OutgoingMessage[]>("list_outbox");
   },
 
   /** Sends that failed permanently (bad address, rejected) — never shown before. */

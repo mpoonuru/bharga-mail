@@ -15,6 +15,7 @@ import type { Account, View } from "@/types";
 const NAV: { id: View; icon: IconName; label: string }[] = [
   { id: "priority", icon: "priority", label: "Priority" },
   { id: "inbox", icon: "inbox", label: "All Inbox" },
+  { id: "drafts", icon: "compose", label: "Drafts" },
   { id: "flagged", icon: "flag", label: "Flagged" },
   { id: "snoozed", icon: "snoozed", label: "Snoozed" },
   { id: "awaiting", icon: "awaiting", label: "Awaiting reply" },

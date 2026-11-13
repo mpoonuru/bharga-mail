@@ -105,6 +105,41 @@ describe("Compose", () => {
     expect(host?.querySelector('[role="alert"]')?.textContent).toContain(failure);
   });
 
+  it("restores a saved draft and resends without adding another signature", async () => {
+    const account = useApp.getState().accounts[0];
+    const draft = {
+      id: "ob-saved",
+      accountId: account.id,
+      to: "person@example.test",
+      cc: "copy@example.test",
+      bcc: "",
+      subject: "Saved subject",
+      body: "<p>Saved body</p>",
+      attachments: [{ name: "notes.txt", mime: "text/plain", dataB64: "c2F2ZWQ=" }],
+      scheduledTs: 100,
+      status: "dead",
+    };
+    useApp.setState({ composeDraft: draft, composeOpen: true, selectedAccountId: null });
+    const queue = vi.spyOn(useApp.getState(), "queueSend").mockResolvedValue(undefined);
+    const complete = vi.spyOn(useApp.getState(), "completeDraft").mockResolvedValue(undefined);
+    await renderCompose();
+
+    expect(host?.querySelector<HTMLInputElement>('input[placeholder="Subject"]')?.value).toBe(
+      "Saved subject",
+    );
+    expect(host?.textContent).toContain("person@example.test");
+    expect(host?.textContent).toContain("copy@example.test");
+    expect(host?.textContent).toContain("Saved body");
+    expect(host?.textContent).toContain("notes.txt");
+
+    await act(async () => sendButton().click());
+
+    expect(queue).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: account.id, skipSignature: true }),
+    );
+    expect(complete).toHaveBeenCalledWith(draft);
+  });
+
   it("attaches every file dropped onto the composer", async () => {
     await renderCompose();
 
