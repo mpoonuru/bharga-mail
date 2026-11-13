@@ -56,6 +56,16 @@ pub fn page_loaded() {
 
 pub fn reload_on_reopen(window: &tauri::WebviewWindow) {
     if !RECOVERY.needs_reload() {
+        const RECOVERY_SCRIPT: &str = r#"(() => {
+            const root = document.getElementById("root");
+            if (root && root.childElementCount > 0) return;
+            if (window.__BHARGA_RECOVERY_RELOADING__) return;
+            window.__BHARGA_RECOVERY_RELOADING__ = true;
+            window.location.reload();
+        })();"#;
+        if let Err(error) = window.eval(RECOVERY_SCRIPT) {
+            log::error!("webview: could not check frontend content on reopen: {error}");
+        }
         return;
     }
     log::warn!("webview: reopening with renderer recovery pending; reloading frontend");

@@ -2889,6 +2889,19 @@ mod tests {
     }
 
     #[test]
+    fn empty_summary_marks_triage_only_thread_processed() {
+        let s = Store::in_memory().unwrap();
+        s.upsert_account("a1", "x@y.z", "gmail", "X").unwrap();
+        s.upsert_thread(&thread_with("t1", "Fri, 29 May 2026 10:00:00 +0000", "body")).unwrap();
+        assert_eq!(s.unsummarized_threads().len(), 1);
+
+        s.set_ai_artifacts("t1", Some(""), None).unwrap();
+
+        assert!(s.unsummarized_threads().is_empty());
+        assert_eq!(s.thread("t1").unwrap().ai_summary.as_deref(), Some(""));
+    }
+
+    #[test]
     fn fts_has_no_duplicates_after_resync() {
         let s = Store::in_memory().unwrap();
         s.upsert_account("a1", "x@y.z", "gmail", "X").unwrap();

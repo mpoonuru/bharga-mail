@@ -288,6 +288,13 @@ async fn ai_triage_inbox(state: State<'_, AppState>) -> Result<usize, String> {
             {
                 let tri = prompts::parse_triage(&out);
                 let _ = state.store.set_triage(&t.id, &tri.labels, tri.priority);
+                if summarize_model.is_none() {
+                    // Triage-only threads need a durable completion marker. The UI
+                    // treats an empty summary as absent, but it stops repeated work.
+                    if let Err(error) = state.store.set_ai_artifacts(&t.id, Some(""), None) {
+                        log::warn!("triage: could not mark {} as processed: {error}", t.id);
+                    }
+                }
             }
         }
         processed += 1;
