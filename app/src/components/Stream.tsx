@@ -350,8 +350,10 @@ export function Stream() {
   } else if (view === "priority") {
     if (aiPriority.length > 0) inView = aiPriority;
     else {
-      const heur = scoped.filter((t) => t.unread || t.labels.includes("urgent"));
-      inView = heur.length > 0 ? heur : scoped;
+      // Inbox mail only: unread mail in Deleted Items, Sent or Junk is not a priority.
+      const inbox = scoped.filter((t) => t.view.includes("inbox"));
+      const heur = inbox.filter((t) => t.unread || t.labels.includes("urgent"));
+      inView = heur.length > 0 ? heur : inbox;
     }
   } else {
     inView = scoped.filter((t) => t.view.includes(view as View));

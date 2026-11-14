@@ -126,7 +126,7 @@ export interface Thread {
   unread: boolean;
   labels: Label[];
   view: View[]; // which folders/views this thread appears in
-  folder?: string; // the mailbox (IMAP folder) it belongs to
+  folder?: string; // the mailbox (IMAP folder / Microsoft mail folder) it belongs to
   aiSummary?: string;
   aiDraft?: string;
   messages: Message[];

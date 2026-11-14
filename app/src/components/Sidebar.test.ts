@@ -226,6 +226,55 @@ describe("mail account disclosure motion", () => {
     act(() => root.unmount());
   });
 
+  it("lists a Microsoft account's real folders with open, sync and pin but no folder management", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const setFolder = vi.fn(async () => {});
+    useApp.setState({
+      accounts: [
+        {
+          id: "ms:one@example.test",
+          email: "one@example.test",
+          provider: "microsoft",
+          displayName: "One",
+        },
+      ],
+      accountOrder: [],
+      selectedAccountId: "ms:one@example.test",
+      selectedFolder: null,
+      folders: [
+        { name: "INBOX", role: "inbox", unread: 0, total: 0 },
+        { name: "Gesendete Elemente", role: "sent", unread: 0, total: 0 },
+        { name: "Projects/Invoices v2.0", unread: 0, total: 0 },
+      ],
+      threads: [],
+      setFolder,
+    });
+
+    act(() => root.render(createElement(Sidebar)));
+
+    const labels = [...container.querySelectorAll(".folder-item .acct-email")].map(
+      (node) => node.textContent,
+    );
+    // The path splits on "/" only: a "." belongs to the Microsoft display name.
+    expect(labels).toEqual(["Inbox", "Gesendete Elemente", "Invoices v2.0"]);
+
+    const sent = [...container.querySelectorAll<HTMLButtonElement>(".folder-item")][1];
+    act(() => sent.click());
+    expect(setFolder).toHaveBeenCalledWith("Gesendete Elemente");
+
+    const more = container.querySelectorAll<HTMLButtonElement>(".folder-more");
+    expect(more).toHaveLength(3);
+    act(() => more[2].click());
+    const items = [...container.querySelectorAll('.folder-menu [role="menuitem"]')].map((node) =>
+      node.textContent?.trim(),
+    );
+    expect(items).toEqual(["Open", "Sync now", "Mark all as read", "Pin to top"]);
+    expect(container.querySelector(".folder-new")).toBeNull();
+
+    act(() => root.unmount());
+  });
+
   it("collapses folders without rebuilding the selected mailbox", () => {
     const container = document.createElement("div");
     const root = createRoot(container);

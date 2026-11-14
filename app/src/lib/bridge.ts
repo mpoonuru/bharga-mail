@@ -921,7 +921,7 @@ export const api = {
     await invoke("delete_folder", { accountId, name });
   },
 
-  /** Enumerate folders from the server (IMAP LIST), persist + return their names. */
+  /** Enumerate folders from the server (IMAP LIST / Graph mailFolders), persist + return their names. */
   async listFolders(accountId: string): Promise<string[]> {
     try {
       return await invoke<string[]>("list_folders", { accountId });

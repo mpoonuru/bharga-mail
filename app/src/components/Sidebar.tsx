@@ -144,6 +144,9 @@ function AccountRow({
   const [busy, setBusy] = useState(false);
   const isFocused = selectedAccountId === a.id;
   const isImap = a.provider === "imap";
+  // Accounts whose real folders are listed and synced. Creating, renaming and
+  // deleting folders stays IMAP-only.
+  const hasServerFolders = isImap || a.provider === "microsoft";
   // Folder-management UI state.
   const [newName, setNewName] = useState<string | null>(null); // null = closed; "" = input open
   const [newParent, setNewParent] = useState<string | null>(null); // parent folder for a subfolder, else null = top level
@@ -172,8 +175,10 @@ function AccountRow({
   // New folders nest like the account's existing ones ("INBOX." / "INBOX/" prefix).
   const sep = folders.find((f) => /^INBOX[./]/.test(f.name))?.name.match(/^INBOX([./])/)?.[1];
   const newPrefix = sep ? `INBOX${sep}` : "";
+  // IMAP servers nest with "." or "/"; Microsoft folder paths use "/" only, so a
+  // "." in a display name ("Invoices v2.0") is part of the name.
   const splitName = (full: string): [string, string] => {
-    const m = full.match(/^(.*[./])([^./]+)$/);
+    const m = full.match(isImap ? /^(.*[./])([^./]+)$/ : /^(.*\/)([^/]+)$/);
     return m ? [m[1], m[2]] : ["", full];
   };
   // Live unread counts derived from threads (the cached AccountInfo/FolderInfo
@@ -305,7 +310,7 @@ function AccountRow({
                   <Icon name="compose" size={12} /> New folder
                 </button>
               )}
-              {isImap && (
+              {hasServerFolders && (
                 <button
                   role="menuitem"
                   onClick={() => {
@@ -353,8 +358,8 @@ function AccountRow({
           {(folders.length ? folders : [{ name: "INBOX", role: "inbox", unread: 0, total: 0 }]).map(
             (f) => {
               const pinned = pinnedFolders.includes(pinKey(a.id, f.name));
-              // Every IMAP folder gets a full options menu (Open / Sync / Mark all
-              // read / New subfolder / Pin). Rename is offered for non-Inbox folders;
+              // Every server folder gets an options menu (Open / Sync / Mark all read
+              // / Pin). IMAP adds New subfolder, Rename for non-Inbox folders, and
               // Delete only for CUSTOM ones (Inbox + Sent/Drafts/Trash/Junk protected).
               const manageable = isImap && f.role !== "inbox";
               const canDelete = isImap && !f.role;
@@ -365,7 +370,7 @@ function AccountRow({
                   className="folder-row"
                   key={f.name}
                   onContextMenu={(e) => {
-                    if (isImap) {
+                    if (hasServerFolders) {
                       e.preventDefault();
                       setMenu(menu === f.name ? null : f.name);
                     }
@@ -406,7 +411,7 @@ function AccountRow({
                   )}
                   {/* Visible affordance — a hover "⋯" button so folder management
                     doesn't depend on a (non-obvious, WebView-flaky) right-click. */}
-                  {!editing && isImap && (
+                  {!editing && hasServerFolders && (
                     <button
                       ref={(node) => {
                         if (node) folderMenuButtonRefs.current.set(f.name, node);
@@ -436,7 +441,7 @@ function AccountRow({
                       <Icon name="pin" size={11} weight={pinned ? "fill" : "regular"} />
                     </button>
                   )}
-                  {menu === f.name && isImap && (
+                  {menu === f.name && hasServerFolders && (
                     <>
                       <div
                         className="folder-menu-backdrop"
@@ -471,16 +476,18 @@ function AccountRow({
                         >
                           <Icon name="envelopeOpen" size={12} /> Mark all as read
                         </button>
-                        <button
-                          role="menuitem"
-                          onClick={() => {
-                            setMenu(null);
-                            setNewParent(f.name);
-                            setNewName("");
-                          }}
-                        >
-                          <Icon name="compose" size={12} /> New subfolder
-                        </button>
+                        {isImap && (
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              setMenu(null);
+                              setNewParent(f.name);
+                              setNewName("");
+                            }}
+                          >
+                            <Icon name="compose" size={12} /> New subfolder
+                          </button>
+                        )}
                         <button
                           role="menuitem"
                           onClick={() => {

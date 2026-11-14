@@ -33,6 +33,7 @@ const MIGRATIONS: &[MigrationStep] = &[
     (14, migrate_v14_calendar),
     (15, migrate_v15_calendar_notifications),
     (16, migrate_v16_sent_folder_special_use),
+    (17, migrate_v17_folder_remote_id),
 ];
 
 /// Latest schema version, derived from MIGRATIONS so it can never lag behind it.
@@ -260,6 +261,15 @@ pub struct FolderInfo {
     pub special_use: bool,
     pub unread: u32,
     pub total: u32,
+}
+
+/// One folder from a provider that addresses folders by id (Graph mailFolders).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteFolder {
+    /// Full path as shown and stored ("INBOX", "Projects/2026").
+    pub name: String,
+    pub role: Option<String>,
+    pub remote_id: String,
 }
 
 /// A file attachment, base64-encoded for transport.
@@ -819,6 +829,76 @@ impl Store {
              ON CONFLICT(id) DO UPDATE SET role=excluded.role, special_use=excluded.special_use",
             params![format!("{account_id}:{name}"), account_id, name, role, special_use as i64],
         )?;
+        Ok(())
+    }
+
+    /// The provider's id for a folder (Graph mailFolder id); `None` for IMAP.
+    pub fn folder_remote_id(&self, account_id: &str, name: &str) -> Option<String> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT remote_id FROM folders WHERE id=?1",
+            params![format!("{account_id}:{name}")],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .ok()
+        .flatten()
+    }
+
+    /// Mirror a provider's complete folder list (Graph mailFolders), matching
+    /// folders by their provider id: a folder renamed on the server keeps its
+    /// mail under the new name, one that is gone is removed with its mail, and
+    /// the rest are added or refreshed. Folders without a provider id are left
+    /// alone. Call it only with a COMPLETE listing.
+    pub fn sync_remote_folders(
+        &self,
+        account_id: &str,
+        listed: &[RemoteFolder],
+    ) -> rusqlite::Result<()> {
+        let known: Vec<(String, String)> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare(
+                "SELECT name, remote_id FROM folders WHERE account_id=?1 AND remote_id IS NOT NULL",
+            )?;
+            stmt.query_map([account_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<rusqlite::Result<_>>()?
+        };
+        for (name, remote_id) in &known {
+            match listed.iter().find(|f| &f.remote_id == remote_id) {
+                Some(f) if &f.name != name => self.rename_folder_local(account_id, name, &f.name),
+                Some(_) => {}
+                None => self.delete_folder_local(account_id, name),
+            }
+        }
+        for f in listed {
+            self.upsert_folder(account_id, &f.name, f.role.as_deref(), f.role.is_some())?;
+            let conn = self.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE folders SET remote_id=?1 WHERE id=?2",
+                params![f.remote_id, format!("{account_id}:{}", f.name)],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// (message id, timestamp as stored) for every message filed under a folder.
+    pub fn folder_messages(&self, account_id: &str, folder: &str) -> Vec<(String, String)> {
+        let conn = self.conn.lock().unwrap();
+        let Ok(mut stmt) = conn.prepare(
+            "SELECT m.id, m.ts FROM messages m JOIN threads t ON m.thread_id = t.id
+             WHERE t.account_id=?1 AND t.folder=?2",
+        ) else {
+            return Vec::new();
+        };
+        stmt.query_map(params![account_id, folder], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map(|rows| rows.filter_map(Result::ok).collect())
+            .unwrap_or_default()
+    }
+
+    /// Remove one stored message (the provider reported it deleted or moved out
+    /// of the folder it was synced from).
+    pub fn delete_message(&self, message_id: &str) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM messages WHERE id=?1", params![message_id])?;
         Ok(())
     }
 
@@ -2099,6 +2179,13 @@ fn migrate_v16_sent_folder_special_use(tx: &rusqlite::Transaction) -> rusqlite::
     Ok(())
 }
 
+/// v17 — folders.remote_id: the provider's own id for a mailbox (the Graph
+/// mailFolder id). IMAP addresses a mailbox by name and leaves it NULL.
+fn migrate_v17_folder_remote_id(tx: &rusqlite::Transaction) -> rusqlite::Result<()> {
+    tx.execute("ALTER TABLE folders ADD COLUMN remote_id TEXT", [])?;
+    Ok(())
+}
+
 /// Extract attachments embedded inline in HTML as `data:<mime>;base64,…` URIs
 /// (e.g. an iOS photo or a scanned document the sender pasted into the body).
 /// Returns `(filename, mime, decoded-bytes)` for each sizeable image/binary blob.
@@ -2396,7 +2483,7 @@ mod tests {
         let path = schema_13_database();
         let store = Store::open(path.clone()).unwrap();
 
-        assert_eq!(store.schema_version().unwrap(), 16);
+        assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
         assert!(store.table_exists("calendar_events").unwrap());
         assert_eq!(
             store.settings().get("calendar-migration-marker").map(String::as_str),
@@ -2404,7 +2491,7 @@ mod tests {
         );
 
         let file_name = path.file_name().unwrap().to_string_lossy();
-        let prefix = format!("{file_name}.schema-13-to-16-");
+        let prefix = format!("{file_name}.schema-13-to-{SCHEMA_VERSION}-");
         let backups = std::fs::read_dir(path.parent().unwrap())
             .unwrap()
             .filter_map(Result::ok)

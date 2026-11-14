@@ -901,12 +901,17 @@ async fn load_older(
         )
         .await
         .map_err(|e| e.to_string())
+    } else if account_id.starts_with("ms:") {
+        sync::microsoft::fetch_folder(&state.store, &account_id, &folder, count, true)
+            .await
+            .map_err(|e| e.to_string())
     } else {
-        Err("Loading older mail is currently available for IMAP accounts.".into())
+        Err("Loading older mail is not available for Gmail accounts yet.".into())
     }
 }
 
-/// Enumerate an IMAP account's folders (mailboxes) and return them.
+/// Enumerate an account's folders (IMAP mailboxes / Graph mailFolders), store
+/// them and return their names.
 #[tauri::command]
 async fn list_folders(
     account_id: String,
@@ -916,8 +921,10 @@ async fn list_folders(
         sync::imap::list_folders_async(state.store.clone(), account_id)
             .await
             .map_err(|e| e.to_string())
+    } else if account_id.starts_with("ms:") {
+        sync::microsoft::list_folders(&state.store, &account_id).await.map_err(|e| e.to_string())
     } else {
-        Ok(vec!["INBOX".into()]) // Gmail/Graph folder browsing is a later milestone.
+        Ok(vec!["INBOX".into()]) // Gmail label browsing is a later milestone.
     }
 }
 
@@ -990,7 +997,7 @@ async fn delete_folder(
     .map_err(|e| e.to_string())
 }
 
-/// Sync a specific folder for an IMAP account. Returns messages stored.
+/// Sync a specific folder of an IMAP or Microsoft account. Returns messages stored.
 #[tauri::command]
 async fn sync_folder(
     account_id: String,
@@ -998,8 +1005,8 @@ async fn sync_folder(
     group: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    if account_id.starts_with("imap:") {
-        let result = sync::imap::fetch_folder_async(
+    let result = if account_id.starts_with("imap:") {
+        sync::imap::fetch_folder_async(
             state.store.clone(),
             account_id.clone(),
             folder.clone(),
@@ -1007,22 +1014,24 @@ async fn sync_folder(
             group.unwrap_or(true),
             false,
         )
-        .await;
-        let result = match result {
-            Ok(result) => result,
-            Err(error) => {
-                let _ = state.store.record_sync_failure(&account_id, sync_failure_status(&error));
-                return Err(error.to_string());
-            }
-        };
-        state
-            .store
-            .record_sync_success(&account_id, &folder, chrono::Utc::now().timestamp())
-            .map_err(|error| error.to_string())?;
-        Ok(result)
+        .await
+    } else if account_id.starts_with("ms:") {
+        sync::microsoft::fetch_folder(&state.store, &account_id, &folder, 75, false).await
     } else {
-        Err("Folder sync is currently available for IMAP accounts.".into())
-    }
+        return Err("Folder sync is not available for Gmail accounts yet.".into());
+    };
+    let result = match result {
+        Ok(result) => result,
+        Err(error) => {
+            let _ = state.store.record_sync_failure(&account_id, sync_failure_status(&error));
+            return Err(error.to_string());
+        }
+    };
+    state
+        .store
+        .record_sync_success(&account_id, &folder, chrono::Utc::now().timestamp())
+        .map_err(|error| error.to_string())?;
+    Ok(result)
 }
 
 /// Folders with per-folder unread/total counts for the sidebar.
@@ -1106,8 +1115,8 @@ async fn delete_thread(
 }
 
 /// Move a thread to another mailbox. Local-first: the folder is updated locally
-/// immediately (so it leaves the current view), then the IMAP server move runs
-/// best-effort. Currently real folders exist only for IMAP accounts.
+/// immediately (so it leaves the current view), then the server move runs
+/// best-effort. Real folders exist for IMAP and Microsoft accounts.
 #[tauri::command]
 async fn move_thread(
     thread_id: String,
@@ -1128,6 +1137,12 @@ async fn move_thread(
             to_folder,
         )
         .await
+        {
+            server_err = Some(e.to_string());
+        }
+    } else if account_id.starts_with("ms:") {
+        if let Err(e) =
+            sync::microsoft::move_to_folder(&state.store, &account_id, &thread_id, &to_folder).await
         {
             server_err = Some(e.to_string());
         }

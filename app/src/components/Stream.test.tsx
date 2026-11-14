@@ -242,6 +242,29 @@ describe("Stream conversation selection", () => {
     expect(previewThread).not.toHaveBeenCalled();
   });
 
+  it("keeps unread mail from non-inbox folders out of the Priority fallback", () => {
+    const inbox = {
+      ...threads[0],
+      id: "in",
+      subject: "Inbox mail",
+      unread: true,
+      view: ["inbox" as const],
+    };
+    const trashed = {
+      ...threads[1],
+      id: "del",
+      subject: "Trashed mail",
+      unread: true,
+      view: [],
+      folder: "Deleted Items",
+    };
+    const { container } = renderStream([inbox, trashed]);
+    act(() => useApp.setState({ view: "priority" }));
+
+    expect(container.textContent).toContain("Inbox mail");
+    expect(container.textContent).not.toContain("Trashed mail");
+  });
+
   it("keeps the selection bar usable while a bulk read is still syncing", () => {
     // A server write that never finishes (slow or throttled provider).
     const setThreadsRead = vi.fn(() => new Promise<{ updated: number; failed: number }>(() => {}));
