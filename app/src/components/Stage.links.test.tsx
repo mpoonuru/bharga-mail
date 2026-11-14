@@ -1,5 +1,5 @@
-// Verifies that untrusted email links are intercepted, reviewable, and never
-// navigate Bharga's embedded message frame.
+// Verifies that untrusted email links never open from Bharga: activating one
+// only shows its real destination, with Copy as the single way out.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -20,7 +20,7 @@ function HotkeyHarness() {
   return null;
 }
 
-function renderBody(anchorHtml: string) {
+function renderBody(anchorHtml: string, boxes: Partial<DOMRect>[] = []) {
   const host = document.createElement("div");
   document.body.append(host);
   hosts.push(host);
@@ -36,37 +36,49 @@ function renderBody(anchorHtml: string) {
   );
   const frame = host.querySelector<HTMLIFrameElement>("iframe")!;
   const frameDocument = frame.contentDocument!;
-  frameDocument.body.innerHTML = anchorHtml;
+  // The reader makes every link inert before it reaches the frame.
+  frameDocument.body.innerHTML = anchorHtml.replaceAll("<a href=", "<a data-href=");
+  const anchor = frameDocument.querySelector<HTMLAnchorElement>("a")!;
+  // jsdom lays nothing out, so give the link the boxes a browser would report.
+  anchor.getClientRects = () => boxes as unknown as DOMRectList;
   act(() => frame.dispatchEvent(new Event("load")));
-  return { host, frameDocument, anchor: frameDocument.querySelector<HTMLAnchorElement>("a")! };
+  return { host, frameDocument, anchor };
 }
 
 afterEach(() => {
   for (const root of roots.splice(0)) act(() => root.unmount());
   for (const host of hosts.splice(0)) host.remove();
-  document
-    .querySelectorAll(".modal-overlay, .link-menu, .link-menu-backdrop")
-    .forEach((node) => node.remove());
+  document.querySelectorAll(".modal-overlay").forEach((node) => node.remove());
   document.body.style.overflow = "";
   vi.restoreAllMocks();
   Reflect.deleteProperty(navigator, "clipboard");
   useApp.getState().setCompose(false);
 });
 
+const actionLabels = () =>
+  [...document.querySelectorAll<HTMLButtonElement>(".lc-actions button")].map(
+    (button) => button.textContent,
+  );
+
 describe("message links", () => {
-  it("opens a safe web link through the external opener", () => {
+  it("never opens a safe web link; it shows the destination with Copy only", () => {
     const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue(undefined);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     const { anchor } = renderBody('<a href="https://example.test/path">Open example</a>');
 
     act(() => anchor.click());
 
-    expect(openExternalUrl).toHaveBeenCalledWith("https://example.test/path");
+    expect(document.querySelector(".modal-head")?.textContent).toContain("Link destination");
+    expect(document.querySelector(".lc-url")?.textContent).toBe("https://example.test/path");
+    expect(actionLabels()).toEqual(["Copy link", "Close"]);
+    act(() => document.querySelector<HTMLButtonElement>(".lc-actions button")?.click());
+    expect(writeText).toHaveBeenCalledWith("https://example.test/path");
+    expect(openExternalUrl).not.toHaveBeenCalled();
   });
 
-  it("shows the real destination and explicit actions for a risky link", () => {
+  it("shows the real destination of a risky link and offers no way to open it", () => {
     const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue(undefined);
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     const { anchor } = renderBody(
       '<a href="https://evil.test/login" data-risk="dangerous" data-real="evil.test">paypal.com</a>',
     );
@@ -75,73 +87,63 @@ describe("message links", () => {
 
     expect(document.querySelector(".modal-head")?.textContent).toContain("Dangerous link");
     expect(document.querySelector(".lc-url")?.textContent).toBe("https://evil.test/login");
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>(".lc-actions button")];
-    expect(buttons.map((button) => button.textContent)).toEqual([
-      "Copy link",
-      "Stay safe",
-      "Open anyway",
-    ]);
-    act(() => buttons[0].click());
-    expect(writeText).toHaveBeenCalledWith("https://evil.test/login");
+    expect(actionLabels()).toEqual(["Copy link", "Stay safe"]);
     expect(openExternalUrl).not.toHaveBeenCalled();
-    act(() => buttons[2].click());
-    expect(openExternalUrl).toHaveBeenCalledWith("https://evil.test/login");
   });
 
-  it("blocks non-web schemes and offers no open action", () => {
+  it("blocks non-web schemes", () => {
     const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue(undefined);
     const { anchor } = renderBody('<a href="javascript:alert(1)">Run</a>');
 
     act(() => anchor.click());
 
     expect(document.querySelector(".modal-head")?.textContent).toContain("Link blocked");
-    expect(
-      [...document.querySelectorAll(".lc-actions button")].some(
-        (button) => button.textContent === "Open anyway",
-      ),
-    ).toBe(false);
+    expect(actionLabels()).toEqual(["Copy link", "Stay safe"]);
     expect(openExternalUrl).not.toHaveBeenCalled();
   });
 
-  it("offers Open and Copy from the link context menu", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
-    const { anchor } = renderBody('<a href="https://example.test/path">Open example</a>');
+  it("covers each box of a link with a button of its own that shows the destination", () => {
+    // WebKit runs no listeners inside the script-less frame, so the buttons are
+    // the only way in there: this test never dispatches anything on the anchor.
+    const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue(undefined);
+    const { host } = renderBody('<a href="https://example.test/path">Open the example</a>', [
+      { left: 10, top: 20, width: 120, height: 16 },
+      { left: 0, top: 36, width: 40, height: 16 },
+      { left: 0, top: 52, width: 0, height: 16 },
+    ]);
 
-    act(() => {
-      anchor.dispatchEvent(
-        new MouseEvent("contextmenu", {
-          bubbles: true,
-          cancelable: true,
-          button: 2,
-          clientX: 12,
-          clientY: 18,
-        }),
-      );
-      anchor.dispatchEvent(
-        new MouseEvent("auxclick", {
-          bubbles: true,
-          cancelable: true,
-          button: 2,
-          clientX: 12,
-          clientY: 18,
-        }),
-      );
-    });
+    const shields = [...host.querySelectorAll<HTMLButtonElement>(".link-shield")];
+    expect(shields).toHaveLength(2);
+    expect(shields[0].style.left).toBe("10px");
+    expect(shields[0].style.top).toBe("20px");
+    expect(shields[0].style.width).toBe("120px");
+    expect(shields[0].getAttribute("aria-label")).toBe("Link: Open the example. Show destination");
+    expect(shields.map((shield) => shield.tabIndex)).toEqual([0, -1]);
 
-    const items = [...document.querySelectorAll<HTMLButtonElement>('.link-menu [role="menuitem"]')];
-    expect(items.map((button) => button.textContent)).toEqual(["Open link", "Copy link"]);
-    expect(document.querySelector(".modal-overlay")).toBeNull();
-    await act(async () => items[1].click());
-    expect(writeText).toHaveBeenCalledWith("https://example.test/path");
-    expect(document.querySelector(".link-copy-toast")?.textContent).toBe("Link copied.");
+    act(() => shields[1].click());
+    expect(document.querySelector(".lc-url")?.textContent).toBe("https://example.test/path");
+    expect(openExternalUrl).not.toHaveBeenCalled();
   });
 
-  it("opens the link action menu from Shift+F10", () => {
+  it("shows the destination instead of a browser menu on right-click", () => {
+    const { host } = renderBody('<a href="https://example.test/path">Open example</a>', [
+      { left: 0, top: 0, width: 80, height: 16 },
+    ]);
+    const shield = host.querySelector<HTMLButtonElement>(".link-shield")!;
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+
+    act(() => {
+      shield.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.querySelector(".lc-url")?.textContent).toBe("https://example.test/path");
+  });
+
+  it("shows the destination from Shift+F10 inside the frame", () => {
     const { anchor } = renderBody('<a href="https://example.test/path">Open example</a>');
 
     act(() => {
-      anchor.focus();
       anchor.dispatchEvent(
         new KeyboardEvent("keydown", {
           bubbles: true,
@@ -152,40 +154,42 @@ describe("message links", () => {
       );
     });
 
-    expect(document.querySelector('.link-menu [role="menuitem"]')?.textContent).toBe("Open link");
+    expect(document.querySelector(".lc-url")?.textContent).toBe("https://example.test/path");
   });
 
-  it("isolates global shortcuts and closes on Tab with focus restored", () => {
+  it("returns focus to the link button when the dialog closes", () => {
     vi.useFakeTimers();
     try {
-      const { anchor, frameDocument } = renderBody(
-        '<a href="https://example.test/path">Open example</a>',
-      );
-      act(() =>
-        anchor.dispatchEvent(
-          new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
-        ),
-      );
-      const firstItem = document.querySelector<HTMLButtonElement>('.link-menu [role="menuitem"]')!;
-
-      act(() =>
-        firstItem.dispatchEvent(
-          new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "c" }),
-        ),
-      );
-      expect(useApp.getState().composeOpen).toBe(false);
-      expect(document.querySelector(".link-menu")).not.toBeNull();
+      const { host } = renderBody('<a href="https://example.test/path">Open example</a>', [
+        { left: 0, top: 0, width: 80, height: 16 },
+      ]);
+      const shield = host.querySelector<HTMLButtonElement>(".link-shield")!;
+      act(() => shield.click());
 
       act(() => {
-        firstItem.dispatchEvent(
-          new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Tab" }),
-        );
+        [...document.querySelectorAll<HTMLButtonElement>(".lc-actions button")][1].click();
         vi.runAllTimers();
       });
-      expect(document.querySelector(".link-menu")).toBeNull();
-      expect(frameDocument.activeElement).toBe(anchor);
+
+      expect(document.activeElement).toBe(shield);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("tells the reader when a message hides links from them", () => {
+    const { host } = renderBody(
+      '<p>Hello</p><div style="display:none"><a href="https://t.test/x">secret</a></div>',
+    );
+
+    const banner = host.querySelector(".phish-banner");
+    expect(banner?.textContent).toContain("This message contains hidden content");
+    expect(banner?.textContent).toContain("1 hidden link");
+  });
+
+  it("shows no hidden-content notice for an ordinary message", () => {
+    const { host } = renderBody('<p>Hello <a href="https://example.test/">there</a></p>');
+
+    expect(host.querySelector(".phish-banner")).toBeNull();
   });
 });

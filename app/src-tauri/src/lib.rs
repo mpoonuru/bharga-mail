@@ -415,6 +415,13 @@ fn queue_send(
     send_at: Option<i64>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
+    // A line break in a header value starts a new header: text carried over from
+    // a received mail (a subject, an address) could add "Bcc:" to the reply.
+    let header_fields = [Some(&to), cc.as_ref(), bcc.as_ref(), Some(&subject)];
+    let attachment_names = attachments.iter().flatten().map(|attachment| &attachment.name);
+    if header_fields.into_iter().flatten().chain(attachment_names).any(|v| has_line_break(v)) {
+        return Err("A recipient, the subject or an attachment name contains a line break.".into());
+    }
     let id = format!("ob-{}", chrono::Utc::now().timestamp_millis());
     let now = chrono::Utc::now().timestamp();
     let scheduled_ts = match send_at {
@@ -1242,6 +1249,11 @@ async fn preview_attachment(
     if !account_id.starts_with("imap:") {
         return Err("Preview is currently available for IMAP accounts.".into());
     }
+    // `mime` is the sender's claim. Only passive formats are shown inside the
+    // app; SVG and HTML can carry scripts and links.
+    if !is_previewable_mime(&mime) {
+        return Err("This attachment type cannot be previewed.".into());
+    }
     let bytes =
         sync::imap::fetch_attachment_async(state.store.clone(), account_id, message_id, name)
             .await
@@ -1293,7 +1305,10 @@ async fn download_attachment(
     if path.parent() != Some(dir.as_path()) {
         return Err("Invalid attachment name.".into());
     }
-    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    // Never replace a file already in Downloads: the sender chooses the name and
+    // could otherwise overwrite a document the person trusts.
+    let path = write_new_download(&path, &bytes).map_err(|e| e.to_string())?;
+    let marked = mark_downloaded_from_internet(&path);
     // Only auto-open well-known, non-executable document/image types. Anything
     // else is merely revealed in Finder so we never execute untrusted content.
     #[cfg(target_os = "macos")]
@@ -1307,12 +1322,106 @@ async fn download_attachment(
             .map(|e| e.to_string_lossy().to_lowercase())
             .unwrap_or_default();
         let mut cmd = std::process::Command::new("open");
-        if !OPENABLE.contains(&ext.as_str()) {
+        // Without the quarantine mark macOS would treat the file as local and
+        // skip its own checks, so then it is only shown, never opened.
+        if !marked || !OPENABLE.contains(&ext.as_str()) {
             cmd.arg("-R"); // reveal in Finder instead of executing
         }
-        let _ = cmd.arg(&path).spawn();
+        if let Err(e) = cmd.arg(&path).spawn() {
+            log::warn!("could not open or reveal the downloaded attachment: {e}");
+        }
     }
     Ok(path.to_string_lossy().to_string())
+}
+
+/// The attachment types shown inside the app. `mime` is the sender's claim, so
+/// only passive formats qualify; SVG and HTML can carry scripts and links.
+fn is_previewable_mime(mime: &str) -> bool {
+    const PREVIEWABLE: &[&str] =
+        &["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "application/pdf"];
+    PREVIEWABLE.contains(&mime.trim().to_ascii_lowercase().as_str())
+}
+
+fn has_line_break(value: &str) -> bool {
+    value.contains(['\r', '\n'])
+}
+
+/// Write `bytes` to `path`, or to "name (1).ext", "name (2).ext"… when that
+/// name is taken. The file is created with `create_new`, so an existing file or
+/// a symlink planted under that name is never written through or replaced.
+fn write_new_download(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
+    use std::io::Write;
+    let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    for n in 0..10_000 {
+        let candidate = if n == 0 {
+            path.to_path_buf()
+        } else {
+            path.with_file_name(format!("{stem} ({n}){ext}"))
+        };
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&candidate) {
+            Ok(mut file) => {
+                file.write_all(bytes)?;
+                return Ok(candidate);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "no free file name for the download",
+    ))
+}
+
+/// The value macOS stores in `com.apple.quarantine` for a file an app downloaded
+/// and the person has not approved yet: flags, hex timestamp, agent name.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn quarantine_value(unix_seconds: i64) -> String {
+    format!("0083;{unix_seconds:x};Bharga Mail;")
+}
+
+/// Tell the operating system the file came from the internet, as a browser does.
+/// macOS then runs Gatekeeper before anything executable in it starts, Windows
+/// shows SmartScreen, and Office opens the document in Protected View (no macros).
+/// A plain `fs::write` leaves no such mark, so the file would count as local.
+fn mark_downloaded_from_internet(path: &std::path::Path) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let value = quarantine_value(chrono::Utc::now().timestamp());
+        match std::process::Command::new("/usr/bin/xattr")
+            .args(["-w", "com.apple.quarantine", &value])
+            .arg(path)
+            .status()
+        {
+            Ok(status) if status.success() => true,
+            Ok(status) => {
+                log::warn!("could not quarantine downloaded attachment: xattr {status}");
+                false
+            }
+            Err(e) => {
+                log::warn!("could not quarantine downloaded attachment: {e}");
+                false
+            }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // The "Mark of the Web": an alternate data stream next to the file.
+        let stream = format!("{}:Zone.Identifier", path.display());
+        match std::fs::write(stream, "[ZoneTransfer]\r\nZoneId=3\r\n") {
+            Ok(()) => true,
+            Err(e) => {
+                log::warn!("could not mark downloaded attachment as from the internet: {e}");
+                false
+            }
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = path;
+        true
+    }
 }
 
 /// Open the local store, but never let a bad/incompatible on-disk database crash
@@ -1368,6 +1477,99 @@ fn normalized_external_web_url(raw: &str) -> Result<String, String> {
 fn open_external_url(url: String) -> Result<(), String> {
     let destination = normalized_external_web_url(&url)?;
     open::that(destination).map_err(|error| format!("Could not open link: {error}"))
+}
+
+#[cfg(test)]
+mod attachment_download_tests {
+    use super::{
+        has_line_break, is_previewable_mime, mark_downloaded_from_internet, quarantine_value,
+        write_new_download,
+    };
+
+    fn scratch_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("bharga-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn only_passive_attachment_types_are_previewed() {
+        assert!(is_previewable_mime("image/png"));
+        assert!(is_previewable_mime("Application/PDF"));
+        for mime in
+            ["image/svg+xml", "text/html", "application/xhtml+xml", "application/octet-stream", ""]
+        {
+            assert!(!is_previewable_mime(mime), "{mime} must not be previewed");
+        }
+    }
+
+    #[test]
+    fn header_values_with_a_line_break_are_detected() {
+        assert!(has_line_break("Re: hi\r\nBcc: thief@evil.example"));
+        assert!(has_line_break("a@b.c\nBcc: x@y.z"));
+        assert!(!has_line_break("Re: hi, a@b.c"));
+    }
+
+    #[test]
+    fn never_writes_over_an_existing_file() {
+        let dir = scratch_dir("unique");
+        let first = dir.join("invoice.pdf");
+        std::fs::write(&first, b"mine").unwrap();
+        let second = write_new_download(&first, b"theirs").unwrap();
+        assert_eq!(second, dir.join("invoice (1).pdf"));
+        assert_eq!(std::fs::read(&first).unwrap(), b"mine");
+        assert_eq!(write_new_download(&first, b"x").unwrap(), dir.join("invoice (2).pdf"));
+        let bare = dir.join("README");
+        assert_eq!(write_new_download(&bare, b"x").unwrap(), bare);
+        assert_eq!(write_new_download(&bare, b"x").unwrap(), dir.join("README (1)"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn never_writes_through_a_planted_symlink() {
+        let dir = scratch_dir("symlink");
+        let target = dir.join("target.txt");
+        let link = dir.join("report.pdf");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let written = write_new_download(&link, b"theirs").unwrap();
+        assert_eq!(written, dir.join("report (1).pdf"));
+        assert!(!target.exists(), "the dangling symlink was followed");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn quarantine_value_carries_flags_hex_time_and_agent() {
+        assert_eq!(quarantine_value(255), "0083;ff;Bharga Mail;");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn saved_attachments_are_quarantined_on_macos() {
+        let dir = scratch_dir("quarantine");
+        let file = dir.join("macro.docm");
+        std::fs::write(&file, b"x").unwrap();
+        assert!(mark_downloaded_from_internet(&file));
+        let out = std::process::Command::new("/usr/bin/xattr")
+            .args(["-p", "com.apple.quarantine"])
+            .arg(&file)
+            .output()
+            .unwrap();
+        let value = String::from_utf8_lossy(&out.stdout);
+        assert!(value.starts_with("0083;"), "no quarantine mark: {value:?}");
+        assert!(value.trim_end().ends_with(";Bharga Mail;"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn marking_a_download_never_panics() {
+        let dir = scratch_dir("mark");
+        let file = dir.join("a.txt");
+        std::fs::write(&file, b"x").unwrap();
+        mark_downloaded_from_internet(&file);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
 
 #[cfg(test)]

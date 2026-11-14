@@ -444,12 +444,22 @@ impl Store {
             ],
         )?;
         for m in &t.messages {
-            tx.execute(
+            // A stored message is only refreshed by a copy from the same sender.
+            // The id comes from the Message-ID header, which any sender can copy:
+            // without this check a hostile mail reusing a known id would replace
+            // the body shown under the original, trusted sender.
+            let written = tx.execute(
                 "INSERT INTO messages (id, thread_id, from_name, from_addr, to_json, ts, body_html, attachments, meta, created_at)
                  VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
-                 ON CONFLICT(id) DO UPDATE SET thread_id=excluded.thread_id, body_html=excluded.body_html, attachments=excluded.attachments, meta=excluded.meta",
+                 ON CONFLICT(id) DO UPDATE SET thread_id=excluded.thread_id, body_html=excluded.body_html, attachments=excluded.attachments, meta=excluded.meta
+                 WHERE lower(messages.from_addr) = lower(excluded.from_addr)",
                 params![m.id, t.id, m.from.name, m.from.address, json(&m.to), m.when, m.body_html, json(&m.attachments), json(&m.meta), now],
             )?;
+            if written == 0 {
+                log::warn!(
+                    "ignored a message that reuses the id of a stored message from another sender"
+                );
+            }
         }
         // Replace (not append) the FTS row so re-syncing a thread can't duplicate it.
         let body =
@@ -2114,7 +2124,12 @@ pub(crate) fn inline_data_attachments(html: &str) -> Vec<(String, String, Vec<u8
         // The mime type runs up to ";base64,"; cap the look-ahead so a stray
         // "data:" in unrelated markup can't trigger a huge scan.
         let window_end = (mime_start + 96).min(html.len());
-        let window = &html[mime_start..window_end];
+        // `get`, not indexing: the window can end inside a multi-byte character.
+        let Some(window) = html.get(mime_start..window_end).or_else(|| html.get(mime_start..))
+        else {
+            i = mime_start;
+            continue;
+        };
         let Some(mpos) = window.find(";base64,") else {
             i = mime_start;
             continue;

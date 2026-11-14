@@ -1,5 +1,6 @@
 import DOMPurify, { type Config } from "dompurify";
 import { assessLink, type LinkAssessment } from "@/lib/linkRisk";
+import { isHiddenElement, stripBlocks } from "@/lib/mailText";
 
 /**
  * Email HTML pipeline (the standard mail-client approach):
@@ -7,7 +8,9 @@ import { assessLink, type LinkAssessment } from "@/lib/linkRisk";
  *   2. highlightEntities() — AI-inbox flourish: wrap addresses, phone and reference
  *      numbers, dates, percentages, money, and urgency/privacy/security/sentiment
  *      words of the message's own text (not quoted history) in <mark data-kind>.
- *   3. block remote images — privacy (tracking pixels), opt-in via "Load images".
+ *   3. block remote content — privacy: nothing the message would fetch by itself
+ *      (images in any form, media, CSS references) loads until "Load images";
+ *      tracking pixels stay unloaded even then.
  * Steps 2–3 run on a single parsed document; the body is then rendered inside a
  * sandboxed, CSP-locked iframe.
  */
@@ -47,11 +50,25 @@ const SANITIZE_DOC_OPTS: Config = { ...SANITIZE_OPTS, WHOLE_DOCUMENT: true };
 // stylesheet. Both are ignorable in CSS, so drop them from style blocks first; any
 // other markup-like text still makes DOMPurify remove the block.
 function stripStyleMarkupNoise(html: string): string {
-  return html.replace(
-    /(<style\b[^>]{0,2000}>)([\s\S]*?)(<\/style)/gi,
-    (_match, open: string, css: string, close: string) =>
-      `${open}${css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--|-->/g, "")}${close}`,
-  );
+  const lower = html.toLowerCase();
+  let out = "";
+  let from = 0;
+  for (;;) {
+    const open = lower.indexOf("<style", from);
+    if (open < 0) break;
+    const openEnd = html.indexOf(">", open);
+    if (openEnd < 0) break;
+    const close = lower.indexOf("</style", openEnd);
+    if (close < 0) break;
+    const css = stripBlocks(html.slice(openEnd + 1, close), "/*", "*/")
+      .split("<!--")
+      .join("")
+      .split("-->")
+      .join("");
+    out += html.slice(from, openEnd + 1) + css;
+    from = close;
+  }
+  return out + html.slice(from);
 }
 
 // <body> attributes a message may carry into the reader frame. Everything else
@@ -185,35 +202,173 @@ function highlightEntities(doc: Document) {
   }
 }
 
+// A reference the reader would fetch: anything with a scheme other than the
+// self-contained ones, or a protocol-relative "//host". Control characters and
+// spaces are dropped first, as a browser does ("ht\ttps://…", " https:/host"),
+// and a backslash counts as a slash ("\\host\path" loads from //host/path).
+function isRemoteRef(value: string): boolean {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
+  const cleaned = value.replace(/[\u0000- ]/g, "").replace(/\\/g, "/");
+  if (/^(?:data|cid|blob|about):/i.test(cleaned)) return false;
+  return /^(?:[a-z][a-z0-9+.-]{0,30}:|\/\/)/i.test(cleaned);
+}
+// The same inside CSS: every url(…) that is not a data: URI or a fragment, and
+// quoted remote strings (image-set("https://…"), @import "https://…"). CSS
+// escapes ("\68ttps:") are not decoded, so a url() is held back unless it is
+// plainly self-contained. Bounded so hostile CSS stays linear.
+const CSS_REMOTE_URL = /url\(\s*['"]?(?!\s*(?:data:|#))[^)]{0,2000}\)/gi;
+const CSS_REMOTE_STRING = /(['"])(?:https?:)?\/\/[^'"]{0,2000}\1/gi;
+// Every element and attribute that loads something by itself. Links (<a href>)
+// are not here: they load nothing until activated, and never open from the reader.
+const REMOTE_ELEMENTS =
+  "img,picture source,video,audio,source,track,input,embed,image,use,feImage,[background],[poster]";
+const REMOTE_ATTRS = ["src", "srcset", "poster", "background", "href", "xlink:href"];
+const BLANK_PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+function blockRemoteCss(css: string): { css: string; hits: number } {
+  let hits = 0;
+  const count = (replacement: string) => () => {
+    hits++;
+    return replacement;
+  };
+  return {
+    css: css.replace(CSS_REMOTE_URL, count("none")).replace(CSS_REMOTE_STRING, count('""')),
+    hits,
+  };
+}
+
+/** Strip everything the message would fetch by itself: images in any form
+ *  (src, srcset, legacy background attributes, SVG images), audio and video,
+ *  and remote references in inline styles and stylesheets. */
 function blockRemoteInDoc(doc: Document): number {
   let blocked = 0;
-  doc.querySelectorAll("img").forEach((img) => {
-    const src = img.getAttribute("src") ?? "";
-    if (/^https?:/i.test(src)) {
-      img.setAttribute("data-blocked-src", src);
-      img.removeAttribute("src");
-      img.removeAttribute("srcset");
+  doc.querySelectorAll(REMOTE_ELEMENTS).forEach((el) => {
+    let hit = false;
+    for (const attr of REMOTE_ATTRS) {
+      const value = el.getAttribute(attr);
+      if (value === null) continue;
+      // A srcset is a list; one remote candidate is enough to drop it.
+      const remote =
+        attr === "srcset"
+          ? value.split(",").some((candidate) => isRemoteRef(candidate))
+          : isRemoteRef(value);
+      if (!remote) continue;
+      if (attr === "src" && el.tagName === "IMG") el.setAttribute("data-blocked-src", value);
+      el.removeAttribute(attr);
+      hit = true;
+    }
+    if (hit) {
+      if (el.tagName === "IMG") el.removeAttribute("srcset");
       blocked++;
     }
   });
-  const remoteUrl = /url\(\s*['"]?https?:[^)]*\)/gi;
-  doc.querySelectorAll<HTMLElement>("[style*='url(']").forEach((el) => {
-    const style = el.getAttribute("style") ?? "";
-    if (/url\(\s*['"]?https?:/i.test(style)) {
-      el.setAttribute("style", style.replace(remoteUrl, "none"));
+  doc.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
+    const result = blockRemoteCss(el.getAttribute("style") ?? "");
+    if (result.hits > 0) {
+      el.setAttribute("style", result.css);
       blocked++;
     }
   });
   // Stylesheets can pull remote images too (background-image in a <style> block).
   doc.querySelectorAll("style").forEach((el) => {
-    const css = el.textContent ?? "";
-    const hits = css.match(remoteUrl)?.length ?? 0;
-    if (hits > 0) {
-      el.textContent = css.replace(remoteUrl, "none");
-      blocked += hits;
+    const result = blockRemoteCss(el.textContent ?? "");
+    if (result.hits > 0) {
+      el.textContent = result.css;
+      blocked += result.hits;
     }
   });
   return blocked;
+}
+
+/** True for an image that exists to report the open, not to be seen: 1–2 px in
+ *  either direction, or hidden outright. */
+function isTrackingPixel(img: Element): boolean {
+  const style = img.getAttribute("style") ?? "";
+  if (
+    /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0+)?\s*(?:;|$))/i.test(
+      style,
+    )
+  )
+    return true;
+  return ["width", "height"].some((name) => {
+    const inline = new RegExp(`(?:^|;)\\s*${name}\\s*:\\s*(\\d{1,5}(?:\\.\\d{1,3})?)px`, "i").exec(
+      style,
+    );
+    const raw = inline?.[1] ?? img.getAttribute(name) ?? "";
+    return /^\s*\d{1,5}(?:\.\d{1,3})?\s*(?:px)?\s*$/i.test(raw) && parseFloat(raw) <= 2;
+  });
+}
+
+/** With images allowed, tracking pixels still stay unloaded: they show nothing
+ *  and only tell the sender that, when and from where the mail was opened. */
+function dropTrackingPixels(doc: Document): number {
+  let dropped = 0;
+  doc.querySelectorAll("img").forEach((img) => {
+    if (!isRemoteRef(img.getAttribute("src") ?? "") || !isTrackingPixel(img)) return;
+    img.setAttribute("src", BLANK_PIXEL);
+    img.removeAttribute("srcset");
+    dropped++;
+  });
+  return dropped;
+}
+
+// ---- Hidden content ----------------------------------------------------------
+// Text the sender put in the message but styled so the reader never sees it.
+// Short hidden "preheader" lines are normal in newsletters; long hidden text,
+// hidden links and direction-override characters are how a mail says one thing
+// to the person and another to a filter, a search or an AI summary.
+
+export interface HiddenContent {
+  /** Characters of hidden text (whitespace and zero-width padding not counted). */
+  textChars: number;
+  /** The start of the hidden text, for showing it to the person. */
+  sample: string;
+  /** Links inside hidden parts. */
+  links: number;
+  /** Direction-override characters in visible text (they reorder what is shown,
+   *  e.g. "invoice‮fdp.exe" reads as "invoiceexe.pdf"). */
+  directionOverrides: number;
+}
+
+const PADDING_CHARS = /\s|\u00ad|\u034f|[\u200b-\u200d]|\u2060|\ufeff/g;
+const DIRECTION_OVERRIDES = /[\u202a-\u202e\u2066-\u2069]/g;
+/** Hidden text up to this length is treated as an ordinary preheader. */
+export const HIDDEN_TEXT_NOTICE_CHARS = 300;
+
+function detectHidden(doc: Document): HiddenContent {
+  const found: HiddenContent = { textChars: 0, sample: "", links: 0, directionOverrides: 0 };
+  const samples: string[] = [];
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT, {
+    acceptNode(node) {
+      const el = node as Element;
+      if (el.tagName === "STYLE" || el.tagName === "SCRIPT") return NodeFilter.FILTER_REJECT;
+      // Count a hidden part once, at its outermost element; do not descend.
+      return isHiddenElement(el) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    },
+  });
+  // Document order: a nested hidden element can only sit inside the one before.
+  const hidden: Element[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const el = node as Element;
+    if (!hidden[hidden.length - 1]?.contains(el)) hidden.push(el);
+  }
+  for (const el of hidden) {
+    const text = el.textContent ?? "";
+    const meaningful = text.replace(PADDING_CHARS, "").length;
+    found.textChars += meaningful;
+    found.links += el.matches("a[href]") ? 1 : el.querySelectorAll("a[href]").length;
+    if (meaningful > 0) samples.push(text.replace(/\s+/g, " ").trim());
+  }
+  found.sample = samples.join(" … ").slice(0, 280);
+  found.directionOverrides = (doc.body.textContent ?? "").match(DIRECTION_OVERRIDES)?.length ?? 0;
+  return found;
+}
+
+/** Whether the hidden content is worth telling the person about. */
+export function hiddenContentIsNotable(hidden: HiddenContent): boolean {
+  return (
+    hidden.links > 0 || hidden.directionOverrides > 0 || hidden.textChars > HIDDEN_TEXT_NOTICE_CHARS
+  );
 }
 
 // ---- Dark-mode colour adaptation -------------------------------------------
@@ -311,7 +466,7 @@ function declaresDarkCanvas(doc: Document): boolean {
   if (isDark(inline?.[1])) return true;
   for (const style of doc.querySelectorAll("style")) {
     for (const rule of (style.textContent ?? "").matchAll(
-      /(?:^|[}\s,])(?:html|body)\s*\{([^}]*)\}/gi,
+      /(?:^|[}\s,])(?:html|body)\s{0,20}\{([^}]{0,2000})\}/gi,
     )) {
       const bg = /background(?:-color)?\s*:\s*([^;!}]+)/i.exec(rule[1]);
       if (isDark(bg?.[1])) return true;
@@ -460,6 +615,10 @@ export function processEmail(
   /** Safe attributes of the message's <body>, serialized for the reader's <body> tag. */
   bodyAttrs: string;
   blocked: number;
+  /** Tracking pixels kept unloaded although images are shown. */
+  trackers: number;
+  /** Text, links and characters the sender hid from the reader. */
+  hidden: HiddenContent;
   links: LinkAssessment[];
 } {
   const sanitized = DOMPurify.sanitize(
@@ -467,6 +626,12 @@ export function processEmail(
     SANITIZE_DOC_OPTS,
   ) as unknown as string;
   const doc = new DOMParser().parseFromString(sanitized, "text/html");
+  let hidden: HiddenContent = { textChars: 0, sample: "", links: 0, directionOverrides: 0 };
+  try {
+    hidden = detectHidden(doc);
+  } catch {
+    /* never let detection break rendering */
+  }
   if (opts.trimQuote) {
     try {
       trimQuotedTail(doc);
@@ -494,7 +659,23 @@ export function processEmail(
   } catch {
     /* never let link-scan break rendering */
   }
-  const blocked = opts.showImages ? 0 : blockRemoteInDoc(doc);
+  // Nothing in the frame may be navigable: where the app's click target does not
+  // cover a link (odd layout, the box limit), a click must still go nowhere. The
+  // reader works from data-href.
+  doc.querySelectorAll("a[href], area[href]").forEach((a) => {
+    a.setAttribute("data-href", a.getAttribute("href") ?? "");
+    a.removeAttribute("href");
+    a.removeAttribute("target");
+  });
+  let blocked = 0;
+  let trackers = 0;
+  try {
+    if (opts.showImages) trackers = dropTrackingPixels(doc);
+    else blocked = blockRemoteInDoc(doc);
+  } catch {
+    // Failing open would load what the reader promised to hold back.
+    doc.body.textContent = "This message could not be displayed safely.";
+  }
   // Collect every stylesheet the message carries. They normally live in <head>,
   // but a parser is allowed to hoist a <style> into <body>; scanning the whole
   // document means the reader still gets them after its base CSS. Strip them
@@ -507,6 +688,8 @@ export function processEmail(
     headStyles,
     bodyAttrs: bodyAttributes(doc.body),
     blocked,
+    trackers,
+    hidden,
     links,
   };
 }

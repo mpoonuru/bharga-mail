@@ -78,7 +78,7 @@ const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 
 /** If the visible link text itself contains a domain, return its registrable form. */
 function domainInText(text: string): string | null {
-  const m = text.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i);
+  const m = text.slice(0, 300).match(/\b([a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,10})\b/i);
   if (!m?.[1] || !/\.[a-z]{2,}$/i.test(m[1])) return null;
   return registrableDomain(m[1]);
 }

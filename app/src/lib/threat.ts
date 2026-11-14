@@ -6,6 +6,7 @@
 // we escalate the trust shield to red "Likely phishing" only when they coincide.
 
 import { scanLinks } from "@/lib/linkRisk";
+import { MAIL_SCAN_CHARS, stripTags } from "@/lib/mailText";
 import { senderTrust } from "@/lib/senderTrust";
 import type { Message, Thread } from "@/types";
 
@@ -15,7 +16,8 @@ export interface Threat {
   reason: string;
 }
 
-const ANCHOR = /<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+// Bounded quantifiers, and callers cap the input: mail HTML is hostile.
+const ANCHOR = /<a\s[^>]{0,2000}?href=["']([^"']{1,4000})["'][^>]{0,2000}>([\s\S]{0,2000}?)<\/a>/gi;
 const LURE =
   /\b(verify|suspend|unusual activity|confirm your|update your|password|account will be|sign\s?in|log\s?in|unauthori[sz]ed|act now)\b/i;
 
@@ -24,7 +26,7 @@ function anchors(html: string): { href: string; text: string }[] {
   ANCHOR.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = ANCHOR.exec(html)) && out.length < 50) {
-    out.push({ href: m[1] ?? "", text: (m[2] ?? "").replace(/<[^>]+>/g, " ").trim() });
+    out.push({ href: m[1] ?? "", text: stripTags(m[2] ?? "").trim() });
   }
   return out;
 }
@@ -33,11 +35,11 @@ function anchors(html: string): { href: string; text: string }[] {
 export function messageThreat(m: Message): Threat {
   const trust = senderTrust(m.meta?.auth);
   const authFailed = trust.level === "failed";
-  const html = m.bodyHtml ?? "";
+  const html = (m.bodyHtml ?? "").slice(0, MAIL_SCAN_CHARS);
   const senderDomain = m.from.address.split("@")[1];
   const risky = scanLinks(anchors(html), senderDomain);
   const dangerous = risky.some((r) => r.level === "dangerous");
-  const lure = LURE.test(html.replace(/<[^>]+>/g, " "));
+  const lure = LURE.test(stripTags(html));
 
   // Strongest: failed auth + any deceptive link, OR a dangerous link in a lure.
   if ((authFailed && risky.length > 0) || (dangerous && (authFailed || lure))) {

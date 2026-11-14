@@ -832,17 +832,38 @@ pub(crate) fn parse_rfc822(
     group: bool,
     folder: &str,
 ) -> Result<Thread, SyncError> {
+    // mailparse and the walkers below recurse once per MIME level with no limit.
+    // A message nested thousands of levels deep would overflow the stack, which
+    // aborts the whole app — again on every sync. Such a message keeps its
+    // headers and gets a notice for a body.
+    let flattened;
+    let raw = if is_abnormally_nested(raw) {
+        log::warn!("message with abnormally nested MIME structure was not parsed");
+        flattened = flatten_to_notice(raw);
+        flattened.as_slice()
+    } else {
+        raw
+    };
     let mail = mailparse::parse_mail(raw)
         .map_err(|error| SyncError::Transient(format!("invalid RFC822 message: {error}")))?;
     let h = |name: &str| mail.headers.get_first_value(name);
 
-    let subject = h("Subject").filter(|s| !s.is_empty()).unwrap_or_else(|| "(no subject)".into());
+    let subject = h("Subject")
+        .map(|s| strip_direction_overrides(&s))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "(no subject)".into());
     let from_raw = h("From").unwrap_or_default();
     let (from_name, from_addr) = split_addr(&from_raw);
+    let from_name = strip_direction_overrides(&from_name);
     let when = h("Date").unwrap_or_default();
-    let msg_id = h("Message-ID")
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| format!("imapmsg-{}", subject.len()));
+    let msg_id = h("Message-ID").filter(|s| !s.is_empty()).unwrap_or_else(|| {
+        // No Message-ID: derive a stable id from the content. (The subject
+        // length used before collided between unrelated messages.)
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(raw);
+        let hex: String = digest.iter().take(12).map(|b| format!("{b:02x}")).collect();
+        format!("imapmsg-{hex}")
+    });
 
     // When grouping is on, the conversation root is the first id in References,
     // else In-Reply-To, else this message itself. The thread id is scoped to the
@@ -866,7 +887,11 @@ pub(crate) fn parse_rfc822(
     // Provenance: recipients, originating IP (from the earliest Received hop),
     // and SPF/DKIM/DMARC results — surfaced in the message Details panel.
     let to = parse_addrs(&h("To").unwrap_or_default());
-    let auth = parse_auth(&mail.headers.get_all_values("Authentication-Results").join(" "));
+    // Only the topmost Authentication-Results header: each server prepends its
+    // own, so the first one is the receiving server's. Any further down may have
+    // been written by the sender ("spf=pass; dkim=pass; dmarc=pass").
+    let auth =
+        parse_auth(&mail.headers.get_first_value("Authentication-Results").unwrap_or_default());
     let meta = MessageMeta {
         cc: parse_addrs(&h("Cc").unwrap_or_default()),
         reply_to: h("Reply-To").filter(|s| !s.is_empty()),
@@ -1008,11 +1033,79 @@ fn inline_cid_images(mail: &mailparse::ParsedMail, html: String) -> String {
         return html;
     }
     let mut out = html;
+    let mut budget = INLINE_IMAGE_BUDGET;
     for (cid, mime, bytes) in images {
+        let needle = format!("cid:{cid}");
+        let uses = out.matches(&needle).count();
+        if uses == 0 {
+            continue;
+        }
         let data = format!("data:{};base64,{}", mime, STANDARD.encode(&bytes));
-        out = out.replace(&format!("cid:{cid}"), &data);
+        // One small image referenced hundreds of thousands of times would expand
+        // to gigabytes. Past the budget the reference simply stays unresolved.
+        let cost = uses.saturating_mul(data.len());
+        if cost > budget {
+            log::warn!("inline image referenced {uses} times was not embedded (size budget)");
+            continue;
+        }
+        budget -= cost;
+        out = out.replace(&needle, &data);
     }
     out
+}
+
+/// Total bytes of embedded inline-image data one message body may grow by.
+const INLINE_IMAGE_BUDGET: usize = 32 * 1024 * 1024;
+/// Real mail nests a handful of multipart levels; this is far above any of it.
+const MAX_MIME_BOUNDARIES: usize = 100;
+
+fn is_abnormally_nested(raw: &[u8]) -> bool {
+    raw.windows(9)
+        .filter(|window| window.eq_ignore_ascii_case(b"boundary="))
+        .take(MAX_MIME_BOUNDARIES + 1)
+        .count()
+        > MAX_MIME_BOUNDARIES
+}
+
+/// The message's own headers with a plain-text notice for a body. The MIME
+/// headers are dropped so nothing is parsed as multipart.
+fn flatten_to_notice(raw: &[u8]) -> Vec<u8> {
+    let header_end = raw
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .map(|at| at + 2)
+        .or_else(|| raw.windows(2).position(|window| window == b"\n\n").map(|at| at + 1))
+        .unwrap_or(raw.len());
+    let mut out = Vec::new();
+    let mut dropping = false;
+    for line in raw[..header_end].split_inclusive(|byte| *byte == b'\n') {
+        let continuation = line.first().is_some_and(|byte| *byte == b' ' || *byte == b'\t');
+        if !continuation {
+            let lower = line.to_ascii_lowercase();
+            dropping = lower.starts_with(b"content-type:")
+                || lower.starts_with(b"content-transfer-encoding:")
+                || lower.starts_with(b"content-disposition:");
+        }
+        if !dropping {
+            out.extend_from_slice(line);
+        }
+    }
+    if !out.ends_with(b"\n") {
+        out.extend_from_slice(b"\r\n");
+    }
+    out.extend_from_slice(
+        b"Content-Type: text/plain; charset=utf-8\r\n\r\nThis message was not displayed: its structure is abnormally nested, which is a known way to crash mail programs.\r\n",
+    );
+    out
+}
+
+/// Remove the characters that reorder text on screen (and the invisible marks
+/// used with them) from header text, so a name cannot read differently from
+/// what it is.
+fn strip_direction_overrides(text: &str) -> String {
+    text.chars()
+        .filter(|c| !matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200e}' | '\u{200f}'))
+        .collect()
 }
 
 /// Get the displayable body. Prefers the `text/html` alternative anywhere in the
@@ -1271,5 +1364,102 @@ mod tests {
         let bytes = extract_attachment_bytes(&mail, "f.bin").unwrap();
         assert_eq!(bytes, b"Hello");
         assert!(extract_attachment_bytes(&mail, "missing.bin").is_none());
+    }
+
+    #[test]
+    fn abnormally_nested_message_becomes_a_notice_instead_of_being_parsed() {
+        let mut raw = b"Subject: Deep\r\nFrom: A <a@b.c>\r\nMessage-ID: <deep@x>\r\nContent-Type: multipart/mixed;\r\n boundary=\"b0\"\r\n\r\n".to_vec();
+        for level in 0..5_000 {
+            raw.extend_from_slice(
+                format!(
+                    "--b{level}\r\nContent-Type: multipart/mixed; boundary=\"b{}\"\r\n\r\n",
+                    level + 1
+                )
+                .as_bytes(),
+            );
+        }
+        assert!(is_abnormally_nested(&raw));
+        let t = parse_rfc822("imap:me", &raw, false, true, "INBOX").unwrap();
+        assert_eq!(t.subject, "Deep");
+        assert_eq!(t.messages[0].from.address, "a@b.c");
+        assert!(t.messages[0].body_html.contains("abnormally nested"));
+        assert!(t.messages[0].attachments.is_empty());
+
+        let normal =
+            b"Subject: Hi\r\nContent-Type: multipart/alternative; boundary=\"alt\"\r\n\r\n--alt--";
+        assert!(!is_abnormally_nested(normal));
+    }
+
+    #[test]
+    fn inline_image_referenced_too_often_is_not_embedded() {
+        let image = "A".repeat(40_000);
+        let refs = "<img src=\"cid:logo@x\">".repeat(2_000);
+        let raw = format!(
+            "Subject: Bomb\r\nFrom: A <a@b.c>\r\nContent-Type: multipart/related; boundary=\"rel\"\r\n\r\n--rel\r\nContent-Type: text/html\r\n\r\n<p>{refs}</p>\r\n--rel\r\nContent-Type: image/png\r\nContent-ID: <logo@x>\r\nContent-Transfer-Encoding: base64\r\n\r\n{image}\r\n--rel--"
+        );
+        let t = parse_rfc822("imap:me", raw.as_bytes(), false, true, "INBOX").unwrap();
+        let html = &t.messages[0].body_html;
+        assert!(html.len() < 1_000_000, "body grew to {} bytes", html.len());
+        assert!(html.contains("cid:logo@x"));
+
+        let once = raw.replace(&refs, "<img src=\"cid:logo@x\">");
+        let t = parse_rfc822("imap:me", once.as_bytes(), false, true, "INBOX").unwrap();
+        assert!(t.messages[0].body_html.contains("data:image/png;base64,"));
+    }
+
+    #[test]
+    fn only_the_receiving_servers_authentication_results_are_trusted() {
+        let raw = b"Authentication-Results: mx.x.de; spf=fail; dkim=none; dmarc=fail\r\nAuthentication-Results: evil.example; spf=pass; dkim=pass; dmarc=pass\r\nSubject: Hi\r\nFrom: A <a@b.c>\r\nMessage-ID: <m2@x.de>\r\n\r\nhi";
+        let t = parse_rfc822("imap:me", raw, false, true, "INBOX").unwrap();
+        let meta = t.messages[0].meta.as_ref().unwrap();
+        assert_eq!(meta.auth.as_deref(), Some("spf=fail; dkim=none; dmarc=fail"));
+    }
+
+    #[test]
+    fn direction_overrides_are_removed_from_subject_and_sender_name() {
+        let raw = "Subject: invoice\u{202e}fdp.exe\r\nFrom: \"Pay\u{202e}laP\u{2066}\" <a@b.c>\r\nMessage-ID: <m3@x.de>\r\n\r\nhi";
+        let t = parse_rfc822("imap:me", raw.as_bytes(), false, true, "INBOX").unwrap();
+        assert_eq!(t.subject, "invoicefdp.exe");
+        assert_eq!(t.messages[0].from.name, "PaylaP");
+    }
+
+    #[test]
+    fn messages_without_an_id_get_distinct_stable_ids() {
+        let one = b"Subject: Same\r\nFrom: A <a@b.c>\r\n\r\nfirst";
+        let two = b"Subject: Same\r\nFrom: A <a@b.c>\r\n\r\nsecond";
+        let id = |raw: &[u8]| {
+            parse_rfc822("imap:me", raw, false, true, "INBOX").unwrap().messages[0].id.clone()
+        };
+        assert_ne!(id(one), id(two));
+        assert_eq!(id(one), id(one));
+    }
+
+    #[test]
+    fn a_reused_message_id_from_another_sender_does_not_replace_the_stored_body() {
+        let path = std::env::temp_dir().join(format!(
+            "bharga-reused-id-{}-{}.db",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        let store = crate::store::Store::open(path.clone()).unwrap();
+        store.upsert_account("imap:me", "me@x.de", "imap", "Me").unwrap();
+        let mail = |from: &str, body: &str| {
+            let raw = format!(
+                "Subject: Invoice\r\nFrom: {from}\r\nMessage-ID: <same@bank.example>\r\nContent-Type: text/html\r\n\r\n<p>{body}</p>"
+            );
+            parse_rfc822("imap:me", raw.as_bytes(), false, false, "INBOX").unwrap()
+        };
+        let original = mail("Bank <billing@bank.example>", "original");
+        store.upsert_thread(&original).unwrap();
+        store.upsert_thread(&mail("Bank <billing@evil.example>", "pay the attacker")).unwrap();
+        let stored = store.thread(&original.id).unwrap();
+        assert_eq!(stored.messages.len(), 1);
+        assert_eq!(stored.messages[0].from.address, "billing@bank.example");
+        assert!(stored.messages[0].body_html.contains("original"));
+
+        store.upsert_thread(&mail("Bank <Billing@Bank.example>", "refreshed")).unwrap();
+        assert!(store.thread(&original.id).unwrap().messages[0].body_html.contains("refreshed"));
+        drop(store);
+        std::fs::remove_file(&path).unwrap();
     }
 }

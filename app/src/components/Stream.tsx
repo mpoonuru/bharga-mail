@@ -16,6 +16,7 @@ import { avatarColor } from "@/lib/colors";
 import { shortTime, whenMs } from "@/lib/date";
 import { highlightInline } from "@/lib/highlightInline";
 import { isKeyboardContextMenu, isPrimaryActivationKey } from "@/lib/keyboard";
+import { MAIL_SCAN_CHARS, stripBlocks, stripTags } from "@/lib/mailText";
 import { mailDragPolicy, useCoarsePointer } from "@/lib/pointer";
 import { senderTrust } from "@/lib/senderTrust";
 import { deriveChips } from "@/lib/smartChips";
@@ -86,17 +87,21 @@ function participantsLabel(t: Thread): string {
 // and comment BLOCKS (content included) BEFORE stripping tags — otherwise Outlook's
 // `<style>v\:* {behavior:url(#default#VML);}…</style>` boilerplate leaks in as the
 // preview. Tag-only stripping (/<[^>]+>/) removes the tags but keeps the CSS text.
-const plainPreview = (html: string) =>
-  (html || "")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<head[\s\S]*?<\/head>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
+const plainPreview = (html: string) => {
+  let text = (html || "").slice(0, MAIL_SCAN_CHARS);
+  for (const [open, close] of [
+    ["<!--", "-->"],
+    ["<style", "</style>"],
+    ["<script", "</script>"],
+    ["<head", "</head>"],
+  ])
+    text = stripBlocks(text, open, close);
+  return stripTags(text)
     .replace(/&nbsp;/gi, " ")
-    .replace(/&[a-z]+;/gi, " ")
+    .replace(/&[a-z]{1,12};/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
+};
 
 // True when a preview string still looks like leaked CSS/markup (Outlook <style>
 // resets, mso- hacks, VML behaviors, @media, comment openers).
@@ -111,7 +116,8 @@ function previewText(t: Thread, m?: Message, useThreadPreview = false): string {
   if (looksCss(p)) p = plainPreview(m?.bodyHtml ?? "");
   if (looksCss(p))
     p = p
-      .replace(/[^{}]*\{[^}]*\}/g, " ")
+      .slice(0, 4000)
+      .replace(/[^{}]{0,400}\{[^}]{0,2000}\}/g, " ")
       .replace(/\s+/g, " ")
       .trim();
   return p || (t.preview || "").trim();

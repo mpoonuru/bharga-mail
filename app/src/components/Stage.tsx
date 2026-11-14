@@ -3,7 +3,6 @@ import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
 import { AnimatePresence, motion } from "motion/react";
 import { createRef, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { InvitationCard } from "@/calendar/InvitationCard";
 import { Icon } from "@/components/icons";
 import {
@@ -30,10 +29,10 @@ import {
   type EmailFrameLayout,
   type FrameSize,
 } from "@/lib/emailFrameLayout";
-import { processEmail } from "@/lib/emailHtml";
+import { hiddenContentIsNotable, processEmail } from "@/lib/emailHtml";
 import { parseExternalWebUrl } from "@/lib/externalLinks";
 import { isKeyboardContextMenu } from "@/lib/keyboard";
-import { registerOpenModal } from "@/lib/modalStack";
+import { safeDraftHtml, visibleMailText } from "@/lib/mailText";
 import { THREAD_CROSSFADE, useMotionTransition } from "@/lib/motion";
 import { senderTrust } from "@/lib/senderTrust";
 import { messageThreat } from "@/lib/threat";
@@ -44,16 +43,34 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 type LinkDecision =
+  | { kind: "link"; href: string; host: string }
   | { kind: "warning"; href: string; host: string; level: string }
-  | { kind: "blocked"; href: string }
-  | { kind: "error"; href: string };
+  | { kind: "blocked"; href: string };
 
-interface LinkMenuState {
-  href: string;
-  risk: string | null;
-  x: number;
-  y: number;
-  opener: HTMLAnchorElement;
+/** A click target of the app's own, laid exactly over one box of a link in the
+ *  message frame. */
+interface LinkShield {
+  key: string;
+  /** Index of the link among the frame's `a[href]` elements. */
+  link: number;
+  /** A link wrapping over several lines has several boxes; only the first is a
+   *  tab stop and is announced. */
+  first: boolean;
+  label: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+// More boxes than any real message carries. Links past it stay unshielded: inert
+// in WebKit, and caught by the in-frame listener elsewhere.
+const MAX_LINK_SHIELDS = 600;
+
+/** A message quoted into the compose editor, which lives in the main window:
+ *  cleaned like the reader does it, with nothing remote left to load. */
+function forwardedHtml(html: string): string {
+  return processEmail(html, { showImages: false, highlight: false }).html;
 }
 
 /**
@@ -79,11 +96,11 @@ export function EmailBody({
   displayRef.current = display;
   const [frameSize, setFrameSize] = useState<FrameSize>({ width: 0, viewportWidth: 0 });
   const detachFrameRef = useRef<() => void>(() => {});
-  const linkMenuRef = useRef<HTMLDivElement>(null);
-  const linkOpenerRef = useRef<HTMLAnchorElement | null>(null);
+  const linkOpenerRef = useRef<HTMLElement | null>(null);
+  const shieldKeyRef = useRef("");
+  const [shields, setShields] = useState<LinkShield[]>([]);
   const [showImages, setShowImages] = useState(false);
   const [decision, setDecision] = useState<LinkDecision | null>(null);
-  const [linkMenu, setLinkMenu] = useState<LinkMenuState | null>(null);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
   const highlights = useApp((s) => s.highlights);
   const theme = useApp((s) => s.theme);
@@ -110,11 +127,7 @@ export function EmailBody({
   } | null>(null);
   useEffect(() => {
     setAiVerdict(null);
-    const plain = html
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 4000);
+    const plain = visibleMailText(html, 4000);
     const lure =
       /(verify|suspend|unusual activity|within \d+\s?h|confirm your|update your|password|account will be|sign\s?in|log\s?in)/i.test(
         plain,
@@ -134,8 +147,12 @@ export function EmailBody({
   // Defense in depth: the sandbox already blocks scripts (no allow-scripts); this
   // internal CSP additionally forbids scripts/objects/frames inside the email and
   // only permits images, inline styles, and fonts.
-  const csp =
-    "default-src 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'; img-src http: https: data: cid:; style-src 'unsafe-inline'; font-src data: https:; media-src https: data:;";
+  // Until "Load images" is pressed the policy itself allows nothing remote, so a
+  // reference the cleaning pass did not recognise still cannot be fetched.
+  const remote = showImages
+    ? "img-src http: https: data: cid:; font-src data: https:; media-src https: data:;"
+    : "img-src data: cid:; font-src data:; media-src data:;";
+  const csp = `default-src 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'; style-src 'unsafe-inline'; ${remote}`;
   // Theme-aware base. In dark mode we render the page on a dark surface with light
   // default text (plain-text + simple emails adapt cleanly); emails that ship their
   // own background/colors keep them, exactly like Gmail/Apple Mail do.
@@ -144,6 +161,7 @@ export function EmailBody({
   const link = dark ? "#8ab0ff" : "#2563eb";
   const doc = `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
+<meta http-equiv="x-dns-prefetch-control" content="off">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   html,body{margin:0;background:${surface};color:${ink};color-scheme:${dark ? "dark" : "light"};
@@ -177,99 +195,91 @@ export function EmailBody({
   mark[data-kind=negative]{background:linear-gradient(120deg,rgba(239,68,68,.18),rgba(239,68,68,.06));box-shadow:inset 0 -2px rgba(239,68,68,.25);}
   mark[data-kind=positive]{background:linear-gradient(120deg,rgba(16,185,129,.18),rgba(16,185,129,.06));box-shadow:inset 0 -2px rgba(16,185,129,.25);}
   @keyframes hlin{from{opacity:.35;}to{opacity:1;}}
-</style>${processed.headStyles}</head><body${processed.bodyAttrs}>${body}</body></html>`;
+</style>${processed.headStyles}<style>a[data-href]{cursor:pointer!important;}a[data-risk]{text-decoration:underline wavy #d97706!important;}a[data-risk=dangerous]{text-decoration-color:#ef4444!important;background:rgba(239,68,68,.10)!important;}a[data-risk]::after{content:" \\26A0\\FE0F"!important;}</style></head><body${processed.bodyAttrs}>${body}</body></html>`;
 
-  const restoreLinkFocus = (opener = linkOpenerRef.current) => {
+  const closeDecision = () => {
+    const opener = linkOpenerRef.current;
+    setDecision(null);
+    setCopyStatus("idle");
     window.setTimeout(() => {
       if (opener?.isConnected) opener.focus();
     }, 0);
   };
 
-  const closeDecision = () => {
-    setDecision(null);
-    setCopyStatus("idle");
-    restoreLinkFocus();
-  };
-
-  const closeLinkMenu = (restoreFocus = true) => {
-    const opener = linkMenu?.opener ?? null;
-    setLinkMenu(null);
-    if (restoreFocus) restoreLinkFocus(opener);
-  };
-
-  const copyLink = async (href: string, closeMenu = false) => {
+  const copyLink = async (href: string) => {
     try {
       await navigator.clipboard.writeText(href);
       setCopyStatus("copied");
-      if (closeMenu) closeLinkMenu();
     } catch {
       setCopyStatus("error");
     }
   };
 
-  const openLink = (href: string) => {
-    setDecision(null);
-    setLinkMenu(null);
-    setCopyStatus("idle");
-    void api.openExternalUrl(href).catch(() => {
-      setDecision({ kind: "error", href });
-    });
-  };
-
-  const reviewLink = (anchor: HTMLAnchorElement) => {
-    const rawHref = anchor.getAttribute("href")?.trim() ?? "";
+  // Links never open from a message. Activating one shows where it really goes
+  // and offers to copy it; whether to visit it is decided in the browser.
+  const reviewLink = (anchor: HTMLAnchorElement, opener: HTMLElement = anchor) => {
+    const rawHref = anchor.getAttribute("data-href")?.trim() ?? "";
     const destination = parseExternalWebUrl(rawHref);
-    linkOpenerRef.current = anchor;
+    linkOpenerRef.current = opener;
     setCopyStatus("idle");
     if (!destination) {
       setDecision({ kind: "blocked", href: rawHref });
       return;
     }
     const level = anchor.getAttribute("data-risk");
-    if (level) {
-      setDecision({ kind: "warning", href: destination.href, host: destination.host, level });
-      return;
-    }
-    openLink(destination.href);
+    setDecision(
+      level
+        ? { kind: "warning", href: destination.href, host: destination.host, level }
+        : { kind: "link", href: destination.href, host: destination.host },
+    );
   };
 
-  const showLinkMenu = (anchor: HTMLAnchorElement, clientX: number, clientY: number) => {
-    const rawHref = anchor.getAttribute("href")?.trim() ?? "";
-    const destination = parseExternalWebUrl(rawHref);
-    const frameRect = ref.current?.getBoundingClientRect();
-    const x = Math.min(
-      Math.max((frameRect?.left ?? 0) + clientX, 8),
-      Math.max(window.innerWidth - 190, 8),
-    );
-    const y = Math.min(
-      Math.max((frameRect?.top ?? 0) + clientY, 8),
-      Math.max(window.innerHeight - 112, 8),
-    );
-    linkOpenerRef.current = anchor;
-    setCopyStatus("idle");
-    setLinkMenu({
-      href: destination?.href ?? rawHref,
-      risk: destination ? anchor.getAttribute("data-risk") : "blocked",
-      x,
-      y,
-      opener: anchor,
-    });
+  const reviewShield = (link: number, opener: HTMLElement) => {
+    const anchor =
+      ref.current?.contentDocument?.querySelectorAll<HTMLAnchorElement>("a[data-href]")[link];
+    if (anchor) reviewLink(anchor, opener);
+  };
+
+  // The frame runs no scripts, and WebKit then also skips listeners the app adds
+  // to it, so a click inside the frame cannot be relied on. Each link therefore
+  // gets a button of the app's own on top of it, placed from the link's boxes.
+  const measureShields = (frame: HTMLIFrameElement) => {
+    const anchors =
+      frame.contentDocument?.querySelectorAll<HTMLAnchorElement>("a[data-href]") ?? [];
+    const next: LinkShield[] = [];
+    for (let link = 0; link < anchors.length && next.length < MAX_LINK_SHIELDS; link++) {
+      const anchor = anchors[link];
+      const label = (anchor.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+      // A linked image can be taller than the inline box of its anchor.
+      const boxes = [
+        ...anchor.getClientRects(),
+        ...[...anchor.querySelectorAll("img")].map((image) => image.getBoundingClientRect()),
+      ];
+      let first = true;
+      for (const box of boxes) {
+        if (box.width < 1 || box.height < 1 || next.length >= MAX_LINK_SHIELDS) continue;
+        next.push({
+          key: `${link}:${next.length}`,
+          link,
+          first,
+          label: label || "image",
+          left: Math.round(box.left + frame.clientLeft),
+          top: Math.round(box.top + frame.clientTop),
+          width: Math.round(box.width),
+          height: Math.round(box.height),
+        });
+        first = false;
+      }
+    }
+    const key = next
+      .map((item) => `${item.link},${item.left},${item.top},${item.width},${item.height}`)
+      .join(";");
+    if (key === shieldKeyRef.current) return;
+    shieldKeyRef.current = key;
+    setShields(next);
   };
 
   useEffect(() => () => detachFrameRef.current(), []);
-
-  useEffect(() => {
-    if (!linkMenu) return;
-    const unregisterShortcutIsolation = registerOpenModal();
-    linkMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
-    return unregisterShortcutIsolation;
-  }, [linkMenu]);
-
-  useEffect(() => {
-    if (decision || copyStatus === "idle") return;
-    const timer = window.setTimeout(() => setCopyStatus("idle"), 2400);
-    return () => window.clearTimeout(timer);
-  }, [copyStatus, decision]);
 
   const onLoad = () => {
     detachFrameRef.current();
@@ -284,78 +294,46 @@ export function EmailBody({
             ? current
             : next,
         );
+        measureShields(frame);
       });
       sizingRef.current = sizing;
-      // Every link leaves through the validated native opener. The embedded mail
-      // document never receives navigation or popup permissions.
-      const onLinkClick = (e: MouseEvent) => {
+      // Where listeners do run inside the frame (Chromium), they hold every link
+      // activation back as well. The embedded mail document never receives
+      // navigation or popup permissions.
+      const onLinkActivate = (e: MouseEvent) => {
         if (e.type === "auxclick" && e.button !== 1) return;
         const a = (e.target as HTMLElement | null)?.closest?.(
-          "a[href]",
+          "a[data-href]",
         ) as HTMLAnchorElement | null;
         if (!a) return;
         e.preventDefault();
         e.stopPropagation();
         reviewLink(a);
       };
-      const onLinkContextMenu = (e: MouseEvent) => {
-        const a = (e.target as HTMLElement | null)?.closest?.(
-          "a[href]",
-        ) as HTMLAnchorElement | null;
-        if (!a) return;
-        e.preventDefault();
-        e.stopPropagation();
-        showLinkMenu(a, e.clientX, e.clientY);
-      };
       const onLinkKeyDown = (e: KeyboardEvent) => {
         const a = (e.target as HTMLElement | null)?.closest?.(
-          "a[href]",
+          "a[data-href]",
         ) as HTMLAnchorElement | null;
         if (!a || !isKeyboardContextMenu(e)) return;
         e.preventDefault();
         e.stopPropagation();
-        const rect = a.getBoundingClientRect();
-        showLinkMenu(a, rect.left + Math.min(rect.width, 24), rect.bottom);
+        reviewLink(a);
       };
-      d.addEventListener("click", onLinkClick, true);
-      d.addEventListener("auxclick", onLinkClick, true);
-      d.addEventListener("contextmenu", onLinkContextMenu, true);
+      d.addEventListener("click", onLinkActivate, true);
+      d.addEventListener("auxclick", onLinkActivate, true);
+      d.addEventListener("contextmenu", onLinkActivate, true);
       d.addEventListener("keydown", onLinkKeyDown, true);
       detachFrameRef.current = () => {
         sizing.dispose();
         if (sizingRef.current === sizing) sizingRef.current = null;
-        d.removeEventListener("click", onLinkClick, true);
-        d.removeEventListener("auxclick", onLinkClick, true);
-        d.removeEventListener("contextmenu", onLinkContextMenu, true);
+        d.removeEventListener("click", onLinkActivate, true);
+        d.removeEventListener("auxclick", onLinkActivate, true);
+        d.removeEventListener("contextmenu", onLinkActivate, true);
         d.removeEventListener("keydown", onLinkKeyDown, true);
       };
     } catch {
       /* ignore */
     }
-  };
-
-  const onLinkMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    event.stopPropagation();
-    const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    let next = current;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeLinkMenu();
-      return;
-    }
-    if (event.key === "Tab") {
-      event.preventDefault();
-      closeLinkMenu();
-      return;
-    }
-    if (event.key === "ArrowDown") next = (current + 1) % items.length;
-    else if (event.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = items.length - 1;
-    else return;
-    event.preventDefault();
-    items[next]?.focus();
   };
 
   const danger =
@@ -384,7 +362,38 @@ export function EmailBody({
               </ul>
             )}
             <span className="phish-hint">
-              Bharga will confirm the real destination before opening any flagged link.
+              Links never open from Bharga. Select one to see and copy its real destination.
+            </span>
+          </div>
+        </div>
+      )}
+      {hiddenContentIsNotable(processed.hidden) && (
+        <div className="phish-banner">
+          <Icon name="shieldWarning" size={15} weight="fill" />
+          <div className="phish-main">
+            <b>This message contains hidden content</b>
+            <ul className="phish-list">
+              {processed.hidden.textChars > 0 && (
+                <li>
+                  {processed.hidden.textChars} characters of text you cannot see
+                  {processed.hidden.sample && <>: “{processed.hidden.sample}”</>}
+                </li>
+              )}
+              {processed.hidden.links > 0 && (
+                <li>
+                  {processed.hidden.links} hidden link{processed.hidden.links > 1 ? "s" : ""}
+                </li>
+              )}
+              {processed.hidden.directionOverrides > 0 && (
+                <li>
+                  Characters that reorder the text on screen, used to disguise file names and
+                  addresses
+                </li>
+              )}
+            </ul>
+            <span className="phish-hint">
+              Hidden content is often harmless, but it can be meant for filters or AI summaries
+              instead of you.
             </span>
           </div>
         </div>
@@ -402,8 +411,8 @@ export function EmailBody({
         title={
           decision?.kind === "blocked"
             ? "Link blocked"
-            : decision?.kind === "error"
-              ? "Could not open link"
+            : decision?.kind === "link"
+              ? "Link destination"
               : decision?.level === "dangerous"
                 ? "Dangerous link"
                 : "Suspicious link"
@@ -415,23 +424,24 @@ export function EmailBody({
             className={`link-decision${decision.kind === "warning" && decision.level === "dangerous" ? " danger" : ""}`}
           >
             <div className="link-decision-summary">
-              <Icon name="shieldWarning" size={19} weight="fill" />
+              {decision.kind !== "link" && <Icon name="shieldWarning" size={19} weight="fill" />}
               <p>
+                {decision.kind === "link" && (
+                  <>
+                    This link goes to <b>{decision.host}</b>. Bharga never opens links from a
+                    message. If you trust it, copy it and open it in your browser.
+                  </>
+                )}
                 {decision.kind === "warning" && (
                   <>
                     This link goes to <b>{decision.host}</b>. Bharga flagged the destination as
-                    possibly unsafe.
+                    possibly unsafe, and never opens links from a message.
                   </>
                 )}
                 {decision.kind === "blocked" && (
                   <>
                     Bharga blocked this destination because it is not a valid HTTP or HTTPS web
                     link.
-                  </>
-                )}
-                {decision.kind === "error" && (
-                  <>
-                    The system browser could not open this link. You can still copy the destination.
                   </>
                 )}
               </p>
@@ -442,13 +452,8 @@ export function EmailBody({
                 Copy link
               </button>
               <button type="button" onClick={closeDecision}>
-                Stay safe
+                {decision.kind === "link" ? "Close" : "Stay safe"}
               </button>
-              {decision.kind === "warning" && (
-                <button type="button" className="lc-danger" onClick={() => openLink(decision.href)}>
-                  Open anyway
-                </button>
-              )}
             </div>
             <div className="link-copy-status" aria-live="polite">
               {copyStatus === "copied"
@@ -460,61 +465,6 @@ export function EmailBody({
           </div>
         )}
       </Modal>
-      {linkMenu &&
-        createPortal(
-          <>
-            <div
-              className="link-menu-backdrop"
-              aria-hidden="true"
-              onMouseDown={() => closeLinkMenu()}
-            />
-            <div
-              ref={linkMenuRef}
-              className="link-menu"
-              role="menu"
-              aria-label="Link actions"
-              style={{ left: linkMenu.x, top: linkMenu.y }}
-              onKeyDown={onLinkMenuKeyDown}
-            >
-              {linkMenu.risk !== "blocked" && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    const menu = linkMenu;
-                    closeLinkMenu(false);
-                    if (menu.risk)
-                      setDecision({
-                        kind: "warning",
-                        href: menu.href,
-                        host: parseExternalWebUrl(menu.href)?.host ?? "Unknown destination",
-                        level: menu.risk,
-                      });
-                    else openLink(menu.href);
-                  }}
-                >
-                  {linkMenu.risk ? "Review link" : "Open link"}
-                </button>
-              )}
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => void copyLink(linkMenu.href, true)}
-              >
-                Copy link
-              </button>
-            </div>
-          </>,
-          document.body,
-        )}
-      {!decision &&
-        copyStatus !== "idle" &&
-        createPortal(
-          <div className={`link-copy-toast${copyStatus === "error" ? " error" : ""}`} role="status">
-            {copyStatus === "copied" ? "Link copied." : "Could not copy the link."}
-          </div>,
-          document.body,
-        )}
       <div
         ref={viewportRef}
         className="email-viewport"
@@ -536,6 +486,27 @@ export function EmailBody({
           srcDoc={doc}
           onLoad={onLoad}
         />
+        {shields.map((shield) => (
+          <button
+            key={shield.key}
+            type="button"
+            className="link-shield"
+            style={{
+              left: shield.left,
+              top: shield.top,
+              width: shield.width,
+              height: shield.height,
+            }}
+            tabIndex={shield.first ? 0 : -1}
+            aria-hidden={shield.first ? undefined : true}
+            aria-label={`Link: ${shield.label}. Show destination`}
+            onClick={(event) => reviewShield(shield.link, event.currentTarget)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              reviewShield(shield.link, event.currentTarget);
+            }}
+          />
+        ))}
       </div>
       {frameSize.width > frameSize.viewportWidth + 1 && (
         <div
@@ -678,7 +649,11 @@ export function Stage() {
       setPreviewing(null);
     }
   }
-  const canPreview = (mime: string) => mime.startsWith("image/") || mime === "application/pdf";
+  // Same list as `is_previewable_mime` in lib.rs: passive formats only, never SVG.
+  const canPreview = (mime: string) =>
+    ["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "application/pdf"].includes(
+      mime.trim().toLowerCase(),
+    );
   // Each presence-keyed pane owns its own imperative composer handle. An
   // outgoing pane must never clear the incoming thread's toolbar actions.
   const composerRef = useMemo(
@@ -1166,10 +1141,10 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
       setTimeout(() => {
         if (m === "forward") {
           editorRef.current?.setHtml(
-            `<p></p><p>---------- Forwarded message ----------</p><blockquote>${last?.bodyHtml ?? ""}</blockquote>`,
+            `<p></p><p>---------- Forwarded message ----------</p><blockquote>${forwardedHtml(last?.bodyHtml ?? "")}</blockquote>`,
           );
         } else if (draft && thread.aiDraft) {
-          editorRef.current?.setHtml(`<p>${thread.aiDraft}</p>`);
+          editorRef.current?.setHtml(safeDraftHtml(`<p>${thread.aiDraft}</p>`));
         } else {
           editorRef.current?.setHtml("");
         }
@@ -1213,8 +1188,10 @@ const Composer = forwardRef<{ open: (m: Mode, draft?: boolean) => void }, { thre
 
     async function regen() {
       setBusy(true);
-      const text = `Subject: ${thread.subject}\n${thread.messages.map((m) => m.bodyHtml.replace(/<[^>]+>/g, " ")).join("\n")}`;
-      editorRef.current?.setHtml(await api.draftReply(thread.id, text));
+      // Only what the person can see goes to the model, and its answer comes back
+      // as plain formatting: text in a mail can steer both.
+      const text = `Subject: ${thread.subject}\n${thread.messages.map((m) => visibleMailText(m.bodyHtml, 8000)).join("\n")}`;
+      editorRef.current?.setHtml(safeDraftHtml(await api.draftReply(thread.id, text)));
       setBusy(false);
     }
 

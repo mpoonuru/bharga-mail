@@ -528,8 +528,12 @@
      internal <style> sets the matching background/ink so plain + simple emails
      adapt cleanly, while emails that ship their own colours keep them. */
   .email-body { @apply min-w-0 relative; }
-  .email-viewport { @apply min-w-0 max-w-full overflow-x-auto overflow-y-hidden rounded-[10px]; scrollbar-width: none; }
+  .email-viewport { @apply relative min-w-0 max-w-full overflow-x-auto overflow-y-hidden rounded-[10px]; scrollbar-width: none; }
   .email-viewport::-webkit-scrollbar { display: none; }
+  /* The app's own click target over a link in the message frame. */
+  .link-shield { @apply absolute m-0 cursor-pointer rounded-[3px] border-0 bg-transparent p-0; }
+  .link-shield:hover { background: color-mix(in oklch, var(--accent) 14%, transparent); }
+  .link-shield:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .email-pan { @apply sticky bottom-0 z-[2] h-[18px] overflow-x-auto overflow-y-hidden border border-border rounded-b-[10px] bg-surface; }
   .img-banner { @apply w-full flex items-center gap-2 mb-1.5 px-3 py-2 rounded-lg text-[12px] text-text-2 cursor-pointer; background: var(--accent-soft); border: 1px solid var(--border); transition: var(--motion-standard) var(--ease); }
   .img-banner:hover { @apply text-text border-accent; }
@@ -557,12 +561,6 @@
   .lc-actions button:hover { @apply bg-surface; }
   .lc-actions .lc-danger { color: var(--danger); border-color: color-mix(in oklch, var(--danger) 45%, transparent); }
   .link-copy-status { @apply min-h-4 text-right text-[11.5px] text-text-3; }
-  .link-menu-backdrop { @apply fixed inset-0 z-[59] cursor-default border-0 bg-transparent p-0; }
-  .link-menu { @apply fixed z-[60] grid min-w-[160px] gap-0.5 rounded-xl border border-border-2 p-1.5; background: var(--surface); box-shadow: var(--shadow); }
-  .link-menu button { @apply min-h-9 rounded-lg border-0 bg-transparent px-3 py-2 text-left text-[12.5px] text-text-2; }
-  .link-menu button:hover, .link-menu button:focus-visible { @apply bg-bg-2 text-text; }
-  .link-copy-toast { @apply fixed bottom-6 left-1/2 z-[70] -translate-x-1/2 rounded-lg border border-border-2 px-3 py-2 text-[12.5px] font-medium text-text; background: var(--surface); box-shadow: var(--shadow); }
-  .link-copy-toast.error { color: var(--danger); border-color: color-mix(in oklch, var(--danger) 45%, var(--border)); }
   .msg .text {
     @apply text-[14px] leading-[1.65] min-w-0 max-w-full rounded-[10px] px-4 py-3.5;
     overflow-wrap: anywhere; word-break: break-word;
