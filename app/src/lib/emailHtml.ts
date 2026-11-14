@@ -31,7 +31,20 @@ const SANITIZE_OPTS: Config = {
     "map",
     "area",
   ],
-  FORBID_ATTR: ["ping", "formaction", "form", "xlink:href"],
+  // The data-* names are the reader's own marks (link target, risk verdict,
+  // highlights). A message must not be able to arrive with them already set.
+  FORBID_ATTR: [
+    "ping",
+    "formaction",
+    "form",
+    "xlink:href",
+    "data-href",
+    "data-risk",
+    "data-real",
+    "data-hl",
+    "data-kind",
+    "data-blocked-src",
+  ],
   ALLOW_UNKNOWN_PROTOCOLS: false,
 };
 

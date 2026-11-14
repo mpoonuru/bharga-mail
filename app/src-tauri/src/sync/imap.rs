@@ -1057,14 +1057,17 @@ fn inline_cid_images(mail: &mailparse::ParsedMail, html: String) -> String {
 /// Total bytes of embedded inline-image data one message body may grow by.
 const INLINE_IMAGE_BUDGET: usize = 32 * 1024 * 1024;
 /// Real mail nests a handful of multipart levels; this is far above any of it.
-const MAX_MIME_BOUNDARIES: usize = 100;
+const MAX_MULTIPART_PARTS: usize = 100;
 
+/// Every nested level needs a "multipart/…" content type, and that token cannot
+/// be folded or re-spelled the way the boundary parameter can ("boundary =",
+/// "boundary*0="), so it is what gets counted.
 fn is_abnormally_nested(raw: &[u8]) -> bool {
-    raw.windows(9)
-        .filter(|window| window.eq_ignore_ascii_case(b"boundary="))
-        .take(MAX_MIME_BOUNDARIES + 1)
+    raw.windows(10)
+        .filter(|window| window.eq_ignore_ascii_case(b"multipart/"))
+        .take(MAX_MULTIPART_PARTS + 1)
         .count()
-        > MAX_MIME_BOUNDARIES
+        > MAX_MULTIPART_PARTS
 }
 
 /// The message's own headers with a plain-text notice for a body. The MIME
@@ -1379,6 +1382,10 @@ mod tests {
             );
         }
         assert!(is_abnormally_nested(&raw));
+        let respelled = String::from_utf8(raw.clone()).unwrap().replace("boundary=", "boundary =");
+        assert!(is_abnormally_nested(respelled.as_bytes()));
+        let star = String::from_utf8(raw.clone()).unwrap().replace("boundary=", "boundary*0=");
+        assert!(is_abnormally_nested(star.as_bytes()));
         let t = parse_rfc822("imap:me", &raw, false, true, "INBOX").unwrap();
         assert_eq!(t.subject, "Deep");
         assert_eq!(t.messages[0].from.address, "a@b.c");

@@ -444,3 +444,17 @@ describe("processEmail hidden content", () => {
     expect(hiddenContentIsNotable(hidden)).toBe(true);
   });
 });
+
+describe("processEmail reader marks", () => {
+  it("drops the reader's own marks when the message supplies them", () => {
+    const { html } = processEmail(
+      '<a data-href="https://bank.example" data-risk="link" data-real="bank.example" href="https://evil.test/x">Bank</a><a data-href="https://evil.test/y">no href</a><mark data-kind="security">x</mark><img data-blocked-src="https://evil.test/p.gif" src="data:image/png;base64,AAAA">',
+      { showImages: false, highlight: false },
+    );
+    expect(html).toContain('data-href="https://evil.test/x"');
+    expect(html).not.toContain("bank.example");
+    expect(html).not.toContain("evil.test/y");
+    expect(html).not.toContain("data-kind");
+    expect(html).not.toContain("data-blocked-src");
+  });
+});
