@@ -11,8 +11,8 @@ import type {
   AiProfile,
   AiRole,
   FolderInfo,
-  SaveAiProviderInput,
   OutgoingMessage,
+  SaveAiProviderInput,
   Task,
   Thread,
   View,
@@ -41,6 +41,21 @@ function notifyNewMail(count: number): void {
   }
 }
 
+let actionNoticeTimer: ReturnType<typeof setTimeout> | undefined;
+
+function showActionNotice(message: string) {
+  if (actionNoticeTimer) clearTimeout(actionNoticeTimer);
+  useApp.setState({ actionNotice: message });
+  actionNoticeTimer = setTimeout(() => useApp.setState({ actionNotice: null }), 2500);
+}
+
+// Archive and Snooze close the reader only when they act on the open
+// conversation; acting on another row leaves the one being read alone.
+function closeReaderIfOpen(id: string) {
+  if (useApp.getState().selectedThreadId !== id) return {};
+  return { selectedThreadId: null, selectedMessageId: null, suppressAutoPreview: true };
+}
+
 type Theme = "dark" | "light";
 type Density = "compact" | "cozy" | "comfy";
 
@@ -49,6 +64,7 @@ interface AppState {
   view: View;
   selectedThreadId: string | null;
   selectedMessageId: string | null;
+  suppressAutoPreview: boolean;
   setView: (v: View) => void;
   /** Load full message bodies for one conversation (the list is metadata-only). */
   hydrateThread: (id: string) => Promise<void>;
@@ -146,6 +162,7 @@ interface AppState {
 
   // Undo Send
   undo: { id: string; label: string } | null;
+  actionNotice: string | null;
   queueSend: (args: {
     to: string;
     cc?: string;
@@ -328,6 +345,7 @@ export const useApp = create<AppState>((set, get) => ({
   view: "priority",
   selectedThreadId: "t1",
   selectedMessageId: null,
+  suppressAutoPreview: false,
   // A smart view (Priority / All Inbox / Flagged…) spans folders, so leaving a
   // specific mailbox: clear selectedFolder. Otherwise the view and a folder would
   // both read as selected, and the list would still be folder-filtered.
@@ -340,6 +358,7 @@ export const useApp = create<AppState>((set, get) => ({
       selectedFolder: null,
       selectedThreadId: null,
       selectedMessageId: null,
+      suppressAutoPreview: false,
       composeOpen: false,
       composeDraft: null,
       drawerOpen: false,
@@ -417,11 +436,16 @@ export const useApp = create<AppState>((set, get) => ({
     });
   },
   previewThread: (id, messageId) => {
-    set({ selectedThreadId: id, selectedMessageId: messageId ?? null });
+    set({ selectedThreadId: id, selectedMessageId: messageId ?? null, suppressAutoPreview: false });
     void get().hydrateThread(id);
   },
   selectThread: (id, messageId) => {
-    set({ selectedThreadId: id, selectedMessageId: messageId ?? null, mobileStage: true });
+    set({
+      selectedThreadId: id,
+      selectedMessageId: messageId ?? null,
+      suppressAutoPreview: false,
+      mobileStage: true,
+    });
     void get().hydrateThread(id);
     // Opening a conversation marks it read — locally now, and \Seen on the server
     // (best-effort). Only fire when it was actually unread.
@@ -502,6 +526,7 @@ export const useApp = create<AppState>((set, get) => ({
       selectedFolder: null,
       selectedThreadId: null,
       selectedMessageId: null,
+      suppressAutoPreview: false,
       folders: [],
       view: "inbox",
       mobileStage: false,
@@ -596,6 +621,7 @@ export const useApp = create<AppState>((set, get) => ({
       selectedFolder: name,
       selectedThreadId: null,
       selectedMessageId: null,
+      suppressAutoPreview: false,
       view: "inbox",
       mobileStage: false,
       reachedEnd: false,
@@ -895,6 +921,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   undo: null,
+  actionNotice: null,
   ...(() => {
     const { signatures, defaultId } = loadSignatures();
     return { signatures, defaultSignatureId: defaultId };
@@ -1085,16 +1112,20 @@ export const useApp = create<AppState>((set, get) => ({
             }
           : t,
       ),
+      ...closeReaderIfOpen(id),
       mobileStage: false,
     });
+    showActionNotice("Snoozed");
     void api.snoozeThread(id);
   },
   archiveThread: (id) => {
     const t = get().threads.find((x) => x.id === id);
     set({
       threads: get().threads.map((x) => (x.id === id ? { ...x, view: [] } : x)),
+      ...closeReaderIfOpen(id),
       mobileStage: false,
     });
+    showActionNotice("Archived");
     if (t) void api.archiveThread(id, t.accountId);
   },
   toggleRead: (id) => {

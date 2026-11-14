@@ -171,6 +171,7 @@ export function Stream() {
     accounts,
     selectedThreadId,
     selectedMessageId,
+    suppressAutoPreview,
     selectThread,
     previewThread,
     triageInbox,
@@ -398,9 +399,9 @@ export function Stream() {
   const visibleThreadKey = visibleThreadIds.join("\u0001");
   const selectedCount = selectedThreadIds.size;
 
-  // The reader is never left empty while the list has mail: at startup, after a
-  // view or folder change, and after archiving the open one, show the top
-  // conversation. A preview only — it stays unread until the person opens it.
+  // At startup and after a view or folder change, show the top conversation.
+  // Actions that explicitly close the reader suppress this once so their
+  // confirmation is visible instead of immediately reopening the same message.
   const topRow = rows[0];
   const topThreadId = topRow?.t.id;
   const topMessageId = topRow?.m.id;
@@ -408,8 +409,9 @@ export function Stream() {
   // id (it starts as a placeholder id, and is null after a view change).
   const readerEmpty = !threads.some((t) => t.id === selectedThreadId);
   useEffect(() => {
-    if (readerEmpty && topThreadId) previewThread(topThreadId, topMessageId);
-  }, [readerEmpty, topThreadId, topMessageId, previewThread]);
+    if (readerEmpty && !suppressAutoPreview && topThreadId)
+      previewThread(topThreadId, topMessageId);
+  }, [readerEmpty, suppressAutoPreview, topThreadId, topMessageId, previewThread]);
   // Select every visible conversation (⌘A / "Select all" button).
   const selectAllVisible = () => {
     setSelectedThreadIds(new Set(visibleThreadIds));
